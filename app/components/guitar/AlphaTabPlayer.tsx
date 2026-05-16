@@ -5,22 +5,20 @@ import { useEffect, useRef } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
-  tab: string;           // Contenido de la tablatura en formato alphaTab
+  tab: string;
   title?: string;
-  className?: string;
 }
 
-export default function AlphaTabPlayer({ tab, title = "Tablatura", className = "" }: AlphaTabPlayerProps) {
+export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
+  const apiRef = useRef<any>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const settings = {
-      file: null,
+    const api = new alphaTab.AlphaTabApi(containerRef.current, {
       core: {
-        fontDirectory: '/alphatab-fonts', // Se configurará más adelante
+        fontDirectory: '/alphatab-fonts',   // ← Ruta local desde public
       },
       player: {
         enablePlayer: true,
@@ -30,29 +28,27 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura", className = "
         layoutMode: alphaTab.LayoutMode.Page,
         startBar: 1,
       }
-    };
+    });
 
-    const api = new alphaTab.AlphaTabApi(containerRef.current, settings);
     apiRef.current = api;
-
-    // Cargar la tablatura
     api.load(tab);
 
     return () => {
-      if (apiRef.current) {
-        apiRef.current.destroy();
-      }
+      if (apiRef.current) apiRef.current.destroy();
     };
   }, [tab]);
 
   return (
-    <div className={`tab-container rounded-xl overflow-hidden border border-zinc-700 ${className}`}>
+    <div className="rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-xl">
       {title && (
-        <div className="bg-zinc-900 px-6 py-3 border-b border-zinc-700 font-semibold text-lg">
+        <div className="bg-zinc-800 px-6 py-4 border-b border-zinc-700 font-semibold text-xl text-white">
           {title}
         </div>
       )}
-      <div ref={containerRef} className="alphatab-container" />
+      <div 
+        ref={containerRef} 
+        className="alphatab-container min-h-[500px] bg-white p-6"
+      />
     </div>
   );
 }
