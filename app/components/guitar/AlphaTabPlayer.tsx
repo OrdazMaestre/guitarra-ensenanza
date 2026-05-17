@@ -11,14 +11,14 @@ interface AlphaTabPlayerProps {
 
 export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<any>(null);
+  const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const api = new alphaTab.AlphaTabApi(containerRef.current, {
       core: {
-        fontDirectory: '/alphatab-fonts',   // ← Ruta local desde public
+        fontDirectory: '/alphatab-fonts/', // Next sirve public/ desde la raiz
       },
       player: {
         enablePlayer: true,
