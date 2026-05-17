@@ -3,12 +3,7 @@
 
 import AlphaTabPlayer from '../../components/guitar/AlphaTabPlayer';
 
-const cumpleanosTab = `
-\\title "Cumpleaños Feliz"
-\\subtitle "Ejercicio 1 - Una cuerda"
-.
-:4 0-0-2-0 | 5-4-0-0 | 0-12-9-5-7-5 | 10-10-9-5-7-5
-`;
+const pruebaTab = String.raw`\title "Prueba AlphaTab" . 3.3*4 4.3*4 5.3*4 6.3*4 | 3.2*4 4.2*4 5.2*4 6.2*4`;
 
 export default function PruebaPage() {
   return (
@@ -17,13 +12,13 @@ export default function PruebaPage() {
         Prueba AlphaTab
       </h1>
 
-      <AlphaTabPlayer 
-        tab={cumpleanosTab} 
-        title="Cumpleaños Feliz - Ejercicio 1" 
+      <AlphaTabPlayer
+        tab={pruebaTab}
+        title="Prueba AlphaTab"
       />
 
       <p className="text-center text-zinc-400 mt-10">
-        Si ves la tablatura arriba, ¡todo está funcionando!
+        Si ves la tablatura arriba, todo esta funcionando.
       </p>
     </div>
   );

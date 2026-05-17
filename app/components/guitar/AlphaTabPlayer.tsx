@@ -16,13 +16,17 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPla
   useEffect(() => {
     if (!containerRef.current) return;
 
+    containerRef.current.textContent = tab;
+
     const api = new alphaTab.AlphaTabApi(containerRef.current, {
       core: {
         fontDirectory: '/alphatab-fonts/', // Next sirve public/ desde la raiz
+        tex: true,
+        useWorkers: false,
+        enableLazyLoading: false,
       },
       player: {
-        enablePlayer: true,
-        soundFont: 'https://cdn.jsdelivr.net/npm/@coderline/alphatab@1/dist/soundfont/sonivox.sf2',
+        enablePlayer: false,
       },
       display: {
         layoutMode: alphaTab.LayoutMode.Page,
@@ -31,9 +35,6 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPla
     });
 
     apiRef.current = api;
-
-    // Cargar la tablatura
-    api.load(tab);
 
     return () => {
       if (apiRef.current) {
