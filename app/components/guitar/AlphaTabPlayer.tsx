@@ -18,7 +18,7 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPla
 
     const api = new alphaTab.AlphaTabApi(containerRef.current, {
       core: {
-        fontDirectory: '/alphatab-fonts',   // ← Ruta local desde public
+        fontDirectory: '/alphatab-fonts',
       },
       player: {
         enablePlayer: true,
@@ -31,15 +31,19 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPla
     });
 
     apiRef.current = api;
+
+    // Cargar la tablatura
     api.load(tab);
 
     return () => {
-      if (apiRef.current) apiRef.current.destroy();
+      if (apiRef.current) {
+        apiRef.current.destroy();
+      }
     };
   }, [tab]);
 
   return (
-    <div className="rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-xl">
+    <div className="rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-2xl">
       {title && (
         <div className="bg-zinc-800 px-6 py-4 border-b border-zinc-700 font-semibold text-xl text-white">
           {title}
@@ -47,7 +51,7 @@ export default function AlphaTabPlayer({ tab, title = "Tablatura" }: AlphaTabPla
       )}
       <div 
         ref={containerRef} 
-        className="alphatab-container min-h-[500px] bg-white p-6"
+        className="alphatab-container min-h-[520px] bg-white p-6"
       />
     </div>
   );
