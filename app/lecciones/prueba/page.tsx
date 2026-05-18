@@ -2,8 +2,7 @@
 'use client';
 
 import AlphaTabPlayer from '../../components/guitar/AlphaTabPlayer';
-
-const pruebaTab = String.raw`\title "Prueba AlphaTab" . 3.3*4 4.3*4 5.3*4 6.3*4 | 3.2*4 4.2*4 5.2*4 6.2*4`;
+import { sadisticMagicianTrack1 } from '../../data/sadisticMagicianTrack1';
 
 export default function PruebaPage() {
   return (
@@ -13,8 +12,8 @@ export default function PruebaPage() {
       </h1>
 
       <AlphaTabPlayer
-        tab={pruebaTab}
-        title="Prueba AlphaTab"
+        tab={sadisticMagicianTrack1}
+        title="Municipal Waste - Sadistic Magician (Guitarra 1)"
       />
 
       <p className="text-center text-zinc-400 mt-10">
