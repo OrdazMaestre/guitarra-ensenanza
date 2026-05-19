@@ -22,6 +22,8 @@ const PALM_MUTE_HARMONICS = [1, 0.32, 0.14, 0.065, 0.03, 0.015, 0.008, 0.004];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
+const POINTER_SELECTION_EVENT_OFFSET = 1;
+const CURSOR_VISUAL_EVENT_OFFSET = -1;
 const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
   1: 40, // E2
   2: 45, // A2
@@ -317,8 +319,11 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   const finishTimerRef = useRef<number | null>(null);
   const isPlayingRef = useRef(false);
   const keyboardActionRef = useRef<() => void>(() => {});
+  const metronomeRef = useRef(DEFAULT_METRONOME);
   const pointerStartIndexRef = useRef<number | null>(null);
   const playTimerRef = useRef<number | null>(null);
+  const speedRef = useRef(DEFAULT_SPEED);
+  const volumeRef = useRef(DEFAULT_VOLUME);
   const fallbackEvents = useMemo(() => parseAlphaTexEvents(tab), [tab]);
   const bpm = useMemo(() => parseTempo(tab), [tab]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -391,8 +396,11 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     isPlayingRef.current = false;
     autoScrollRef.current = DEFAULT_AUTO_SCROLL;
     setMetronome(DEFAULT_METRONOME);
+    metronomeRef.current = DEFAULT_METRONOME;
     setVolume(DEFAULT_VOLUME);
+    volumeRef.current = DEFAULT_VOLUME;
     setSpeed(DEFAULT_SPEED);
+    speedRef.current = DEFAULT_SPEED;
     setStartEventIndex(0);
     setLoopEndIndex(null);
     setLoopStartIndex(null);
@@ -587,7 +595,8 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   }
 
   function placeCursorForEvent(index: number) {
-    const event = events[index];
+    const visualIndex = Math.min(events.length - 1, Math.max(0, index + CURSOR_VISUAL_EVENT_OFFSET));
+    const event = events[visualIndex];
     placeCursorForBeat(event?.beat);
   }
 
@@ -697,7 +706,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     }
   }
 
-  function getEventIndexFromPointer(event: MouseEvent<HTMLDivElement>) {
+  function getEventIndexFromPointer(event: MouseEvent<HTMLDivElement>, offset = 0) {
     if (!containerRef.current) return undefined;
 
     const boundsLookup = apiRef.current?.boundsLookup;
@@ -711,7 +720,10 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       boundsLookup.getBeatAtPos(x - padding, y - padding) ??
       boundsLookup.getBeatAtPos(x, y);
 
-    return beat ? beatToEventIndexRef.current.get(beat.id) : undefined;
+    const eventIndex = beat ? beatToEventIndexRef.current.get(beat.id) : undefined;
+    return eventIndex === undefined
+      ? undefined
+      : Math.min(events.length - 1, Math.max(0, eventIndex + offset));
   }
 
   function selectStartFromPointer(event: MouseEvent<HTMLDivElement>) {
@@ -731,7 +743,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   function beginPointerSelection(event: MouseEvent<HTMLDivElement>) {
     if (isPlayingRef.current) return;
     event.preventDefault();
-    pointerStartIndexRef.current = getEventIndexFromPointer(event) ?? null;
+    pointerStartIndexRef.current = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET) ?? null;
   }
 
   function endPointerSelection(event: MouseEvent<HTMLDivElement>) {
@@ -739,7 +751,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     event.preventDefault();
 
     const pointerStartIndex = pointerStartIndexRef.current;
-    const pointerEndIndex = getEventIndexFromPointer(event);
+    const pointerEndIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
     pointerStartIndexRef.current = null;
 
     if (pointerStartIndex === null || pointerEndIndex === undefined) {
@@ -768,7 +780,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     if (isPlayingRef.current || pointerStartIndexRef.current === null) return;
     event.preventDefault();
 
-    const pointerEndIndex = getEventIndexFromPointer(event);
+    const pointerEndIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
     if (pointerEndIndex !== undefined) {
       setLoopHighlightBoxes(buildLoopHighlightBoxes(pointerStartIndexRef.current, pointerEndIndex));
     }
@@ -789,8 +801,12 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
     const stringBalance = isLowString ? (isPalmMuted ? 1.38 : 1.08) : isHighString ? 0.84 : 0.96;
     const articulationLevel = isPalmMuted ? 0.11 : 0.13;
-    const targetLevel = volume * articulationLevel * stringBalance * chordCompensation;
-    const level = volume <= 0 ? 0 : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * volume, MAX_NOTE_LEVEL * volume);
+    const currentVolume = volumeRef.current;
+    const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
+    const level =
+      currentVolume <= 0
+        ? 0
+        : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, MAX_NOTE_LEVEL * currentVolume);
     const noteEndTime = startTime + sustain;
     const wave = createGuitarWave(context, isPalmMuted);
     const output = context.createGain();
@@ -933,20 +949,77 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   }
 
   function playMetronomeClick(context: AudioContext, startTime: number) {
-    if (!metronome) return;
+    if (!metronomeRef.current) return;
 
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(1200, startTime);
-    gain.gain.setValueAtTime(0.0001, startTime);
-    gain.gain.exponentialRampToValueAtTime(volume * 0.112, startTime + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.055);
-    oscillator.connect(gain);
-    gain.connect(getAudioOutput(context).input);
-    oscillator.start(startTime);
-    oscillator.stop(startTime + 0.06);
-    activeSourcesRef.current.push(oscillator);
+    const currentVolume = volumeRef.current;
+
+    const noiseSource = context.createBufferSource();
+    const snap = context.createOscillator();
+    const body = context.createOscillator();
+    const noiseGain = context.createGain();
+    const snapGain = context.createGain();
+    const bodyGain = context.createGain();
+    const noiseFilter = context.createBiquadFilter();
+    const snapFilter = context.createBiquadFilter();
+    const highPass = context.createBiquadFilter();
+    const output = context.createGain();
+
+    const noiseLength = Math.max(1, Math.floor(context.sampleRate * 0.07));
+    const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
+    const noise = noiseBuffer.getChannelData(0);
+    for (let index = 0; index < noiseLength; index++) {
+      const progress = index / noiseLength;
+      noise[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.1;
+    }
+
+    noiseSource.buffer = noiseBuffer;
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(1850, startTime);
+    noiseFilter.Q.setValueAtTime(0.75, startTime);
+    noiseGain.gain.setValueAtTime(0.0001, startTime);
+    noiseGain.gain.exponentialRampToValueAtTime(currentVolume * 0.18, startTime + 0.002);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.065);
+
+    snap.type = 'square';
+    snap.frequency.setValueAtTime(2400, startTime);
+    snap.frequency.exponentialRampToValueAtTime(1450, startTime + 0.018);
+    snapFilter.type = 'bandpass';
+    snapFilter.frequency.setValueAtTime(2200, startTime);
+    snapFilter.Q.setValueAtTime(1.1, startTime);
+    snapGain.gain.setValueAtTime(0.0001, startTime);
+    snapGain.gain.exponentialRampToValueAtTime(currentVolume * 0.08, startTime + 0.001);
+    snapGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.022);
+
+    body.type = 'sine';
+    body.frequency.setValueAtTime(220, startTime);
+    body.frequency.exponentialRampToValueAtTime(165, startTime + 0.045);
+    bodyGain.gain.setValueAtTime(0.0001, startTime);
+    bodyGain.gain.exponentialRampToValueAtTime(currentVolume * 0.055, startTime + 0.003);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.05);
+
+    highPass.type = 'highpass';
+    highPass.frequency.setValueAtTime(420, startTime);
+    highPass.Q.setValueAtTime(0.7, startTime);
+    output.gain.setValueAtTime(1.05, startTime);
+
+    noiseSource.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    snap.connect(snapFilter);
+    snapFilter.connect(snapGain);
+    body.connect(bodyGain);
+    noiseGain.connect(highPass);
+    snapGain.connect(highPass);
+    bodyGain.connect(output);
+    highPass.connect(output);
+    output.connect(getAudioOutput(context).input);
+
+    noiseSource.start(startTime);
+    snap.start(startTime);
+    body.start(startTime);
+    noiseSource.stop(startTime + noiseLength / context.sampleRate);
+    snap.stop(startTime + 0.025);
+    body.stop(startTime + 0.055);
+    activeSourcesRef.current.push(noiseSource, snap, body);
   }
 
   async function startLocalPlayback() {
@@ -975,14 +1048,14 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     const context = getAudioContext();
     const event = events[index];
     const startTime = context.currentTime + 0.01;
-    const eventDuration = eventDurationSeconds(event, speed, bpm);
+    const eventDuration = eventDurationSeconds(event, speedRef.current, bpm);
     const eventStartQuarter = events
       .slice(0, index)
       .reduce((total, previousEvent) => total + previousEvent.quarterNotes, 0);
 
     placeCursorForEvent(index);
 
-    if (metronome && Math.abs(eventStartQuarter - Math.round(eventStartQuarter)) < 0.001) {
+    if (metronomeRef.current && Math.abs(eventStartQuarter - Math.round(eventStartQuarter)) < 0.001) {
       playMetronomeClick(context, startTime);
     }
 
@@ -1014,15 +1087,18 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   }
 
   function toggleMetronome() {
-    const next = !metronome;
+    const next = !metronomeRef.current;
+    metronomeRef.current = next;
     setMetronome(next);
   }
 
   function updateVolume(value: number) {
+    volumeRef.current = value;
     setVolume(value);
   }
 
   function updateSpeed(value: number) {
+    speedRef.current = value;
     setSpeed(value);
   }
 
