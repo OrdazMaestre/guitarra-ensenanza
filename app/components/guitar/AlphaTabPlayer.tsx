@@ -20,7 +20,8 @@ const MAX_NOTE_LEVEL = 0.145;
 const ACOUSTIC_HARMONICS = [1, 0.56, 0.34, 0.22, 0.15, 0.1, 0.07, 0.045, 0.03, 0.02];
 const PALM_MUTE_HARMONICS = [1, 0.32, 0.14, 0.065, 0.03, 0.015, 0.008, 0.004];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
-const TAB_LINE_SPACING = 9.45;
+const TAB_LINE_SPACING = 12.45;
+const LOOP_VISUAL_X_OFFSET = -31;
 const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
   1: 40, // E2
   2: 45, // A2
@@ -622,6 +623,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     for (let index = nextStart; index <= nextEnd; index++) {
       const box = getBeatBox(index);
       if (!box) continue;
+      box.x = Math.max(0, box.x + LOOP_VISUAL_X_OFFSET);
 
       const previousBox = boxes[boxes.length - 1];
       const sameSystem =
@@ -633,6 +635,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
         const right = Math.max(previousBox.x + previousBox.width, box.x + box.width);
         previousBox.x = Math.min(previousBox.x, box.x);
         previousBox.width = right - previousBox.x;
+        previousBox.height = Math.max(previousBox.height, box.height);
       } else {
         boxes.push(box);
       }
@@ -666,13 +669,16 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       }
     }
 
-    return Array.from(systemMap.values()).map((box) => {
+    return Array.from(systemMap.values())
+      .sort((a, b) => a.y - b.y)
+      .slice(0, 1)
+      .map((box) => {
       const lineGap = TAB_LINE_SPACING;
-      const firstStringY = box.y + 32;
+      const firstStringY = box.y + 2;
       return {
         labels: STRING_LABELS_TOP_TO_BOTTOM.map((note, stringIndex) => ({
           note,
-          x: Math.max(8, box.x - 15),
+          x: Math.max(8, box.x - 20),
           y: firstStringY + stringIndex * lineGap,
         })),
         systemY: box.y,
