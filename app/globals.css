@@ -2,8 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 body {
   font-family: 'Inter', system-ui, sans-serif;
+  min-width: 0;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
+.site-shell {
+  min-width: 0;
+  overflow-x: clip;
+  width: 100%;
 }
 
 .guitar-container {

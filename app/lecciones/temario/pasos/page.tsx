@@ -4,6 +4,7 @@ import TemarioPager from '../TemarioPager';
 const contentTree = [
   'Conceptos basicos',
   'Notacion musical',
+  'Afinacion',
   'Tablaturas',
   'Acordes',
   'Arpegios',

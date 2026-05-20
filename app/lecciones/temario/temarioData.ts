@@ -1,11 +1,12 @@
 export const lessonBlocks = [
   { number: 1, title: 'Conceptos basicos', slug: 'conceptos-basicos' },
   { number: 2, title: 'Notacion musical', slug: 'notacion-musical' },
-  { number: 3, title: 'Tablaturas', slug: 'tablaturas' },
-  { number: 4, title: 'Acordes', slug: 'acordes' },
-  { number: 5, title: 'Arpegios', slug: 'arpegios' },
-  { number: 6, title: 'Pentatonica', slug: 'pentatonica' },
-  { number: 7, title: 'Escalas', slug: 'escalas' },
+  { number: 3, title: 'Afinacion', slug: 'afinacion' },
+  { number: 4, title: 'Tablaturas', slug: 'tablaturas' },
+  { number: 5, title: 'Acordes', slug: 'acordes' },
+  { number: 6, title: 'Arpegios', slug: 'arpegios' },
+  { number: 7, title: 'Pentatonica', slug: 'pentatonica' },
+  { number: 8, title: 'Escalas', slug: 'escalas' },
 ] as const;
 
 export function getLessonBySlug(slug: string) {

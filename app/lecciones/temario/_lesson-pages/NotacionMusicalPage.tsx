@@ -1,0 +1,263 @@
+import TemarioPager from '../TemarioPager';
+import type { LessonPageProps } from './types';
+
+export default function NotacionMusicalPage({ previous, next }: LessonPageProps) {
+  const naturalNotes = [
+    ['DO', 'C'],
+    ['RE', 'D'],
+    ['MI', 'E'],
+    ['FA', 'F'],
+    ['SOL', 'G'],
+    ['LA', 'A'],
+    ['SI', 'B'],
+  ];
+
+  const chromaticNotes = [
+    ['DO', 'C'],
+    ['DO#', 'C#'],
+    ['RE', 'D'],
+    ['RE#', 'D#'],
+    ['MI', 'E'],
+    ['FA', 'F'],
+    ['FA#', 'F#'],
+    ['SOL', 'G'],
+    ['SOL#', 'G#'],
+    ['LA', 'A'],
+    ['LA#', 'A#'],
+    ['SI', 'B'],
+  ];
+
+  return (
+    <main className="notes-page">
+      <article className="notes-content">
+        <header className="notes-header">
+          <p className="lesson-kicker">Unidad 2</p>
+          <h1>Notas musicales</h1>
+          <p>
+            Muchas partituras, afinadores y programas traducen las notas a las 7 primeras letras del abecedario. Eso se llama notacion internacional.
+          </p>
+        </header>
+
+        <section className="note-section" aria-labelledby="natural-notes-title">
+          <header className="note-section-header">
+            <h2 id="natural-notes-title">7 naturales</h2>
+          </header>
+
+          <div className="note-grid natural-grid" aria-label="Equivalencia entre notas en espanol y letras">
+            {naturalNotes.map(([spanish, letter]) => (
+              <div className="note-card" key={letter}>
+                <strong>{spanish}</strong>
+                <span>{letter}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="note-section chromatic-section" aria-labelledby="chromatic-title">
+          <header className="note-section-header">
+            <p>12 en total</p>
+            <h3 id="chromatic-title">7 naturales + 5 alteraciones</h3>
+          </header>
+
+          <div className="note-grid chromatic-grid" aria-label="Escala cromatica de doce semitonos">
+            {chromaticNotes.map(([spanish, letter]) => (
+              <div className={letter.includes('#') ? 'note-card altered-note' : 'note-card'} key={letter}>
+                <strong>{spanish}</strong>
+                <span>{letter}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </article>
+
+      <div className="lesson-pager-wrap">
+        <TemarioPager previous={previous} next={next} />
+      </div>
+
+      <style>{`
+        .notes-page {
+          background: #ffffff;
+          color: #080808;
+          min-height: 100vh;
+          overflow-x: clip;
+          padding: clamp(28px, 5vw, 72px) clamp(20px, 7vw, 108px);
+          width: 100%;
+        }
+
+        .notes-content,
+        .lesson-pager-wrap {
+          margin: 0 auto;
+          max-width: 1120px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .notes-header {
+          margin: 0 auto clamp(46px, 8vw, 94px);
+          max-width: 900px;
+          text-align: center;
+        }
+
+        .lesson-kicker {
+          color: #047857;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0.22em;
+          margin: 0 0 14px;
+          text-transform: uppercase;
+        }
+
+        .notes-header h1 {
+          font-size: clamp(44px, 7vw, 92px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 0.95;
+          margin: 0;
+        }
+
+        .notes-header p {
+          color: #303030;
+          font-size: clamp(19px, 2vw, 27px);
+          font-weight: 650;
+          line-height: 1.42;
+          margin: clamp(24px, 4vw, 36px) auto 0;
+        }
+
+        .note-section {
+          display: grid;
+          gap: clamp(26px, 4vw, 44px);
+          justify-items: center;
+          margin-top: clamp(52px, 8vw, 96px);
+          text-align: center;
+        }
+
+        .note-section:first-of-type {
+          margin-top: 0;
+        }
+
+        .chromatic-section {
+          border-top: 1px solid #d4d4d8;
+          padding-top: clamp(46px, 8vw, 82px);
+        }
+
+        .note-section-header {
+          display: grid;
+          gap: 8px;
+          justify-items: center;
+        }
+
+        .note-section-header p,
+        .note-section-header h2 {
+          color: #047857;
+          font-size: clamp(34px, 5.6vw, 60px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 0.95;
+          margin: 0;
+          text-transform: uppercase;
+        }
+
+        .note-section-header h2 {
+          color: #080808;
+        }
+
+        .note-section:first-of-type .note-section-header h2 {
+          color: #047857;
+        }
+
+        .note-grid {
+          display: grid;
+          gap: 12px;
+          justify-content: center;
+          width: 100%;
+        }
+
+        .natural-grid {
+          grid-template-columns: repeat(7, minmax(0, 1fr));
+          max-width: 380px;
+        }
+
+        .chromatic-grid {
+          grid-template-columns: repeat(12, minmax(0, 1fr));
+          max-width: 980px;
+        }
+
+        .note-card {
+          border: 1px solid #d4d4d8;
+          display: grid;
+          min-height: 75px;
+          min-width: 0;
+          padding: 9px 5px;
+          place-items: center;
+          text-align: center;
+        }
+
+        .note-card strong {
+          color: #111111;
+          font-size: clamp(11px, 1.3vw, 16px);
+          font-weight: 950;
+        }
+
+        .note-card span {
+          color: #047857;
+          font-size: clamp(20px, 3vw, 34px);
+          font-weight: 950;
+          line-height: 1;
+          margin-top: 8px;
+        }
+
+        .altered-note {
+          border-color: #047857;
+        }
+
+        .semitone-note {
+          color: #303030;
+          font-size: 18px;
+          font-weight: 760;
+          line-height: 1.55;
+          margin: 0;
+        }
+
+        @media (max-width: 920px) {
+          .chromatic-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .natural-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 1040px) and (min-width: 921px) {
+          .chromatic-grid {
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            max-width: 490px;
+          }
+        }
+
+        @media (max-width: 820px) {
+          .notes-header,
+          .note-section {
+            text-align: left;
+          }
+
+          .note-section,
+          .note-section-header {
+            justify-items: start;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .natural-grid,
+          .chromatic-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .note-card {
+            min-height: 68px;
+          }
+        }
+      `}</style>
+    </main>
+  );
+}

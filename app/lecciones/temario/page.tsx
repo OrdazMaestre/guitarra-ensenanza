@@ -63,10 +63,11 @@ export default function TemarioPage() {
         .cover-page {
           background: #ffffff;
           color: #080808;
-          margin: -2rem calc(50% - 50vw);
+          margin: 0;
+          max-width: 100%;
           min-height: 100vh;
           overflow: hidden;
-          width: 100vw;
+          width: 100%;
         }
 
         .cover-stage {
@@ -260,9 +261,9 @@ export default function TemarioPage() {
 
           .cover-image-wrap {
             opacity: 0.23;
-            right: -34vw;
+            right: -22vw;
             top: 96px;
-            width: 118vw;
+            width: 96vw;
           }
 
           .cover-nav {

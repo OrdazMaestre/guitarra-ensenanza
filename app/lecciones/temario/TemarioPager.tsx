@@ -16,7 +16,7 @@ export default function TemarioPager({ next, previous }: TemarioPagerProps) {
   }
 
   return (
-    <nav className="mt-12 flex items-center justify-between gap-4 text-sm sm:text-base" aria-label="Paginas del temario">
+    <nav className="mt-16 flex items-center justify-between gap-4 text-sm sm:mt-20 sm:text-base" aria-label="Paginas del temario">
       <div className="min-w-0 flex-1">
         {previous ? (
           <Link
