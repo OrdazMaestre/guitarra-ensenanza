@@ -24,6 +24,7 @@ const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
 const POINTER_SELECTION_EVENT_OFFSET = 1;
 const CURSOR_VISUAL_EVENT_OFFSET = -1;
+const FIRST_BAR_BEAT_CURSOR_X_OFFSET = 15;
 const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
   1: 40, // E2
   2: 45, // A2
@@ -43,6 +44,7 @@ interface TabEvent {
   beat?: AlphaTabBeatLike;
   beatId?: number;
   duration: number;
+  isFirstPlayableBeatOfBar?: boolean;
   notes: TabNote[];
   quarterNotes: number;
 }
@@ -248,18 +250,26 @@ function beatQuarterNotes(beat: AlphaTabBeatLike) {
 }
 
 function buildEventsFromScore(score: AlphaTabScoreLike) {
-  const beats = score.tracks[0]?.staves[0]?.bars
-    .flatMap((bar) => bar.voices[0]?.beats ?? [])
-    .sort((a, b) => a.absolutePlaybackStart - b.absolutePlaybackStart);
+  const beatEntries = score.tracks[0]?.staves[0]?.bars
+    .flatMap((bar) => {
+      const beats = bar.voices[0]?.beats ?? [];
+      const firstPlayableBeatId = beats.find((beat) => !beat.isRest && beat.notes.length > 0)?.id;
+      return beats.map((beat) => ({
+        beat,
+        isFirstPlayableBeatOfBar: firstPlayableBeatId !== undefined && beat.id === firstPlayableBeatId,
+      }));
+    })
+    .sort((a, b) => a.beat.absolutePlaybackStart - b.beat.absolutePlaybackStart);
 
-  if (!beats?.length) {
+  if (!beatEntries?.length) {
     return [];
   }
 
-  return beats.map((beat) => ({
+  return beatEntries.map(({ beat, isFirstPlayableBeatOfBar }) => ({
     beat,
     beatId: beat.id,
     duration: beat.duration,
+    isFirstPlayableBeatOfBar,
     notes: beat.isRest
       ? []
       : beat.notes
@@ -338,7 +348,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   const [loopHighlightBoxes, setLoopHighlightBoxes] = useState<HighlightBox[]>([]);
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
 
-  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined) {
+  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, xOffset = 0) {
     const boundsLookup = apiRef.current?.boundsLookup;
     if (!beat || !boundsLookup) {
       return;
@@ -356,7 +366,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     const nextBox = {
       height: Math.max(40, barBounds.h),
       visible: true,
-      x: Math.max(0, beatBounds.onNotesX || beatBounds.realBounds.x) + padding,
+      x: Math.max(0, beatBounds.onNotesX || beatBounds.realBounds.x) + padding + xOffset,
       y: Math.max(0, barBounds.y) + padding,
     };
     setCursorBox({
@@ -597,7 +607,8 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   function placeCursorForEvent(index: number) {
     const visualIndex = Math.min(events.length - 1, Math.max(0, index + CURSOR_VISUAL_EVENT_OFFSET));
     const event = events[visualIndex];
-    placeCursorForBeat(event?.beat);
+    const selectedEvent = events[index];
+    placeCursorForBeat(event?.beat, selectedEvent?.isFirstPlayableBeatOfBar ? FIRST_BAR_BEAT_CURSOR_X_OFFSET : 0);
   }
 
   function getBeatBox(index: number) {
@@ -721,9 +732,15 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       boundsLookup.getBeatAtPos(x, y);
 
     const eventIndex = beat ? beatToEventIndexRef.current.get(beat.id) : undefined;
-    return eventIndex === undefined
-      ? undefined
-      : Math.min(events.length - 1, Math.max(0, eventIndex + offset));
+    if (eventIndex === undefined) {
+      return undefined;
+    }
+
+    if (eventIndex === 0 && offset > 0) {
+      return 0;
+    }
+
+    return Math.min(events.length - 1, Math.max(0, eventIndex + offset));
   }
 
   function selectStartFromPointer(event: MouseEvent<HTMLDivElement>) {
