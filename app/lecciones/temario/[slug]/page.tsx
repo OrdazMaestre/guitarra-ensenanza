@@ -3,6 +3,7 @@ import AfinacionPage from '../_lesson-pages/AfinacionPage';
 import ConceptosBasicosPage from '../_lesson-pages/ConceptosBasicosPage';
 import NotacionMusicalPage from '../_lesson-pages/NotacionMusicalPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
+import TablaturasPage from '../_lesson-pages/TablaturasPage';
 import { getLessonBySlug, getLessonNeighbors } from '../temarioData';
 
 interface LessonBlockPageProps {
@@ -48,6 +49,10 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'afinacion') {
     return <AfinacionPage {...lessonProps} />;
+  }
+
+  if (slug === 'tablaturas') {
+    return <TablaturasPage {...lessonProps} />;
   }
 
   return <PlaceholderLessonPage title={lesson.title} {...lessonProps} />;

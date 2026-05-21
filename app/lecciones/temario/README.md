@@ -21,6 +21,8 @@ En Next.js los archivos que crean rutas deben llamarse `page.tsx`. Por eso no co
   Contenido de `/lecciones/temario/notacion-musical`.
 - `app/lecciones/temario/_lesson-pages/AfinacionPage.tsx`
   Contenido de `/lecciones/temario/afinacion`.
+- `app/lecciones/temario/_lesson-pages/TablaturasPage.tsx`
+  Contenido de `/lecciones/temario/tablaturas`.
 - `app/lecciones/temario/_lesson-pages/PlaceholderLessonPage.tsx`
   Pantalla temporal para lecciones aun no desarrolladas.
 

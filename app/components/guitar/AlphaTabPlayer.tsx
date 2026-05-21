@@ -6,11 +6,11 @@ import type { MouseEvent, ReactNode } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
-  tab: string;
+  source?: string;
+  tab?: string;
   title?: string;
 }
 
-const DEFAULT_AUTO_SCROLL = true;
 const DEFAULT_METRONOME = false;
 const DEFAULT_VOLUME = 0.8;
 const DEFAULT_SPEED = 1;
@@ -318,10 +318,9 @@ function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
   return ((60 / bpm) * event.quarterNotes) / speed;
 }
 
-export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
+export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
-  const autoScrollRef = useRef(DEFAULT_AUTO_SCROLL);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioOutputRef = useRef<AudioOutputChain | null>(null);
   const activeSourcesRef = useRef<AudioScheduledSourceNode[]>([]);
@@ -330,12 +329,13 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   const isPlayingRef = useRef(false);
   const keyboardActionRef = useRef<() => void>(() => {});
   const metronomeRef = useRef(DEFAULT_METRONOME);
+  const playbackScrollPendingRef = useRef(false);
   const pointerStartIndexRef = useRef<number | null>(null);
   const playTimerRef = useRef<number | null>(null);
   const speedRef = useRef(DEFAULT_SPEED);
   const volumeRef = useRef(DEFAULT_VOLUME);
-  const fallbackEvents = useMemo(() => parseAlphaTexEvents(tab), [tab]);
-  const bpm = useMemo(() => parseTempo(tab), [tab]);
+  const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
+  const bpm = useMemo(() => (tab ? parseTempo(tab) : DEFAULT_BPM), [tab]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [metronome, setMetronome] = useState(DEFAULT_METRONOME);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
@@ -348,7 +348,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   const [loopHighlightBoxes, setLoopHighlightBoxes] = useState<HighlightBox[]>([]);
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
 
-  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, xOffset = 0) {
+  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, xOffset = 0, shouldScroll = false) {
     const boundsLookup = apiRef.current?.boundsLookup;
     if (!beat || !boundsLookup) {
       return;
@@ -376,7 +376,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       y: nextBox.y,
     });
 
-    if (autoScrollRef.current && containerRef.current) {
+    if (shouldScroll && containerRef.current) {
       const viewportY = containerRef.current.getBoundingClientRect().top + nextBox.y - 140;
       window.scrollBy({ behavior: 'smooth', top: viewportY });
     }
@@ -404,7 +404,6 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
 
     setIsPlaying(false);
     isPlayingRef.current = false;
-    autoScrollRef.current = DEFAULT_AUTO_SCROLL;
     setMetronome(DEFAULT_METRONOME);
     metronomeRef.current = DEFAULT_METRONOME;
     setVolume(DEFAULT_VOLUME);
@@ -428,7 +427,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     const api = new alphaTab.AlphaTabApi(containerRef.current, {
       core: {
         fontDirectory: '/alphatab-fonts/', // Next sirve public/ desde la raiz
-        tex: true,
+        tex: !source,
         useWorkers: false,
         enableLazyLoading: false,
         includeNoteBounds: true,
@@ -479,6 +478,9 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       }, 0);
       scheduleStringLabelRefresh(scoreEvents);
     });
+    if (source) {
+      api.load(source);
+    }
     return () => {
       offScoreLoaded();
       if (finishTimerRef.current !== null) {
@@ -503,7 +505,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     };
   // AlphaTab must be recreated only when the tab content changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fallbackEvents, tab]);
+  }, [fallbackEvents, source, tab]);
 
   useEffect(() => {
     const handleSpace = (event: KeyboardEvent) => {
@@ -604,11 +606,15 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
     setIsPlaying(false);
   }
 
-  function placeCursorForEvent(index: number) {
+  function placeCursorForEvent(index: number, shouldScroll = false) {
     const visualIndex = Math.min(events.length - 1, Math.max(0, index + CURSOR_VISUAL_EVENT_OFFSET));
     const event = events[visualIndex];
     const selectedEvent = events[index];
-    placeCursorForBeat(event?.beat, selectedEvent?.isFirstPlayableBeatOfBar ? FIRST_BAR_BEAT_CURSOR_X_OFFSET : 0);
+    placeCursorForBeat(
+      event?.beat,
+      selectedEvent?.isFirstPlayableBeatOfBar ? FIRST_BAR_BEAT_CURSOR_X_OFFSET : 0,
+      shouldScroll
+    );
   }
 
   function getBeatBox(index: number) {
@@ -1050,6 +1056,7 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
 
     const firstIndex = Math.min(startEventIndex, events.length - 1);
     isPlayingRef.current = true;
+    playbackScrollPendingRef.current = true;
     setIsPlaying(true);
     playEvent(firstIndex);
   }
@@ -1070,7 +1077,8 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
       .slice(0, index)
       .reduce((total, previousEvent) => total + previousEvent.quarterNotes, 0);
 
-    placeCursorForEvent(index);
+    placeCursorForEvent(index, playbackScrollPendingRef.current);
+    playbackScrollPendingRef.current = false;
 
     if (metronomeRef.current && Math.abs(eventStartQuarter - Math.round(eventStartQuarter)) < 0.001) {
       playMetronomeClick(context, startTime);
@@ -1120,8 +1128,8 @@ export default function AlphaTabPlayer({ tab }: AlphaTabPlayerProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-700 bg-zinc-900 pt-24 shadow-2xl">
-      <div className="fixed left-0 right-0 top-3 z-[100] flex justify-center px-4">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 p-4 shadow-2xl">
+      <div className="sticky top-3 z-[100] flex justify-center px-1 pb-4">
         <div className="flex flex-wrap items-center justify-center gap-4 border border-zinc-700 bg-zinc-950/95 px-4 py-3 shadow-xl backdrop-blur">
           <div className="flex items-center justify-center gap-2">
           <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>

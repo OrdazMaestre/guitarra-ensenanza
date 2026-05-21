@@ -34,12 +34,12 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
           <section className="tuning-overview">
             <div className="tuning-copy">
               <p className="lesson-kicker">Afinacion estandar</p>
-              <h2>La guitarra empieza y termina en Mi</h2>
+              <h2>La guitarra empieza y termina en <strong>Mi (E)</strong></h2>
               <p>
-                Decimos que la guitarra esta afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son Mi. Una suena grave y la otra aguda.
+                Decimos que la guitarra esta afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
               </p>
               <p>
-                La afinacion mas habitual es <strong>E A D G B E</strong>. La encontraras asi en afinadores, apps y material de estudio.
+                La afinacion mas habitual es <strong>E A D G B E</strong>, por eso se llama &quot;afinacion estándar&quot;. Aprenderemos por qué más adelante.
               </p>
             </div>
 
@@ -81,9 +81,15 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
 
             <div className="interval-row" aria-label="Distancias entre cuerdas de la afinacion estandar">
               {tuningSteps.map(([from, distance, to]) => (
-                <div className="interval-step" key={`${from}-${to}`}>
+                <div
+                  className={`interval-step${distance.startsWith('+4') ? ' interval-step-exception' : ''}`}
+                  key={`${from}-${to}`}
+                >
                   <strong>{from}</strong>
-                  <span>{distance}</span>
+                  <span className="interval-move">
+                    <b>{distance}</b>
+                    <i aria-hidden="true">→</i>
+                  </span>
                   <strong>{to}</strong>
                 </div>
               ))}
@@ -111,6 +117,10 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
             max-width: 1120px;
             min-width: 0;
             width: 100%;
+          }
+
+          .tuning-content {
+            padding-bottom: clamp(28px, 5vw, 64px);
           }
 
           .lesson-kicker {
@@ -253,29 +263,50 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
 
           .interval-step {
             align-items: center;
-            border: 1px solid #d4d4d8;
+            border: 3px solid #d4d4d8;
             display: grid;
             gap: 12px;
-            grid-template-columns: 56px minmax(0, 1fr) 56px;
+            grid-template-columns: 64px minmax(0, 1fr) 64px;
             min-width: 0;
-            padding: 14px 16px;
+            padding: 14px 18px;
           }
 
           .interval-step strong {
             color: #111111;
-            font-size: 28px;
+            font-size: clamp(30px, 4vw, 42px);
             font-weight: 950;
             line-height: 1;
             text-align: center;
           }
 
-          .interval-step span {
+          .interval-move {
+            align-items: center;
             color: #047857;
+            display: grid;
+            gap: 2px;
+            justify-items: center;
+            min-width: 0;
+          }
+
+          .interval-move b {
             font-size: 13px;
             font-weight: 950;
             letter-spacing: 0.16em;
             text-align: center;
             text-transform: uppercase;
+          }
+
+          .interval-step-exception .interval-move b {
+            color: #065f46;
+            font-size: 15px;
+          }
+
+          .interval-move i {
+            color: #047857;
+            font-size: clamp(30px, 5vw, 54px);
+            font-style: normal;
+            font-weight: 950;
+            line-height: 0.85;
           }
 
           @media (max-width: 820px) {
@@ -307,6 +338,11 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               grid-template-columns: 44px minmax(0, 1fr) 44px;
               padding-left: 10px;
               padding-right: 10px;
+            }
+
+            .interval-move b {
+              font-size: 11px;
+              letter-spacing: 0.1em;
             }
           }
         `}</style>
