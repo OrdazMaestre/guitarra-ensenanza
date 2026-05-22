@@ -12,6 +12,8 @@ En Next.js los archivos que crean rutas deben llamarse `page.tsx`. Por eso no co
   Enrutador dinamico. Mantenerlo pequeno: solo decide que leccion cargar.
 - `/lecciones/temario/el-sonido-en-la-musica`: `app/lecciones/temario/el-sonido-en-la-musica/page.tsx`
   Pagina de ampliacion sobre sonido.
+- `/lecciones/temario/mas-punteos-cortos`: `app/lecciones/temario/mas-punteos-cortos/page.tsx`
+  Pagina de ampliacion para ejercicios breves de punteo.
 
 ## Contenido editable de lecciones
 
@@ -23,6 +25,14 @@ En Next.js los archivos que crean rutas deben llamarse `page.tsx`. Por eso no co
   Contenido de `/lecciones/temario/afinacion`.
 - `app/lecciones/temario/_lesson-pages/TablaturasPage.tsx`
   Contenido de `/lecciones/temario/tablaturas`.
+- `app/lecciones/temario/_lesson-pages/TablaturasDosCuerdasPage.tsx`
+  Contenido de `/lecciones/temario/tablaturas-dos-cuerdas`.
+- `app/lecciones/temario/_lesson-pages/AcordesPage.tsx`
+  Contenido de `/lecciones/temario/acordes`.
+- `app/lecciones/temario/_lesson-pages/LetItBeConAcordesPage.tsx`
+  Contenido de `/lecciones/temario/let-it-be-con-acordes`.
+- `app/lecciones/temario/_lesson-pages/ArpegiosPage.tsx`
+  Contenido de `/lecciones/temario/arpegios`.
 - `app/lecciones/temario/_lesson-pages/PlaceholderLessonPage.tsx`
   Pantalla temporal para lecciones aun no desarrolladas.
 

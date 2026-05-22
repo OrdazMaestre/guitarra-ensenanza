@@ -23,8 +23,9 @@ export default function TemarioPage() {
                 con mi guitarra
               </span>
             </h1>
+            <p className="cover-author">por: Enrique Ordaz</p>
             <p className="cover-intro">
-              Un recorrido visual y practico con explicaciones sencillas de entender, ejercicios cortos y posibilidad (sin obligación) de profundizar en contenidos.
+              Un recorrido visual y practico con explicaciones sencillas de entender, ejercicios cortos y</p><p className="cover-intro">posibilidad (sin obligación) de profundizar en contenidos.
             </p>
           </div>
         </div>
@@ -122,6 +123,18 @@ export default function TemarioPage() {
           font-weight: 760;
           line-height: 1;
           margin-top: 8px;
+        }
+
+        .cover-author {
+          color: #047857;
+          font-size: clamp(17px, 1.8vw, 28px);
+          font-weight: 950;
+          letter-spacing: 0.18em;
+          line-height: 1.25;
+          margin: 28px 0 0;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          text-transform: uppercase;
         }
 
         .cover-intro {
@@ -257,6 +270,12 @@ export default function TemarioPage() {
             font-size: 18px;
             line-height: 1.48;
             margin-top: 28px;
+          }
+
+          .cover-author {
+            font-size: 16px;
+            letter-spacing: 0.12em;
+            margin-top: 22px;
           }
 
           .cover-image-wrap {

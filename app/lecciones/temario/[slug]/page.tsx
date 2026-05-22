@@ -1,8 +1,12 @@
 import { notFound } from 'next/navigation';
+import AcordesPage from '../_lesson-pages/AcordesPage';
 import AfinacionPage from '../_lesson-pages/AfinacionPage';
+import ArpegiosPage from '../_lesson-pages/ArpegiosPage';
 import ConceptosBasicosPage from '../_lesson-pages/ConceptosBasicosPage';
+import LetItBeConAcordesPage from '../_lesson-pages/LetItBeConAcordesPage';
 import NotacionMusicalPage from '../_lesson-pages/NotacionMusicalPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
+import TablaturasDosCuerdasPage from '../_lesson-pages/TablaturasDosCuerdasPage';
 import TablaturasPage from '../_lesson-pages/TablaturasPage';
 import { getLessonBySlug, getLessonNeighbors } from '../temarioData';
 
@@ -53,6 +57,22 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'tablaturas') {
     return <TablaturasPage {...lessonProps} />;
+  }
+
+  if (slug === 'tablaturas-dos-cuerdas') {
+    return <TablaturasDosCuerdasPage {...lessonProps} />;
+  }
+
+  if (slug === 'acordes') {
+    return <AcordesPage {...lessonProps} />;
+  }
+
+  if (slug === 'let-it-be-con-acordes') {
+    return <LetItBeConAcordesPage {...lessonProps} />;
+  }
+
+  if (slug === 'arpegios') {
+    return <ArpegiosPage {...lessonProps} />;
   }
 
   return <PlaceholderLessonPage title={lesson.title} {...lessonProps} />;

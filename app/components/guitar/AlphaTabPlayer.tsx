@@ -6,6 +6,9 @@ import type { MouseEvent, ReactNode } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
+  compact?: boolean;
+  layout?: 'page' | 'horizontal';
+  minHeight?: number;
   source?: string;
   tab?: string;
   title?: string;
@@ -25,6 +28,9 @@ const LOOP_VISUAL_X_OFFSET = -31;
 const POINTER_SELECTION_EVENT_OFFSET = 1;
 const CURSOR_VISUAL_EVENT_OFFSET = -1;
 const FIRST_BAR_BEAT_CURSOR_X_OFFSET = 15;
+let selectedKeyboardPlayerId: symbol | null = null;
+let currentPlayingPlayerId: symbol | null = null;
+let stopCurrentPlayingPlayer: (() => void) | null = null;
 const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
   1: 40, // E2
   2: 45, // A2
@@ -318,8 +324,9 @@ function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
   return ((60 / bpm) * event.quarterNotes) / speed;
 }
 
-export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps) {
+export default function AlphaTabPlayer({ compact = false, layout = 'page', minHeight, source, tab = '' }: AlphaTabPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const playerIdRef = useRef(Symbol('AlphaTabPlayer'));
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioOutputRef = useRef<AudioOutputChain | null>(null);
@@ -332,7 +339,9 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   const playbackScrollPendingRef = useRef(false);
   const pointerStartIndexRef = useRef<number | null>(null);
   const playTimerRef = useRef<number | null>(null);
+  const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const speedRef = useRef(DEFAULT_SPEED);
+  const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
   const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
   const bpm = useMemo(() => (tab ? parseTempo(tab) : DEFAULT_BPM), [tab]);
@@ -347,6 +356,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   const [events, setEvents] = useState<TabEvent[]>(fallbackEvents);
   const [loopHighlightBoxes, setLoopHighlightBoxes] = useState<HighlightBox[]>([]);
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
+  const [tabScrollLeft, setTabScrollLeft] = useState(0);
 
   function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, xOffset = 0, shouldScroll = false) {
     const boundsLookup = apiRef.current?.boundsLookup;
@@ -376,14 +386,93 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
       y: nextBox.y,
     });
 
+    if (isPlayingRef.current) {
+      keepCursorVisibleHorizontally(nextBox.x);
+    }
+
     if (shouldScroll && containerRef.current) {
       const viewportY = containerRef.current.getBoundingClientRect().top + nextBox.y - 140;
       window.scrollBy({ behavior: 'smooth', top: viewportY });
     }
   }
 
+  function selectKeyboardPlayer() {
+    selectedKeyboardPlayerId = playerIdRef.current;
+  }
+
+  function clearGlobalPlaybackIfCurrent(playerId = playerIdRef.current) {
+    if (currentPlayingPlayerId === playerId) {
+      currentPlayingPlayerId = null;
+      stopCurrentPlayingPlayer = null;
+    }
+  }
+
+  function findTabScrollElement() {
+    const root = containerRef.current;
+    if (!root) {
+      return null;
+    }
+
+    const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
+    return (
+      candidates
+        .filter((element) => element.scrollWidth > element.clientWidth + 2)
+        .sort((a, b) => b.scrollWidth - b.clientWidth - (a.scrollWidth - a.clientWidth))[0] ?? null
+    );
+  }
+
+  function bindTabScrollElement() {
+    const nextElement = findTabScrollElement();
+    if (nextElement === tabScrollElementRef.current) {
+      return nextElement;
+    }
+
+    removeTabScrollListenerRef.current();
+    tabScrollElementRef.current = nextElement;
+
+    if (!nextElement) {
+      setTabScrollLeft(0);
+      removeTabScrollListenerRef.current = () => {};
+      return null;
+    }
+
+    const handleScroll = () => setTabScrollLeft(nextElement.scrollLeft);
+    nextElement.addEventListener('scroll', handleScroll, { passive: true });
+    setTabScrollLeft(nextElement.scrollLeft);
+    removeTabScrollListenerRef.current = () => nextElement.removeEventListener('scroll', handleScroll);
+    return nextElement;
+  }
+
+  function keepCursorVisibleHorizontally(cursorX: number) {
+    const scrollFrame = bindTabScrollElement();
+    if (!scrollFrame || scrollFrame.scrollWidth <= scrollFrame.clientWidth) {
+      return;
+    }
+
+    const visibleLeft = scrollFrame.scrollLeft;
+    const visibleRight = visibleLeft + scrollFrame.clientWidth;
+    const comfortMargin = Math.min(180, Math.max(72, scrollFrame.clientWidth * 0.22));
+    const maxScrollLeft = scrollFrame.scrollWidth - scrollFrame.clientWidth;
+
+    if (cursorX > visibleRight - comfortMargin) {
+      scrollFrame.scrollTo({
+        behavior: 'smooth',
+        left: Math.min(maxScrollLeft, Math.max(0, cursorX - scrollFrame.clientWidth * 0.45)),
+      });
+      return;
+    }
+
+    if (cursorX < visibleLeft + comfortMargin) {
+      scrollFrame.scrollTo({
+        behavior: 'smooth',
+        left: Math.max(0, cursorX - comfortMargin),
+      });
+    }
+  }
+
   useEffect(() => {
     if (!containerRef.current) return;
+    const effectPlayerId = playerIdRef.current;
 
     if (finishTimerRef.current !== null) {
       window.clearTimeout(finishTimerRef.current);
@@ -404,6 +493,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
 
     setIsPlaying(false);
     isPlayingRef.current = false;
+    clearGlobalPlaybackIfCurrent();
     setMetronome(DEFAULT_METRONOME);
     metronomeRef.current = DEFAULT_METRONOME;
     setVolume(DEFAULT_VOLUME);
@@ -415,6 +505,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
     setLoopStartIndex(null);
     setLoopHighlightBoxes([]);
     setStringLabelGroups([]);
+    setTabScrollLeft(0);
     setCursorBox({ height: 0, visible: false, x: 0, y: 0 });
     setEvents(fallbackEvents);
     beatToEventIndexRef.current = new Map(
@@ -438,12 +529,12 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
         scrollSpeed: 350,
       },
       display: {
-        layoutMode: alphaTab.LayoutMode.Page,
-        padding: [56, 35],
+        layoutMode: layout === 'horizontal' ? alphaTab.LayoutMode.Horizontal : alphaTab.LayoutMode.Page,
+        padding: compact ? [18, 24] : [56, 35],
         startBar: 1,
         staveProfile: alphaTab.StaveProfile.Tab,
-        systemPaddingBottom: 40,
-        systemPaddingTop: 40,
+        systemPaddingBottom: compact ? 14 : 40,
+        systemPaddingTop: compact ? 14 : 40,
       },
       notation: {
         elements: new Map([
@@ -451,7 +542,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
           [alphaTab.NotationElement.GuitarTuning, false],
           [alphaTab.NotationElement.TrackNames, false],
         ]),
-        rhythmHeight: 32,
+        rhythmHeight: compact ? 18 : 32,
         rhythmMode: alphaTab.TabRhythmMode.ShowWithBars,
       }
     });
@@ -475,8 +566,11 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
       setLoopHighlightBoxes([]);
       window.setTimeout(() => {
         placeCursorForBeat(scoreEvents[0]?.beat);
+        bindTabScrollElement();
       }, 0);
-      scheduleStringLabelRefresh(scoreEvents);
+      if (!compact) {
+        scheduleStringLabelRefresh(scoreEvents);
+      }
     });
     if (source) {
       api.load(source);
@@ -499,8 +593,14 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
         }
       }
       activeSourcesRef.current = [];
+      removeTabScrollListenerRef.current();
+      tabScrollElementRef.current = null;
       if (apiRef.current) {
         apiRef.current.destroy();
+      }
+      clearGlobalPlaybackIfCurrent(effectPlayerId);
+      if (selectedKeyboardPlayerId === effectPlayerId) {
+        selectedKeyboardPlayerId = null;
       }
     };
   // AlphaTab must be recreated only when the tab content changes.
@@ -510,6 +610,10 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   useEffect(() => {
     const handleSpace = (event: KeyboardEvent) => {
       if (event.code !== 'Space') {
+        return;
+      }
+
+      if (selectedKeyboardPlayerId !== playerIdRef.current) {
         return;
       }
 
@@ -604,6 +708,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
     stopActiveSources();
     isPlayingRef.current = false;
     setIsPlaying(false);
+    clearGlobalPlaybackIfCurrent();
   }
 
   function placeCursorForEvent(index: number, shouldScroll = false) {
@@ -1050,12 +1155,19 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
       return;
     }
 
+    selectKeyboardPlayer();
+    if (currentPlayingPlayerId !== null && currentPlayingPlayerId !== playerIdRef.current) {
+      stopCurrentPlayingPlayer?.();
+    }
+
     stopLocalPlayback();
     const context = getAudioContext();
     await context.resume();
 
     const firstIndex = Math.min(startEventIndex, events.length - 1);
     isPlayingRef.current = true;
+    currentPlayingPlayerId = playerIdRef.current;
+    stopCurrentPlayingPlayer = stopLocalPlayback;
     playbackScrollPendingRef.current = true;
     setIsPlaying(true);
     playEvent(firstIndex);
@@ -1099,6 +1211,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   }
 
   function playPause() {
+    selectKeyboardPlayer();
     if (isPlayingRef.current) {
       stopLocalPlayback();
       return;
@@ -1108,6 +1221,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   }
 
   function stop() {
+    selectKeyboardPlayer();
     stopLocalPlayback();
   }
 
@@ -1128,9 +1242,9 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
   }
 
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 p-4 shadow-2xl">
-      <div className="sticky top-3 z-[100] flex justify-center px-1 pb-4">
-        <div className="flex flex-wrap items-center justify-center gap-4 border border-zinc-700 bg-zinc-950/95 px-4 py-3 shadow-xl backdrop-blur">
+    <div className={`max-w-full overflow-hidden border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
+      <div className={`${compact ? 'flex justify-center px-1 pb-2' : 'sticky top-3 z-[100] flex justify-center px-1 pb-4'}`}>
+        <div className={`flex flex-wrap items-center justify-center border border-zinc-700 bg-zinc-950/95 shadow-xl backdrop-blur ${compact ? 'gap-2 px-2 py-2' : 'gap-4 px-4 py-3'}`}>
           <div className="flex items-center justify-center gap-2">
           <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
             {isPlaying ? <StopIcon /> : <PlayIcon />}
@@ -1169,7 +1283,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
           </label>
         </div>
       </div>
-      <div className="relative bg-white">
+      <div className="relative overflow-hidden bg-white">
         {loopHighlightBoxes.map((box, index) => (
           <div
             key={`${box.x}-${box.y}-${index}`}
@@ -1179,7 +1293,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
               background: 'rgba(250, 204, 21, 0.22)',
               border: '1px solid rgba(202, 138, 4, 0.55)',
               height: box.height,
-              left: box.x,
+              left: box.x - tabScrollLeft,
               top: box.y,
               width: box.width,
               zIndex: 40,
@@ -1194,7 +1308,7 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
             boxShadow: '0 0 0 1px rgba(6, 78, 59, 0.45), 0 0 10px rgba(16, 185, 129, 0.6)',
             display: cursorBox.visible ? 'block' : 'none',
             height: cursorBox.height,
-            left: cursorBox.x,
+            left: cursorBox.x - tabScrollLeft,
             top: cursorBox.y,
             width: 3,
             zIndex: 50,
@@ -1202,19 +1316,21 @@ export default function AlphaTabPlayer({ source, tab = '' }: AlphaTabPlayerProps
         />
         <div
           ref={containerRef}
-          className="alphatab-container min-h-[520px] cursor-crosshair p-6"
+          className={`alphatab-container cursor-crosshair ${compact ? 'p-3' : 'p-6'}`}
+          style={{ minHeight: minHeight ?? (compact ? 220 : 520) }}
           onMouseDown={beginPointerSelection}
           onMouseMove={updatePointerSelection}
           onMouseUp={endPointerSelection}
+          onScroll={(event) => setTabScrollLeft(event.currentTarget.scrollLeft)}
         />
-        {stringLabelGroups.map((group) =>
+        {!compact && stringLabelGroups.map((group) =>
           group.labels.map((label, index) => (
             <div
               key={`${group.systemY}-${label.note}-${index}`}
               aria-hidden="true"
               className="pointer-events-none absolute text-[12px] font-semibold leading-none text-zinc-900"
               style={{
-                left: label.x,
+                left: label.x - tabScrollLeft,
                 top: label.y,
                 transform: 'translateY(-50%)',
                 zIndex: 80,
