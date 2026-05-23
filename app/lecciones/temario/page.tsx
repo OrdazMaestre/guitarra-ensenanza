@@ -67,7 +67,7 @@ export default function TemarioPage() {
           margin: 0;
           max-width: 100%;
           min-height: 100vh;
-          overflow: hidden;
+          overflow-x: clip;
           width: 100%;
         }
 
@@ -82,12 +82,15 @@ export default function TemarioPage() {
           align-items: center;
           display: flex;
           min-height: calc(100vh - 160px);
+          min-width: 0;
           position: relative;
           z-index: 2;
         }
 
         .cover-copy-inner {
           max-width: 620px;
+          min-width: 0;
+          width: 100%;
         }
 
         .cover-eyebrow {
@@ -192,9 +195,36 @@ export default function TemarioPage() {
 
         .cover-nav-list {
           display: flex;
-          flex-wrap: nowrap;
+          flex-wrap: wrap;
           gap: clamp(8px, 1.2vw, 16px);
           justify-content: center;
+          min-width: 0;
+        }
+
+        @media (max-height: 760px) {
+          .cover-stage {
+            display: flex;
+            flex-direction: column;
+            padding-bottom: clamp(24px, 5vh, 44px);
+          }
+
+          .cover-nav {
+            min-height: 0;
+            margin-top: clamp(22px, 5vh, 42px);
+            padding: 8px 12px 10px;
+            position: relative;
+            inset: auto;
+          }
+
+          .cover-nav-list {
+            gap: 7px;
+            width: min(100%, 240px);
+          }
+
+          .cover-nav-link {
+            height: 34px;
+            width: 34px;
+          }
         }
 
         .cover-nav-link {
@@ -245,12 +275,19 @@ export default function TemarioPage() {
 
         @media (max-width: 620px) {
           .cover-stage {
-            padding-bottom: 92px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100svh;
+            padding-bottom: 28px;
           }
 
           .cover-copy {
-            min-height: calc(100vh - 124px);
+            min-height: auto;
             padding-top: 40px;
+          }
+
+          .cover-copy-inner {
+            max-width: 100%;
           }
 
           .cover-eyebrow {
@@ -259,17 +296,18 @@ export default function TemarioPage() {
           }
 
           .cover-title {
-            font-size: clamp(44px, 16vw, 76px);
+            font-size: clamp(40px, 14vw, 60px);
           }
 
           .cover-title-line {
-            font-size: clamp(34px, 11vw, 54px);
+            font-size: clamp(30px, 9.2vw, 42px);
           }
 
           .cover-intro {
             font-size: 18px;
             line-height: 1.48;
             margin-top: 28px;
+            overflow-wrap: anywhere;
           }
 
           .cover-author {
@@ -286,9 +324,11 @@ export default function TemarioPage() {
           }
 
           .cover-nav {
-            min-height: 68px;
-            padding-left: 12px;
-            padding-right: 12px;
+            margin-top: 28px;
+            min-height: 0;
+            padding: 8px 12px 10px;
+            position: relative;
+            inset: auto;
           }
 
           .cover-nav-label {
@@ -299,11 +339,13 @@ export default function TemarioPage() {
 
           .cover-nav-list {
             gap: 7px;
+            max-width: 100%;
+            width: min(100%, 240px);
           }
 
           .cover-nav-link {
-            height: 38px;
-            width: 38px;
+            height: 34px;
+            width: 34px;
           }
         }
       `}</style>

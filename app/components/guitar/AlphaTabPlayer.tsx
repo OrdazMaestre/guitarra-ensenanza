@@ -20,6 +20,8 @@ const DEFAULT_SPEED = 1;
 const DEFAULT_BPM = 96;
 const MIN_AUDIBLE_NOTE_LEVEL = 0.028;
 const MAX_NOTE_LEVEL = 0.145;
+const DENSE_CHORD_NOTE_COUNT = 3;
+const DENSE_CHORD_STRUM_DELAY = 0.012;
 const ACOUSTIC_HARMONICS = [1, 0.56, 0.34, 0.22, 0.15, 0.1, 0.07, 0.045, 0.03, 0.02];
 const PALM_MUTE_HARMONICS = [1, 0.32, 0.14, 0.065, 0.03, 0.015, 0.008, 0.004];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
@@ -32,12 +34,12 @@ let selectedKeyboardPlayerId: symbol | null = null;
 let currentPlayingPlayerId: symbol | null = null;
 let stopCurrentPlayingPlayer: (() => void) | null = null;
 const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
-  1: 40, // E2
-  2: 45, // A2
-  3: 50, // D3
-  4: 55, // G3
-  5: 59, // B3
-  6: 64, // E4
+  1: 64, // E4
+  2: 59, // B3
+  3: 55, // G3
+  4: 50, // D3
+  5: 45, // A2
+  6: 40, // E2
 };
 
 interface TabNote {
@@ -81,6 +83,7 @@ interface StringLabelGroup {
 interface AudioOutputChain {
   input: GainNode;
   master: GainNode;
+  resonatorInput: GainNode;
 }
 
 interface AlphaTabNoteLike {
@@ -289,8 +292,12 @@ function parseTempo(tab: string) {
   return Number(tab.match(/\\tempo\s*\(\s*(\d+)/)?.[1]) || DEFAULT_BPM;
 }
 
+function noteMidi(note: TabNote) {
+  return OPEN_STRING_MIDI_BY_STRING[note.stringNumber] + note.fret;
+}
+
 function noteFrequency(note: TabNote) {
-  const midi = OPEN_STRING_MIDI_BY_STRING[note.stringNumber] + note.fret;
+  const midi = noteMidi(note);
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
@@ -657,11 +664,23 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     }
 
     const input = context.createGain();
+    const resonatorInput = context.createGain();
+    const resonatorDelay = context.createDelay(0.14);
+    const resonatorFeedback = context.createGain();
+    const resonatorFilter = context.createBiquadFilter();
+    const resonatorWet = context.createGain();
     const compressor = context.createDynamicsCompressor();
     const limiter = context.createWaveShaper();
     const master = context.createGain();
 
     input.gain.setValueAtTime(0.82, context.currentTime);
+    resonatorInput.gain.setValueAtTime(1, context.currentTime);
+    resonatorDelay.delayTime.setValueAtTime(0.032, context.currentTime);
+    resonatorFeedback.gain.setValueAtTime(0.035, context.currentTime);
+    resonatorFilter.type = 'lowpass';
+    resonatorFilter.frequency.setValueAtTime(900, context.currentTime);
+    resonatorFilter.Q.setValueAtTime(0.8, context.currentTime);
+    resonatorWet.gain.setValueAtTime(0.045, context.currentTime);
     compressor.threshold.setValueAtTime(-25, context.currentTime);
     compressor.knee.setValueAtTime(18, context.currentTime);
     compressor.ratio.setValueAtTime(7, context.currentTime);
@@ -672,11 +691,17 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     master.gain.setValueAtTime(2.04, context.currentTime);
 
     input.connect(compressor);
+    resonatorInput.connect(resonatorDelay);
+    resonatorDelay.connect(resonatorFeedback);
+    resonatorFeedback.connect(resonatorDelay);
+    resonatorDelay.connect(resonatorFilter);
+    resonatorFilter.connect(resonatorWet);
+    resonatorWet.connect(compressor);
     compressor.connect(limiter);
     limiter.connect(master);
     master.connect(context.destination);
 
-    audioOutputRef.current = { input, master };
+    audioOutputRef.current = { input, master, resonatorInput };
     return audioOutputRef.current;
   }
 
@@ -923,8 +948,8 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
   ) {
     const frequency = noteFrequency(note);
     const isPalmMuted = note.palmMuted ?? false;
-    const isLowString = note.stringNumber <= 2;
-    const isHighString = note.stringNumber >= 5;
+    const isLowString = note.stringNumber >= 5;
+    const isHighString = note.stringNumber <= 2;
     const sustain = isPalmMuted ? Math.min(0.24, duration * 0.9) : Math.max(0.34, duration * 2.25);
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
     const stringBalance = isLowString ? (isPalmMuted ? 1.38 : 1.08) : isHighString ? 0.84 : 0.96;
@@ -938,6 +963,7 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     const noteEndTime = startTime + sustain;
     const wave = createGuitarWave(context, isPalmMuted);
     const output = context.createGain();
+    const resonatorSend = context.createGain();
     const toneEnvelope = context.createGain();
     const doubleEnvelope = context.createGain();
     const pickEnvelope = context.createGain();
@@ -953,10 +979,6 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     const bodyWood = context.createBiquadFilter();
     const bodyPresence = context.createBiquadFilter();
     const bodyAir = context.createBiquadFilter();
-    const palmMuteRoomDelay = context.createDelay(0.12);
-    const palmMuteRoomFeedback = context.createGain();
-    const palmMuteRoomFilter = context.createBiquadFilter();
-    const palmMuteRoomWet = context.createGain();
     const noiseLength = Math.max(1, Math.floor(context.sampleRate * (isPalmMuted ? 0.009 : 0.018)));
     const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
     const noise = noiseBuffer.getChannelData(0);
@@ -1033,14 +1055,9 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     bodyAir.frequency.setValueAtTime(isPalmMuted ? 1800 : 7600, startTime);
     bodyAir.Q.setValueAtTime(0.62, startTime);
 
-    palmMuteRoomDelay.delayTime.setValueAtTime(0.032, startTime);
-    palmMuteRoomFeedback.gain.setValueAtTime(isPalmMuted ? 0.2 : 0.04, startTime);
-    palmMuteRoomFilter.type = 'lowpass';
-    palmMuteRoomFilter.frequency.setValueAtTime(isPalmMuted ? 520 : 900, startTime);
-    palmMuteRoomFilter.Q.setValueAtTime(0.8, startTime);
-    palmMuteRoomWet.gain.setValueAtTime(isPalmMuted ? 0.24 : 0.04, startTime);
-
     output.gain.setValueAtTime(0.92, startTime);
+    resonatorSend.gain.setValueAtTime(isPalmMuted ? 0.28 : 0.08, startTime);
+    resonatorSend.gain.exponentialRampToValueAtTime(0.0001, noteEndTime + (isPalmMuted ? 0.08 : 0.16));
 
     mainOscillator.connect(toneEnvelope);
     doubleOscillator.connect(doubleEnvelope);
@@ -1057,13 +1074,10 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     bodyWood.connect(bodyPresence);
     bodyPresence.connect(bodyAir);
     bodyAir.connect(output);
-    bodyAir.connect(palmMuteRoomDelay);
-    palmMuteRoomDelay.connect(palmMuteRoomFeedback);
-    palmMuteRoomFeedback.connect(palmMuteRoomDelay);
-    palmMuteRoomDelay.connect(palmMuteRoomFilter);
-    palmMuteRoomFilter.connect(palmMuteRoomWet);
-    palmMuteRoomWet.connect(output);
-    output.connect(getAudioOutput(context).input);
+    const audioOutput = getAudioOutput(context);
+    output.connect(audioOutput.input);
+    output.connect(resonatorSend);
+    resonatorSend.connect(audioOutput.resonatorInput);
 
     mainOscillator.start(startTime);
     doubleOscillator.start(startTime);
@@ -1073,7 +1087,28 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     doubleOscillator.stop(startTime + sustain * (isPalmMuted ? 0.62 : 0.92));
     bodyThump.stop(startTime + (isPalmMuted ? 0.1 : 0.22));
     pickSource.stop(startTime + noiseLength / context.sampleRate);
-    activeSourcesRef.current.push(mainOscillator, doubleOscillator, bodyThump, pickSource);
+    const scheduledSources: AudioScheduledSourceNode[] = [mainOscillator, doubleOscillator, bodyThump, pickSource];
+    activeSourcesRef.current.push(...scheduledSources);
+    window.setTimeout(() => {
+      for (const node of [
+        output,
+        resonatorSend,
+        toneEnvelope,
+        doubleEnvelope,
+        pickEnvelope,
+        bodyEnvelope,
+        pickFilter,
+        toneFilter,
+        stringNotch,
+        bodyLow,
+        bodyWood,
+        bodyPresence,
+        bodyAir,
+      ]) {
+        node.disconnect();
+      }
+      activeSourcesRef.current = activeSourcesRef.current.filter((source) => !scheduledSources.includes(source));
+    }, Math.max(0, (noteEndTime - context.currentTime + 0.35) * 1000));
   }
 
   function playMetronomeClick(context: AudioContext, startTime: number) {
@@ -1183,7 +1218,7 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
 
     const context = getAudioContext();
     const event = events[index];
-    const startTime = context.currentTime + 0.01;
+    const startTime = context.currentTime + 0.045;
     const eventDuration = eventDurationSeconds(event, speedRef.current, bpm);
     const eventStartQuarter = events
       .slice(0, index)
@@ -1196,8 +1231,11 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
       playMetronomeClick(context, startTime);
     }
 
-    for (const note of event.notes) {
-      playPluckedNote(context, note, startTime, eventDuration, event.notes.length);
+    const audibleNotes = event.notes;
+
+    for (const [noteIndex, note] of audibleNotes.entries()) {
+      const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? noteIndex * DENSE_CHORD_STRUM_DELAY : 0;
+      playPluckedNote(context, note, startTime + chordDelay, eventDuration, audibleNotes.length);
     }
 
     const nextIndex =

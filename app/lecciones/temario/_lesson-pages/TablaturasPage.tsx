@@ -52,7 +52,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
           </div>
 
           <div className="player-frame">
-            <AlphaTabPlayer source="/tabs/cumpleanos-feliz.gp" title="Cumpleaños feliz" />
+            <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/cumpleanos-feliz-dos-compases.gp" title="Cumpleaños feliz" />
           </div>
         </section>
       </article>
@@ -238,7 +238,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
         }
 
         .player-frame > div {
-          min-width: min(100%, 760px);
+          min-width: min(100%, 980px);
         }
 
         .alphatab-container {
