@@ -1,0 +1,119 @@
+{
+  "license": "public domain",
+  "name": "Seagull Acoustic Guitar",
+  "source": "https://www.rkhive.com/guitar.html",
+  "samples": [
+    {
+      "duration": 0.8712698412698413,
+      "file": "05-lage-mi.wav",
+      "keyRange": {
+        "high": 42,
+        "low": 30
+      },
+      "loopEnd": 38415,
+      "loopStart": 37879,
+      "name": "lage mi",
+      "pitchCorrection": 0,
+      "rootKey": 40,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.4833560090702948,
+      "file": "06-la.wav",
+      "keyRange": {
+        "high": 47,
+        "low": 43
+      },
+      "loopEnd": 21308,
+      "loopStart": 20908,
+      "name": "la",
+      "pitchCorrection": 0,
+      "rootKey": 45,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.7111791383219954,
+      "file": "04-re.wav",
+      "keyRange": {
+        "high": 53,
+        "low": 48
+      },
+      "loopEnd": 31355,
+      "loopStart": 30751,
+      "name": "re",
+      "pitchCorrection": 0,
+      "rootKey": 50,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.5264625850340136,
+      "file": "08-sol.wav",
+      "keyRange": {
+        "high": 57,
+        "low": 54
+      },
+      "loopEnd": 23209,
+      "loopStart": 22759,
+      "name": "sol",
+      "pitchCorrection": 0,
+      "rootKey": 55,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.6848299319727891,
+      "file": "02-si.wav",
+      "keyRange": {
+        "high": 61,
+        "low": 58
+      },
+      "loopEnd": 30193,
+      "loopStart": 29477,
+      "name": "si",
+      "pitchCorrection": 0,
+      "rootKey": 59,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.8515419501133786,
+      "file": "01-hoge-mi.wav",
+      "keyRange": {
+        "high": 65,
+        "low": 62
+      },
+      "loopEnd": 37545,
+      "loopStart": 37010,
+      "name": "hoge mi",
+      "pitchCorrection": 0,
+      "rootKey": 64,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.9082086167800454,
+      "file": "07-hoge-la.wav",
+      "keyRange": {
+        "high": 71,
+        "low": 66
+      },
+      "loopEnd": 40044,
+      "loopStart": 39441,
+      "name": "hoge la",
+      "pitchCorrection": 0,
+      "rootKey": 69,
+      "sampleRate": 44100
+    },
+    {
+      "duration": 0.7542857142857143,
+      "file": "03-hoge-do.wav",
+      "keyRange": {
+        "high": 89,
+        "low": 72
+      },
+      "loopEnd": 33256,
+      "loopStart": 32618,
+      "name": "hoge do#",
+      "pitchCorrection": 0,
+      "rootKey": 73,
+      "sampleRate": 44100
+    }
+  ]
+}

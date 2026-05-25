@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -6,6 +7,10 @@ type SongPart = {
   chords: string[][];
   intro?: string[];
   kicker: string;
+  redSeparatorAfter?: Array<{
+    index: number;
+    row: number;
+  }>;
   source: string;
   title: string;
 };
@@ -30,23 +35,35 @@ const songParts: SongPart[] = [
     title: 'Estribillo',
   },
   {
-    chords: [['C', 'G', 'F', 'C']],
+    chords: [['C', 'G', 'F', 'G']],
     intro: ['Siempre acabamos con los mismos 4 acordes.', 'El final queda mejor con este pequeno punteo.'],
     kicker: 'Final correcto',
+    redSeparatorAfter: [{ index: 2, row: 0 }],
     source: '/tabs/let-it-be-final-correcto.gp',
     title: 'Final',
   },
 ];
 
-function ChordPattern({ rows }: { rows: string[][] }) {
+function ChordPattern({ redSeparatorAfter = [], rows }: { redSeparatorAfter?: SongPart['redSeparatorAfter']; rows: string[][] }) {
   return (
     <div className="chord-pattern" aria-label="Patron de acordes">
       {rows.map((row, rowIndex) => (
-        <div className="chord-row" key={`row-${rowIndex}`}>
+        <div className="chord-row" key={`row-${rowIndex}`} style={{ '--chord-count': row.length } as CSSProperties}>
           {row.map((chord, index) => (
             <span className="chord-cell" key={`${rowIndex}-${chord}-${index}`}>
               <strong>{chord}</strong>
-              {index < row.length - 1 ? <i aria-hidden="true">|</i> : null}
+              {index < row.length - 1 ? (
+                <i
+                  aria-hidden="true"
+                  className={
+                    redSeparatorAfter.some((separator) => separator.row === rowIndex && separator.index === index)
+                      ? 'is-red-separator'
+                      : undefined
+                  }
+                >
+                  |
+                </i>
+              ) : null}
             </span>
           ))}
         </div>
@@ -82,7 +99,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
               ) : null}
             </header>
 
-            <ChordPattern rows={part.chords} />
+            <ChordPattern redSeparatorAfter={part.redSeparatorAfter} rows={part.chords} />
 
             <div className="compact-player-frame">
               <AlphaTabPlayer compact layout="horizontal" minHeight={190} source={part.source} title={part.title} />
@@ -215,8 +232,8 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
         .chord-row {
           display: grid;
           gap: clamp(12px, 2.8vw, 34px);
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          max-width: 860px;
+          grid-template-columns: repeat(var(--chord-count), minmax(0, 1fr));
+          max-width: 980px;
           min-width: 0;
           width: 100%;
         }
@@ -248,6 +265,10 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           font-size: clamp(42px, 6vw, 72px);
           font-style: normal;
           line-height: 1;
+        }
+
+        .chord-cell i.is-red-separator {
+          color: #dc2626;
         }
 
         .compact-player-frame {

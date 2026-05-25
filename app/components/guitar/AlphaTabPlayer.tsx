@@ -19,11 +19,13 @@ const DEFAULT_VOLUME = 0.8;
 const DEFAULT_SPEED = 1;
 const DEFAULT_BPM = 96;
 const MIN_AUDIBLE_NOTE_LEVEL = 0.028;
-const MAX_NOTE_LEVEL = 0.145;
 const DENSE_CHORD_NOTE_COUNT = 3;
-const DENSE_CHORD_STRUM_DELAY = 0.012;
-const ACOUSTIC_HARMONICS = [1, 0.56, 0.34, 0.22, 0.15, 0.1, 0.07, 0.045, 0.03, 0.02];
-const PALM_MUTE_HARMONICS = [1, 0.32, 0.14, 0.065, 0.03, 0.015, 0.008, 0.004];
+const MAX_GUITAR_VOICES = 12;
+const GUITAR_SAMPLE_BASE_URL = '/samples/seagull-acoustic/';
+const GUITAR_SAMPLE_CUTOFFS = [2600, 3200, 4200, 5600, 7200, 9000];
+const GUITAR_SAMPLE_RELEASE = 0.2;
+const GUITAR_SAMPLE_PALM_MUTE_RELEASE = 0.055;
+const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
@@ -83,7 +85,70 @@ interface StringLabelGroup {
 interface AudioOutputChain {
   input: GainNode;
   master: GainNode;
-  resonatorInput: GainNode;
+}
+
+interface GuitarSample {
+  duration: number;
+  file: string;
+  keyRange: {
+    high: number;
+    low: number;
+  };
+  loopEnd: number;
+  loopStart: number;
+  name: string;
+  pitchCorrection: number;
+  rootKey: number;
+  sampleRate: number;
+}
+
+interface GuitarSampleManifest {
+  samples: GuitarSample[];
+}
+
+interface LoadedGuitarSample extends GuitarSample {
+  buffer: AudioBuffer;
+}
+
+class GuitarSampleVoice {
+  cleanupTimer: number | null;
+
+  constructor(
+    public id: number,
+    public midi: number,
+    public nodes: AudioNode[],
+    public sources: AudioScheduledSourceNode[],
+    public startedAt: number
+  ) {
+    this.cleanupTimer = null;
+  }
+
+  stop(context?: AudioContext) {
+    if (this.cleanupTimer !== null) {
+      window.clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+
+    const stopTime = context ? context.currentTime + 0.01 : 0;
+    for (const source of this.sources) {
+      try {
+        source.stop(stopTime);
+      } catch {
+        // The source may already be stopped or not yet started.
+      }
+    }
+  }
+
+  destroy() {
+    if (this.cleanupTimer !== null) {
+      window.clearTimeout(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+
+    for (const node of this.nodes) {
+      node.disconnect();
+    }
+  }
 }
 
 interface AlphaTabNoteLike {
@@ -296,50 +361,36 @@ function noteMidi(note: TabNote) {
   return OPEN_STRING_MIDI_BY_STRING[note.stringNumber] + note.fret;
 }
 
-function noteFrequency(note: TabNote) {
-  const midi = noteMidi(note);
-  return 440 * 2 ** ((midi - 69) / 12);
+function stringArrayIndex(note: TabNote) {
+  return clamp(6 - note.stringNumber, 0, GUITAR_SAMPLE_CUTOFFS.length - 1);
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function createSoftLimiterCurve() {
-  const samples = 2048;
-  const curve = new Float32Array(samples);
-  for (let i = 0; i < samples; i++) {
-    const x = (i / (samples - 1)) * 2 - 1;
-    curve[i] = Math.tanh(x * 1.65) / Math.tanh(1.65);
-  }
-  return curve;
-}
-
-function createGuitarWave(context: AudioContext, palmMuted: boolean) {
-  const harmonics = palmMuted ? PALM_MUTE_HARMONICS : ACOUSTIC_HARMONICS;
-  const real = new Float32Array(harmonics.length + 1);
-  const imag = new Float32Array(harmonics.length + 1);
-
-  for (let index = 0; index < harmonics.length; index++) {
-    imag[index + 1] = harmonics[index];
-  }
-
-  return context.createPeriodicWave(real, imag, { disableNormalization: false });
-}
-
 function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
   return ((60 / bpm) * event.quarterNotes) / speed;
 }
 
-export default function AlphaTabPlayer({ compact = false, layout = 'page', minHeight, source, tab = '' }: AlphaTabPlayerProps) {
+export default function AlphaTabPlayer({
+  compact = false,
+  layout = 'page',
+  minHeight,
+  source,
+  tab = '',
+}: AlphaTabPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerIdRef = useRef(Symbol('AlphaTabPlayer'));
   const apiRef = useRef<alphaTab.AlphaTabApi | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioOutputRef = useRef<AudioOutputChain | null>(null);
   const activeSourcesRef = useRef<AudioScheduledSourceNode[]>([]);
+  const activeVoicesRef = useRef<GuitarSampleVoice[]>([]);
   const beatToEventIndexRef = useRef(new Map<number, number>());
   const finishTimerRef = useRef<number | null>(null);
+  const guitarSamplesLoadingRef = useRef<Promise<LoadedGuitarSample[]> | null>(null);
+  const guitarSamplesRef = useRef<LoadedGuitarSample[] | null>(null);
   const isPlayingRef = useRef(false);
   const keyboardActionRef = useRef<() => void>(() => {});
   const metronomeRef = useRef(DEFAULT_METRONOME);
@@ -350,6 +401,7 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
   const speedRef = useRef(DEFAULT_SPEED);
   const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
+  const voiceIdRef = useRef(0);
   const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
   const bpm = useMemo(() => (tab ? parseTempo(tab) : DEFAULT_BPM), [tab]);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -497,6 +549,11 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
       }
     }
     activeSourcesRef.current = [];
+    for (const voice of activeVoicesRef.current) {
+      voice.stop(audioContextRef.current ?? undefined);
+      voice.destroy();
+    }
+    activeVoicesRef.current = [];
 
     setIsPlaying(false);
     isPlayingRef.current = false;
@@ -600,6 +657,10 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
         }
       }
       activeSourcesRef.current = [];
+      for (const voice of activeVoicesRef.current) {
+        voice.destroy();
+      }
+      activeVoicesRef.current = [];
       removeTabScrollListenerRef.current();
       tabScrollElementRef.current = null;
       if (apiRef.current) {
@@ -664,45 +725,61 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     }
 
     const input = context.createGain();
-    const resonatorInput = context.createGain();
-    const resonatorDelay = context.createDelay(0.14);
-    const resonatorFeedback = context.createGain();
-    const resonatorFilter = context.createBiquadFilter();
-    const resonatorWet = context.createGain();
-    const compressor = context.createDynamicsCompressor();
-    const limiter = context.createWaveShaper();
     const master = context.createGain();
 
-    input.gain.setValueAtTime(0.82, context.currentTime);
-    resonatorInput.gain.setValueAtTime(1, context.currentTime);
-    resonatorDelay.delayTime.setValueAtTime(0.032, context.currentTime);
-    resonatorFeedback.gain.setValueAtTime(0.035, context.currentTime);
-    resonatorFilter.type = 'lowpass';
-    resonatorFilter.frequency.setValueAtTime(900, context.currentTime);
-    resonatorFilter.Q.setValueAtTime(0.8, context.currentTime);
-    resonatorWet.gain.setValueAtTime(0.045, context.currentTime);
-    compressor.threshold.setValueAtTime(-25, context.currentTime);
-    compressor.knee.setValueAtTime(18, context.currentTime);
-    compressor.ratio.setValueAtTime(7, context.currentTime);
-    compressor.attack.setValueAtTime(0.004, context.currentTime);
-    compressor.release.setValueAtTime(0.16, context.currentTime);
-    limiter.curve = createSoftLimiterCurve();
-    limiter.oversample = '4x';
-    master.gain.setValueAtTime(2.04, context.currentTime);
+    input.gain.setValueAtTime(0.85, context.currentTime);
+    master.gain.setValueAtTime(1.35, context.currentTime);
 
-    input.connect(compressor);
-    resonatorInput.connect(resonatorDelay);
-    resonatorDelay.connect(resonatorFeedback);
-    resonatorFeedback.connect(resonatorDelay);
-    resonatorDelay.connect(resonatorFilter);
-    resonatorFilter.connect(resonatorWet);
-    resonatorWet.connect(compressor);
-    compressor.connect(limiter);
-    limiter.connect(master);
+    input.connect(master);
     master.connect(context.destination);
 
-    audioOutputRef.current = { input, master, resonatorInput };
+    audioOutputRef.current = { input, master };
     return audioOutputRef.current;
+  }
+
+  async function loadGuitarSamples(context: AudioContext) {
+    if (guitarSamplesRef.current) {
+      return guitarSamplesRef.current;
+    }
+
+    if (!guitarSamplesLoadingRef.current) {
+      guitarSamplesLoadingRef.current = fetch(`${GUITAR_SAMPLE_BASE_URL}manifest.json`)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Unable to load guitar sample manifest: ${response.status}`);
+          }
+          return response.json() as Promise<GuitarSampleManifest>;
+        })
+        .then(async (manifest) => {
+          const samples = await Promise.all(
+            manifest.samples.map(async (sample) => {
+              const response = await fetch(`${GUITAR_SAMPLE_BASE_URL}${sample.file}`);
+              if (!response.ok) {
+                throw new Error(`Unable to load guitar sample ${sample.file}: ${response.status}`);
+              }
+              const arrayBuffer = await response.arrayBuffer();
+              const buffer = await context.decodeAudioData(arrayBuffer);
+              return { ...sample, buffer };
+            })
+          );
+          guitarSamplesRef.current = samples;
+          return samples;
+        });
+    }
+
+    return guitarSamplesLoadingRef.current;
+  }
+
+  function chooseGuitarSample(midi: number) {
+    const samples = guitarSamplesRef.current;
+    if (!samples?.length) {
+      return null;
+    }
+
+    return (
+      samples.find((sample) => midi >= sample.keyRange.low && midi <= sample.keyRange.high) ??
+      samples.toSorted((a, b) => Math.abs(a.rootKey - midi) - Math.abs(b.rootKey - midi))[0]
+    );
   }
 
   function clearPlaybackTimers() {
@@ -718,6 +795,12 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
   }
 
   function stopActiveSources() {
+    for (const voice of activeVoicesRef.current) {
+      voice.stop(audioContextRef.current ?? undefined);
+      voice.destroy();
+    }
+    activeVoicesRef.current = [];
+
     for (const source of activeSourcesRef.current) {
       try {
         source.stop();
@@ -939,6 +1022,28 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     }
   }
 
+  function cleanupGuitarSampleVoice(voice: GuitarSampleVoice) {
+    voice.destroy();
+    activeVoicesRef.current = activeVoicesRef.current.filter((activeVoice) => activeVoice.id !== voice.id);
+    activeSourcesRef.current = activeSourcesRef.current.filter((source) => !voice.sources.includes(source));
+  }
+
+  function stopGuitarSampleVoice(voice: GuitarSampleVoice, context: AudioContext) {
+    voice.stop(context);
+    voice.cleanupTimer = window.setTimeout(() => cleanupGuitarSampleVoice(voice), 40);
+  }
+
+  function enforceGuitarSamplePolyphony(context: AudioContext) {
+    while (activeVoicesRef.current.length >= MAX_GUITAR_VOICES) {
+      const oldestVoice = activeVoicesRef.current.toSorted((a, b) => a.startedAt - b.startedAt)[0];
+      if (!oldestVoice) {
+        break;
+      }
+      stopGuitarSampleVoice(oldestVoice, context);
+      activeVoicesRef.current = activeVoicesRef.current.filter((voice) => voice.id !== oldestVoice.id);
+    }
+  }
+
   function playPluckedNote(
     context: AudioContext,
     note: TabNote,
@@ -946,169 +1051,70 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     duration: number,
     eventNoteCount: number
   ) {
-    const frequency = noteFrequency(note);
+    const midi = noteMidi(note);
     const isPalmMuted = note.palmMuted ?? false;
-    const isLowString = note.stringNumber >= 5;
-    const isHighString = note.stringNumber <= 2;
-    const sustain = isPalmMuted ? Math.min(0.24, duration * 0.9) : Math.max(0.34, duration * 2.25);
+    const stringIndex = stringArrayIndex(note);
+    const sample = chooseGuitarSample(midi);
+    if (!sample) {
+      return;
+    }
+
+    const cutoff = GUITAR_SAMPLE_CUTOFFS[stringIndex] * (isPalmMuted ? 0.5 : 1);
+    const playbackRate = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
+    const release = isPalmMuted ? GUITAR_SAMPLE_PALM_MUTE_RELEASE : GUITAR_SAMPLE_RELEASE;
+    const sustainDuration = isPalmMuted ? Math.min(0.16, duration) : clamp(duration, 0.18, 2.4);
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
-    const stringBalance = isLowString ? (isPalmMuted ? 1.38 : 1.08) : isHighString ? 0.84 : 0.96;
-    const articulationLevel = isPalmMuted ? 0.11 : 0.13;
+    const stringBalance = note.stringNumber >= 5 ? 1.05 : note.stringNumber <= 2 ? 0.88 : 1;
+    const articulationLevel = isPalmMuted ? 0.34 : 0.58;
     const currentVolume = volumeRef.current;
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
     const level =
       currentVolume <= 0
         ? 0
-        : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, MAX_NOTE_LEVEL * currentVolume);
-    const noteEndTime = startTime + sustain;
-    const wave = createGuitarWave(context, isPalmMuted);
-    const output = context.createGain();
-    const resonatorSend = context.createGain();
-    const toneEnvelope = context.createGain();
-    const doubleEnvelope = context.createGain();
-    const pickEnvelope = context.createGain();
-    const bodyEnvelope = context.createGain();
-    const mainOscillator = context.createOscillator();
-    const doubleOscillator = context.createOscillator();
-    const bodyThump = context.createOscillator();
-    const pickSource = context.createBufferSource();
-    const pickFilter = context.createBiquadFilter();
-    const toneFilter = context.createBiquadFilter();
-    const stringNotch = context.createBiquadFilter();
-    const bodyLow = context.createBiquadFilter();
-    const bodyWood = context.createBiquadFilter();
-    const bodyPresence = context.createBiquadFilter();
-    const bodyAir = context.createBiquadFilter();
-    const noiseLength = Math.max(1, Math.floor(context.sampleRate * (isPalmMuted ? 0.009 : 0.018)));
-    const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
-    const noise = noiseBuffer.getChannelData(0);
+        : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, 0.62 * currentVolume);
 
-    for (let i = 0; i < noiseLength; i++) {
-      const progress = i / noiseLength;
-      const fade = (1 - progress) ** (isPalmMuted ? 3.4 : 1.75);
-      const pickClick = Math.sin(progress * Math.PI * 18) * Math.exp(-progress * 26);
-      noise[i] = ((Math.random() * 2 - 1) * 0.58 + pickClick * 0.42) * fade;
+    enforceGuitarSamplePolyphony(context);
+
+    const source = context.createBufferSource();
+    const toneFilter = context.createBiquadFilter();
+    const voiceGain = context.createGain();
+
+    source.buffer = sample.buffer;
+    source.playbackRate.setValueAtTime(playbackRate, startTime);
+    if (sample.loopEnd > sample.loopStart + 8) {
+      source.loop = !isPalmMuted;
+      source.loopStart = sample.loopStart / sample.sampleRate;
+      source.loopEnd = sample.loopEnd / sample.sampleRate;
     }
 
-    mainOscillator.setPeriodicWave(wave);
-    mainOscillator.frequency.setValueAtTime(frequency, startTime);
-    mainOscillator.detune.setValueAtTime(isLowString ? -4 : -1.5, startTime);
-
-    doubleOscillator.setPeriodicWave(wave);
-    doubleOscillator.frequency.setValueAtTime(frequency, startTime);
-    doubleOscillator.detune.setValueAtTime(isLowString ? 5 : 3, startTime);
-
-    bodyThump.type = 'sine';
-    bodyThump.frequency.setValueAtTime(isLowString ? 96 : 142, startTime);
-
-    pickSource.buffer = noiseBuffer;
-
-    toneEnvelope.gain.setValueAtTime(0.0001, startTime);
-    toneEnvelope.gain.exponentialRampToValueAtTime(Math.max(0.0001, level), startTime + 0.006);
-    toneEnvelope.gain.exponentialRampToValueAtTime(Math.max(0.0001, level * (isPalmMuted ? 0.22 : 0.42)), startTime + Math.min(0.09, sustain * 0.32));
-    toneEnvelope.gain.exponentialRampToValueAtTime(0.0001, noteEndTime);
-
-    doubleEnvelope.gain.setValueAtTime(0.0001, startTime);
-    doubleEnvelope.gain.exponentialRampToValueAtTime(Math.max(0.0001, level * 0.42), startTime + 0.011);
-    doubleEnvelope.gain.exponentialRampToValueAtTime(0.0001, startTime + sustain * (isPalmMuted ? 0.55 : 0.86));
-
-    pickEnvelope.gain.setValueAtTime(0.0001, startTime);
-    pickEnvelope.gain.exponentialRampToValueAtTime(Math.max(0.0001, level * (isPalmMuted ? 0.9 : 0.72)), startTime + 0.001);
-    pickEnvelope.gain.exponentialRampToValueAtTime(0.0001, startTime + (isPalmMuted ? 0.026 : 0.045));
-
-    bodyEnvelope.gain.setValueAtTime(0.0001, startTime);
-    bodyEnvelope.gain.exponentialRampToValueAtTime(
-      Math.max(0.0001, level * (isPalmMuted ? (isLowString ? 1.35 : 0.72) : isLowString ? 0.7 : 0.36)),
-      startTime + 0.004
-    );
-    bodyEnvelope.gain.exponentialRampToValueAtTime(0.0001, startTime + (isPalmMuted ? 0.16 : 0.18));
-
     toneFilter.type = 'lowpass';
-    toneFilter.frequency.setValueAtTime(isPalmMuted ? 1150 : 6200, startTime);
-    toneFilter.frequency.exponentialRampToValueAtTime(isPalmMuted ? 430 : 1750, startTime + sustain);
-    toneFilter.Q.setValueAtTime(isPalmMuted ? 0.6 : 0.9, startTime);
+    toneFilter.frequency.setValueAtTime(cutoff, startTime);
+    toneFilter.Q.setValueAtTime(0.55, startTime);
+    voiceGain.gain.setValueAtTime(0.0001, startTime);
+    voiceGain.gain.linearRampToValueAtTime(Math.max(0.0001, level), startTime + 0.004);
+    voiceGain.gain.setValueAtTime(Math.max(0.0001, level * (isPalmMuted ? 0.22 : 0.82)), startTime + sustainDuration);
+    voiceGain.gain.exponentialRampToValueAtTime(0.0001, startTime + sustainDuration + release);
 
-    stringNotch.type = 'notch';
-    stringNotch.frequency.setValueAtTime(isPalmMuted ? 1600 : 3100, startTime);
-    stringNotch.Q.setValueAtTime(isPalmMuted ? 1.2 : 0.8, startTime);
+    source.connect(toneFilter);
+    toneFilter.connect(voiceGain);
+    voiceGain.connect(getAudioOutput(context).input);
 
-    pickFilter.type = 'bandpass';
-    pickFilter.frequency.setValueAtTime(isPalmMuted ? 720 : 2850, startTime);
-    pickFilter.Q.setValueAtTime(isPalmMuted ? 1.8 : 1.15, startTime);
+    source.start(startTime);
+    source.stop(startTime + sustainDuration + release + 0.03);
+    const voice = new GuitarSampleVoice(
+      voiceIdRef.current++,
+      midi,
+      [toneFilter, voiceGain],
+      [source],
+      startTime
+    );
 
-    bodyLow.type = 'peaking';
-    bodyLow.frequency.setValueAtTime(isLowString ? 110 : 185, startTime);
-    bodyLow.gain.setValueAtTime(isPalmMuted ? 7.2 : 2.8, startTime);
-    bodyLow.Q.setValueAtTime(0.62, startTime);
-
-    bodyWood.type = 'peaking';
-    bodyWood.frequency.setValueAtTime(isLowString ? 245 : 330, startTime);
-    bodyWood.gain.setValueAtTime(isPalmMuted ? 4.4 : 3.6, startTime);
-    bodyWood.Q.setValueAtTime(0.74, startTime);
-
-    bodyPresence.type = 'peaking';
-    bodyPresence.frequency.setValueAtTime(isPalmMuted ? 980 : 2200, startTime);
-    bodyPresence.gain.setValueAtTime(isPalmMuted ? -2.6 : 1.6, startTime);
-    bodyPresence.Q.setValueAtTime(isPalmMuted ? 1.15 : 0.95, startTime);
-
-    bodyAir.type = 'lowpass';
-    bodyAir.frequency.setValueAtTime(isPalmMuted ? 1800 : 7600, startTime);
-    bodyAir.Q.setValueAtTime(0.62, startTime);
-
-    output.gain.setValueAtTime(0.92, startTime);
-    resonatorSend.gain.setValueAtTime(isPalmMuted ? 0.28 : 0.08, startTime);
-    resonatorSend.gain.exponentialRampToValueAtTime(0.0001, noteEndTime + (isPalmMuted ? 0.08 : 0.16));
-
-    mainOscillator.connect(toneEnvelope);
-    doubleOscillator.connect(doubleEnvelope);
-    pickSource.connect(pickFilter);
-    pickFilter.connect(pickEnvelope);
-    bodyThump.connect(bodyEnvelope);
-    toneEnvelope.connect(toneFilter);
-    doubleEnvelope.connect(toneFilter);
-    pickEnvelope.connect(toneFilter);
-    bodyEnvelope.connect(bodyLow);
-    toneFilter.connect(stringNotch);
-    stringNotch.connect(bodyLow);
-    bodyLow.connect(bodyWood);
-    bodyWood.connect(bodyPresence);
-    bodyPresence.connect(bodyAir);
-    bodyAir.connect(output);
-    const audioOutput = getAudioOutput(context);
-    output.connect(audioOutput.input);
-    output.connect(resonatorSend);
-    resonatorSend.connect(audioOutput.resonatorInput);
-
-    mainOscillator.start(startTime);
-    doubleOscillator.start(startTime);
-    bodyThump.start(startTime);
-    pickSource.start(startTime);
-    mainOscillator.stop(noteEndTime);
-    doubleOscillator.stop(startTime + sustain * (isPalmMuted ? 0.62 : 0.92));
-    bodyThump.stop(startTime + (isPalmMuted ? 0.1 : 0.22));
-    pickSource.stop(startTime + noiseLength / context.sampleRate);
-    const scheduledSources: AudioScheduledSourceNode[] = [mainOscillator, doubleOscillator, bodyThump, pickSource];
-    activeSourcesRef.current.push(...scheduledSources);
-    window.setTimeout(() => {
-      for (const node of [
-        output,
-        resonatorSend,
-        toneEnvelope,
-        doubleEnvelope,
-        pickEnvelope,
-        bodyEnvelope,
-        pickFilter,
-        toneFilter,
-        stringNotch,
-        bodyLow,
-        bodyWood,
-        bodyPresence,
-        bodyAir,
-      ]) {
-        node.disconnect();
-      }
-      activeSourcesRef.current = activeSourcesRef.current.filter((source) => !scheduledSources.includes(source));
-    }, Math.max(0, (noteEndTime - context.currentTime + 0.35) * 1000));
+    activeVoicesRef.current.push(voice);
+    activeSourcesRef.current.push(source);
+    voice.cleanupTimer = window.setTimeout(
+      () => cleanupGuitarSampleVoice(voice),
+      Math.max(0, (startTime + sustainDuration + release + 0.05 - context.currentTime) * 1000)
+    );
   }
 
   function playMetronomeClick(context: AudioContext, startTime: number) {
@@ -1117,48 +1123,44 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     const currentVolume = volumeRef.current;
 
     const noiseSource = context.createBufferSource();
-    const snap = context.createOscillator();
-    const body = context.createOscillator();
+    const bodySource = context.createBufferSource();
     const noiseGain = context.createGain();
-    const snapGain = context.createGain();
     const bodyGain = context.createGain();
     const noiseFilter = context.createBiquadFilter();
-    const snapFilter = context.createBiquadFilter();
+    const bodyFilter = context.createBiquadFilter();
     const highPass = context.createBiquadFilter();
     const output = context.createGain();
 
-    const noiseLength = Math.max(1, Math.floor(context.sampleRate * 0.07));
+    const noiseLength = Math.max(1, Math.floor(context.sampleRate * 0.045));
+    const bodyLength = Math.max(1, Math.floor(context.sampleRate * 0.055));
     const noiseBuffer = context.createBuffer(1, noiseLength, context.sampleRate);
+    const bodyBuffer = context.createBuffer(1, bodyLength, context.sampleRate);
     const noise = noiseBuffer.getChannelData(0);
+    const body = bodyBuffer.getChannelData(0);
     for (let index = 0; index < noiseLength; index++) {
       const progress = index / noiseLength;
-      noise[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.1;
+      noise[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.4;
+    }
+    for (let index = 0; index < bodyLength; index++) {
+      const progress = index / bodyLength;
+      body[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.8;
     }
 
     noiseSource.buffer = noiseBuffer;
+    bodySource.buffer = bodyBuffer;
     noiseFilter.type = 'bandpass';
     noiseFilter.frequency.setValueAtTime(1850, startTime);
     noiseFilter.Q.setValueAtTime(0.75, startTime);
     noiseGain.gain.setValueAtTime(0.0001, startTime);
     noiseGain.gain.exponentialRampToValueAtTime(currentVolume * 0.18, startTime + 0.002);
-    noiseGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.065);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.045);
 
-    snap.type = 'square';
-    snap.frequency.setValueAtTime(2400, startTime);
-    snap.frequency.exponentialRampToValueAtTime(1450, startTime + 0.018);
-    snapFilter.type = 'bandpass';
-    snapFilter.frequency.setValueAtTime(2200, startTime);
-    snapFilter.Q.setValueAtTime(1.1, startTime);
-    snapGain.gain.setValueAtTime(0.0001, startTime);
-    snapGain.gain.exponentialRampToValueAtTime(currentVolume * 0.08, startTime + 0.001);
-    snapGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.022);
-
-    body.type = 'sine';
-    body.frequency.setValueAtTime(220, startTime);
-    body.frequency.exponentialRampToValueAtTime(165, startTime + 0.045);
+    bodyFilter.type = 'lowpass';
+    bodyFilter.frequency.setValueAtTime(480, startTime);
+    bodyFilter.Q.setValueAtTime(0.6, startTime);
     bodyGain.gain.setValueAtTime(0.0001, startTime);
-    bodyGain.gain.exponentialRampToValueAtTime(currentVolume * 0.055, startTime + 0.003);
-    bodyGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.05);
+    bodyGain.gain.exponentialRampToValueAtTime(currentVolume * 0.075, startTime + 0.003);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.055);
 
     highPass.type = 'highpass';
     highPass.frequency.setValueAtTime(420, startTime);
@@ -1167,22 +1169,18 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
 
     noiseSource.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
-    snap.connect(snapFilter);
-    snapFilter.connect(snapGain);
-    body.connect(bodyGain);
+    bodySource.connect(bodyFilter);
+    bodyFilter.connect(bodyGain);
     noiseGain.connect(highPass);
-    snapGain.connect(highPass);
     bodyGain.connect(output);
     highPass.connect(output);
     output.connect(getAudioOutput(context).input);
 
     noiseSource.start(startTime);
-    snap.start(startTime);
-    body.start(startTime);
+    bodySource.start(startTime);
     noiseSource.stop(startTime + noiseLength / context.sampleRate);
-    snap.stop(startTime + 0.025);
-    body.stop(startTime + 0.055);
-    activeSourcesRef.current.push(noiseSource, snap, body);
+    bodySource.stop(startTime + bodyLength / context.sampleRate);
+    activeSourcesRef.current.push(noiseSource, bodySource);
   }
 
   async function startLocalPlayback() {
@@ -1198,6 +1196,7 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
     stopLocalPlayback();
     const context = getAudioContext();
     await context.resume();
+    await loadGuitarSamples(context);
 
     const firstIndex = Math.min(startEventIndex, events.length - 1);
     isPlayingRef.current = true;
@@ -1233,8 +1232,8 @@ export default function AlphaTabPlayer({ compact = false, layout = 'page', minHe
 
     const audibleNotes = event.notes;
 
-    for (const [noteIndex, note] of audibleNotes.entries()) {
-      const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? noteIndex * DENSE_CHORD_STRUM_DELAY : 0;
+    for (const note of audibleNotes) {
+      const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
       playPluckedNote(context, note, startTime + chordDelay, eventDuration, audibleNotes.length);
     }
 
