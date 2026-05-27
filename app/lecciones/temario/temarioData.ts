@@ -7,6 +7,7 @@ export const lessonBlocks = [
   { number: 6, title: 'Acordes', slug: 'acordes' },
   { number: 7, title: 'Let It Be con acordes', slug: 'let-it-be-con-acordes' },
   { number: 8, title: 'Arpegios', slug: 'arpegios' },
+  { number: '8+', title: 'Ampliacion arpegios', slug: 'ampliacion-arpegios' },
   { number: 9, title: 'Pentatonica', slug: 'pentatonica' },
   { number: 10, title: 'Escalas', slug: 'escalas' },
 ] as const;

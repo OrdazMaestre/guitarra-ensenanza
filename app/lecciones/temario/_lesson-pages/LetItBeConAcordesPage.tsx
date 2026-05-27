@@ -122,6 +122,9 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           <a href="https://www.youtube.com/watch?v=E1qyF7KqTao&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=4" target="_blank" rel="noreferrer">
             TUTORIAL COMPLETO CON GUITARRA
           </a>
+          <a href="https://www.youtube.com/watch?v=y9rxnsSQB6s" target="_blank" rel="noreferrer">
+            VERSIÓN PRO FREESTYLE + FINGERSTYLE
+          </a>
         </section>
       </article>
 
