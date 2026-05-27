@@ -10,6 +10,11 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         <header className="extension-header">
           <p className="lesson-kicker">Ampliacion</p>
           <h1>Arpegios</h1>
+          <div className="warning-box" role="note">
+            <p>Esta ampliacion adelanta contenido del temario.</p>
+            <p>Recomendado: llegar antes a acordes cuatriada.</p>
+            <p>Curiosos: podeis aprender solo las tablaturas.</p>
+          </div>
           <div className="short-copy">
             <p>En la pagina de arpegios practicamos una forma sencilla.</p>
             <p>Ahora vamos a completar el dibujo por el mastil.</p>
@@ -24,7 +29,9 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <header className="exercise-header">
             <p className="lesson-kicker">Ejercicio 1</p>
             <h2 id="triad-title">Arpegios triada completos</h2>
-            <p>Acorde de Sol mayor: G, B y D.</p>
+            <p>
+              Acorde de <span>Sol mayor: G, B y D.</span>
+            </p>
           </header>
           <Image
             className="fretboard-image"
@@ -42,7 +49,9 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <header className="exercise-header">
             <p className="lesson-kicker">Ejercicio 2</p>
             <h2 id="seventh-title">Arpegios cuatriada con septima completos</h2>
-            <p>Acorde de Sol mayor septima: G, B, D y F#.</p>
+            <p>
+              Acorde de <span>Sol mayor septima: G, B, D y F#.</span>
+            </p>
           </header>
           <Image
             className="fretboard-image"
@@ -124,7 +133,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           font-weight: 950;
           letter-spacing: 0;
           line-height: 0.98;
-          margin: 0;
+          margin: clamp(12px, 2vw, 20px) 0 0;
           overflow-wrap: break-word;
           text-transform: uppercase;
         }
@@ -134,6 +143,25 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           gap: 10px;
           margin: clamp(22px, 4vw, 34px) auto 0;
           max-width: 760px;
+        }
+
+        .warning-box {
+          border: 4px solid #dc2626;
+          display: grid;
+          gap: 8px;
+          margin: clamp(22px, 4vw, 34px) auto 0;
+          max-width: 820px;
+          padding: clamp(14px, 2.6vw, 22px);
+          text-align: center;
+        }
+
+        .warning-box p {
+          color: #991b1b;
+          font-size: clamp(18px, 2vw, 25px);
+          font-weight: 950;
+          line-height: 1.25;
+          margin: 0;
+          overflow-wrap: anywhere;
         }
 
         .short-copy p,
@@ -166,21 +194,39 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         .exercise-block {
           border-top: 1px solid #d4d4d8;
           display: grid;
-          gap: clamp(18px, 3vw, 32px);
+          gap: clamp(12px, 2vw, 20px);
           min-width: 0;
           padding-top: clamp(24px, 4vw, 42px);
+        }
+
+        .exercise-header {
+          display: grid;
+          gap: clamp(10px, 1.6vw, 16px);
+        }
+
+        .exercise-header .lesson-kicker {
+          margin: 0;
+        }
+
+        .exercise-header p span {
+          color: #080808;
+          font-weight: 900;
+          text-decoration: underline;
+          text-decoration-color: #047857;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 5px;
         }
 
         .fretboard-image {
           display: block;
           height: auto;
-          margin: 0 auto;
+          margin: clamp(8px, 1vw, 12px) auto 0;
           max-width: 100%;
           width: min(100%, 1040px);
         }
 
         .compact-player-frame {
-          margin: 0 auto;
+          margin: clamp(4px, 0.8vw, 10px) auto 0;
           max-width: 100%;
           min-width: 0;
           overflow-x: auto;
@@ -213,6 +259,10 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           }
 
           .rule-box {
+            text-align: left;
+          }
+
+          .warning-box {
             text-align: left;
           }
 

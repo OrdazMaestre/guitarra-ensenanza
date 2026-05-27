@@ -19,6 +19,18 @@ interface LessonBlockPageProps {
 
 export default async function LessonBlockPage({ params }: LessonBlockPageProps) {
   const { slug } = await params;
+
+  if (slug === 'ampliacion-arpegios') {
+    return (
+      <AmpliacionArpegiosPage
+        previous={{
+          href: '/lecciones/temario/arpegios',
+          label: 'Arpegios',
+        }}
+      />
+    );
+  }
+
   const lesson = getLessonBySlug(slug);
 
   if (!lesson) {
@@ -74,10 +86,6 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'arpegios') {
     return <ArpegiosPage {...lessonProps} />;
-  }
-
-  if (slug === 'ampliacion-arpegios') {
-    return <AmpliacionArpegiosPage {...lessonProps} />;
   }
 
   return <PlaceholderLessonPage title={lesson.title} {...lessonProps} />;
