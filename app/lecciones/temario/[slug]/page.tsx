@@ -4,6 +4,8 @@ import AfinacionPage from '../_lesson-pages/AfinacionPage';
 import AmpliacionArpegiosPage from '../_lesson-pages/AmpliacionArpegiosPage';
 import ArpegiosPage from '../_lesson-pages/ArpegiosPage';
 import ConceptosBasicosPage from '../_lesson-pages/ConceptosBasicosPage';
+import EscalasPage from '../_lesson-pages/EscalasPage';
+import FigurasAcordesPage from '../_lesson-pages/FigurasAcordesPage';
 import LetItBeConAcordesPage from '../_lesson-pages/LetItBeConAcordesPage';
 import NotacionMusicalPage from '../_lesson-pages/NotacionMusicalPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
@@ -86,6 +88,14 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'arpegios') {
     return <ArpegiosPage {...lessonProps} />;
+  }
+
+  if (slug === 'figuras-de-acordes') {
+    return <FigurasAcordesPage {...lessonProps} />;
+  }
+
+  if (slug === 'escalas') {
+    return <EscalasPage {...lessonProps} />;
   }
 
   return <PlaceholderLessonPage title={lesson.title} {...lessonProps} />;
