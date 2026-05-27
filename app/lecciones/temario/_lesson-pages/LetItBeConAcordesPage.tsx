@@ -80,8 +80,9 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           <p className="lesson-kicker">Unidad 7</p>
           <h1>Let It Be</h1>
           <div className="short-copy">
-            <p>Vamos a tocar con acordes.</p>
-            <p>Luego mezclaremos acordes y punteo.</p>
+            <p>Una cancion a base de acordes puede leerse de las dos maneras que vemos abajo.</p>
+            
+            <p> Al final del todo hay enlaces a la cancion y a la versión con guitarra.</p>
           </div>
         </header>
 
@@ -102,7 +103,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
             <ChordPattern redSeparatorAfter={part.redSeparatorAfter} rows={part.chords} />
 
             <div className="compact-player-frame">
-              <AlphaTabPlayer compact layout="horizontal" minHeight={190} source={part.source} title={part.title} />
+              <AlphaTabPlayer compact initialSpeed={1.35} layout="horizontal" minHeight={190} source={part.source} title={part.title} />
             </div>
           </section>
         ))}
@@ -111,9 +112,15 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           <p>Estamos aprendiendo a mezclar acordes y punteo.</p>
           <p>Despues del segundo estribillo hay un solo de guitarra.</p>
           <p>Y durante el último estribillo hay un punteo muy chulo que acompaña a la voz.</p>
-          <p>En las siguientes paginas lo aprenderemos poco a poco.</p>
           <a href="https://www.youtube.com/watch?v=BTDLIG0RbMQ" target="_blank" rel="noreferrer">
             CANCION COMPLETA
+          </a>
+        </section>
+
+        <section className="lesson-close" aria-label="Resumen">
+          <p>En las siguientes paginas lo aprenderemos poco a poco.</p>
+          <a href="https://www.youtube.com/watch?v=E1qyF7KqTao&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=4" target="_blank" rel="noreferrer">
+            TUTORIAL COMPLETO CON GUITARRA
           </a>
         </section>
       </article>

@@ -7,6 +7,7 @@ import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
   compact?: boolean;
+  initialSpeed?: number;
   layout?: 'page' | 'horizontal';
   minHeight?: number;
   source?: string;
@@ -23,6 +24,13 @@ const DENSE_CHORD_NOTE_COUNT = 3;
 const MAX_GUITAR_VOICES = 12;
 const GUITAR_SAMPLE_BASE_URL = '/samples/seagull-acoustic/';
 const GUITAR_SAMPLE_CUTOFFS = [2600, 3200, 4200, 5600, 7200, 9000];
+const GUITAR_STRING_GAINS: Record<number, number> = {
+  1: 1.2,
+  2: 1.15,
+  3: 1.4,
+  5: 0.8,
+  6: 0.5,
+};
 const GUITAR_SAMPLE_RELEASE = 0.2;
 const GUITAR_SAMPLE_PALM_MUTE_RELEASE = 0.055;
 const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
@@ -323,6 +331,10 @@ function beatQuarterNotes(beat: AlphaTabBeatLike) {
   return (4 / beat.duration) * dotFactor * tupletFactor;
 }
 
+function normalizeAlphaTabStringNumber(stringNumber: number) {
+  return 7 - stringNumber;
+}
+
 function buildEventsFromScore(score: AlphaTabScoreLike) {
   const beatEntries = score.tracks[0]?.staves[0]?.bars
     .flatMap((bar) => {
@@ -347,8 +359,9 @@ function buildEventsFromScore(score: AlphaTabScoreLike) {
     notes: beat.isRest
       ? []
       : beat.notes
-          .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[note.string] !== undefined)
-          .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.string })),
+          .map((note) => ({ ...note, normalizedString: normalizeAlphaTabStringNumber(note.string) }))
+          .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[note.normalizedString] !== undefined)
+          .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString })),
     quarterNotes: beatQuarterNotes(beat),
   }));
 }
@@ -375,6 +388,7 @@ function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
 
 export default function AlphaTabPlayer({
   compact = false,
+  initialSpeed = DEFAULT_SPEED,
   layout = 'page',
   minHeight,
   source,
@@ -398,7 +412,7 @@ export default function AlphaTabPlayer({
   const pointerStartIndexRef = useRef<number | null>(null);
   const playTimerRef = useRef<number | null>(null);
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
-  const speedRef = useRef(DEFAULT_SPEED);
+  const speedRef = useRef(initialSpeed);
   const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
   const voiceIdRef = useRef(0);
@@ -407,7 +421,7 @@ export default function AlphaTabPlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [metronome, setMetronome] = useState(DEFAULT_METRONOME);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
-  const [speed, setSpeed] = useState(DEFAULT_SPEED);
+  const [speed, setSpeed] = useState(initialSpeed);
   const [startEventIndex, setStartEventIndex] = useState(0);
   const [loopEndIndex, setLoopEndIndex] = useState<number | null>(null);
   const [loopStartIndex, setLoopStartIndex] = useState<number | null>(null);
@@ -562,8 +576,8 @@ export default function AlphaTabPlayer({
     metronomeRef.current = DEFAULT_METRONOME;
     setVolume(DEFAULT_VOLUME);
     volumeRef.current = DEFAULT_VOLUME;
-    setSpeed(DEFAULT_SPEED);
-    speedRef.current = DEFAULT_SPEED;
+    setSpeed(initialSpeed);
+    speedRef.current = initialSpeed;
     setStartEventIndex(0);
     setLoopEndIndex(null);
     setLoopStartIndex(null);
@@ -673,7 +687,7 @@ export default function AlphaTabPlayer({
     };
   // AlphaTab must be recreated only when the tab content changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fallbackEvents, source, tab]);
+  }, [fallbackEvents, initialSpeed, source, tab]);
 
   useEffect(() => {
     const handleSpace = (event: KeyboardEvent) => {
@@ -1064,7 +1078,7 @@ export default function AlphaTabPlayer({
     const release = isPalmMuted ? GUITAR_SAMPLE_PALM_MUTE_RELEASE : GUITAR_SAMPLE_RELEASE;
     const sustainDuration = isPalmMuted ? Math.min(0.16, duration) : clamp(duration, 0.18, 2.4);
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
-    const stringBalance = note.stringNumber >= 5 ? 1.05 : note.stringNumber <= 2 ? 0.88 : 1;
+    const stringBalance = GUITAR_STRING_GAINS[note.stringNumber] ?? 1;
     const articulationLevel = isPalmMuted ? 0.34 : 0.58;
     const currentVolume = volumeRef.current;
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
