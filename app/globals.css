@@ -26,6 +26,56 @@ video {
   max-width: 100%;
 }
 
+a:not(.temario-pager-link) {
+  animation: link-tilt 2.4s ease-in-out infinite !important;
+  color: #047857 !important;
+  display: inline-block;
+  max-width: 100%;
+  text-decoration: underline !important;
+  text-decoration-color: currentColor !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 0.18em !important;
+  transform-origin: center;
+  transition: color 160ms ease !important;
+  will-change: transform;
+}
+
+a:not(.temario-pager-link):hover,
+a:not(.temario-pager-link):focus-visible {
+  color: #dc2626 !important;
+}
+
+a:not(.temario-pager-link):focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 4px;
+}
+
+@keyframes link-tilt {
+  0% {
+    transform: rotate(0.625deg);
+  }
+
+  20% {
+    transform: rotate(-1.25deg);
+  }
+
+  40% {
+    transform: rotate(1.25deg);
+  }
+
+  60% {
+    transform: rotate(-1.25deg);
+  }
+
+  80% {
+    transform: rotate(1.25deg);
+  }
+
+  100% {
+    transform: rotate(0.625deg);
+  }
+}
+
 .site-shell {
   min-width: 0;
   overflow-x: clip;

@@ -33,6 +33,18 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
     );
   }
 
+  if (slug === 'patrones-griegos') {
+    return (
+      <PlaceholderLessonPage
+        title="Patrones griegos"
+        previous={{
+          href: '/lecciones/temario/escalas',
+          label: 'Escalas',
+        }}
+      />
+    );
+  }
+
   const lesson = getLessonBySlug(slug);
 
   if (!lesson) {

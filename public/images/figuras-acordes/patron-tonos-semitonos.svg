@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 127" role="img" aria-labelledby="title desc">
-  <title id="title">Patron de tonos y semitonos en Do mayor</title>
-  <desc id="desc">Notas de Do a Do con alteraciones amarillas y flechas que muestran tonos y semitonos.</desc>
+  <title id="title">Patron de tonos y semitonos en C mayor</title>
+  <desc id="desc">Notas de C a C con alteraciones amarillas y flechas que muestran tonos y semitonos.</desc>
   <rect width="700" height="127" fill="#ffffff"/>
   <defs>
     <marker id="open-arrow" markerHeight="10" markerWidth="10" orient="auto" refX="8" refY="5">
@@ -10,31 +10,31 @@
   <g font-family="Georgia, 'Times New Roman', serif" text-anchor="middle">
     <g font-weight="800">
       <rect x="5" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="30" y="30" fill="#14213d" font-size="22">DO</text>
+      <text x="30" y="30" fill="#14213d" font-size="22">C</text>
       <rect x="60" y="5" width="45" height="35" rx="4" fill="#ffe57a" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="82.5" y="28" fill="#14213d" font-size="13">DO#</text>
+      <text x="82.5" y="28" fill="#14213d" font-size="13">C#</text>
       <rect x="110" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="135" y="30" fill="#14213d" font-size="22">RE</text>
+      <text x="135" y="30" fill="#14213d" font-size="22">D</text>
       <rect x="165" y="5" width="45" height="35" rx="4" fill="#ffe57a" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="187.5" y="28" fill="#14213d" font-size="13">RE#</text>
+      <text x="187.5" y="28" fill="#14213d" font-size="13">D#</text>
       <rect x="215" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="240" y="30" fill="#14213d" font-size="22">MI</text>
+      <text x="240" y="30" fill="#14213d" font-size="22">E</text>
       <rect x="270" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="295" y="30" fill="#14213d" font-size="22">FA</text>
+      <text x="295" y="30" fill="#14213d" font-size="22">F</text>
       <rect x="325" y="5" width="45" height="35" rx="4" fill="#ffe57a" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="347.5" y="28" fill="#14213d" font-size="13">FA#</text>
+      <text x="347.5" y="28" fill="#14213d" font-size="13">F#</text>
       <rect x="375" y="5" width="55" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="402.5" y="30" fill="#14213d" font-size="22">SOL</text>
+      <text x="402.5" y="30" fill="#14213d" font-size="22">G</text>
       <rect x="435" y="5" width="50" height="35" rx="4" fill="#ffe57a" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="460" y="28" fill="#14213d" font-size="13">SOL#</text>
+      <text x="460" y="28" fill="#14213d" font-size="13">G#</text>
       <rect x="490" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="515" y="30" fill="#14213d" font-size="22">LA</text>
+      <text x="515" y="30" fill="#14213d" font-size="22">A</text>
       <rect x="545" y="5" width="45" height="35" rx="4" fill="#ffe57a" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="567.5" y="28" fill="#14213d" font-size="13">LA#</text>
+      <text x="567.5" y="28" fill="#14213d" font-size="13">A#</text>
       <rect x="595" y="5" width="50" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="620" y="30" fill="#14213d" font-size="22">SI</text>
+      <text x="620" y="30" fill="#14213d" font-size="22">B</text>
       <rect x="650" y="5" width="45" height="35" rx="4" fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4"/>
-      <text x="672.5" y="30" fill="#14213d" font-size="22">DO</text>
+      <text x="672.5" y="30" fill="#14213d" font-size="22">C</text>
     </g>
     <g fill="none" marker-end="url(#open-arrow)" stroke="#17213a" stroke-linecap="round" stroke-width="1.8">
       <path d="M30 58 H132"/>

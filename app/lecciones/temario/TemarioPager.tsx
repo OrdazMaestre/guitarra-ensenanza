@@ -16,34 +16,79 @@ export default function TemarioPager({ next, previous }: TemarioPagerProps) {
   }
 
   return (
-    <nav className="mt-16 flex items-center justify-between gap-4 text-sm sm:mt-20 sm:text-base" aria-label="Paginas del temario">
-      <div className="min-w-0 flex-1">
+    <nav className="temario-pager" aria-label="Paginas del temario">
+      <div className="temario-pager-side">
         {previous ? (
           <Link
             href={previous.href}
-            className="inline-flex max-w-full flex-col text-left text-zinc-950 no-underline transition hover:text-emerald-700"
+            aria-label={`Pagina anterior: ${previous.label}`}
+            className="temario-pager-link"
           >
-            <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-              Pagina anterior
-            </span>
-            <span className="mt-1 truncate text-lg font-black">{previous.label}</span>
+            <span aria-hidden="true">←</span>
           </Link>
         ) : null}
       </div>
 
-      <div className="min-w-0 flex-1 text-right">
+      <div className="temario-pager-side temario-pager-side-next">
         {next ? (
           <Link
             href={next.href}
-            className="inline-flex max-w-full flex-col text-right text-zinc-950 no-underline transition hover:text-emerald-700"
+            aria-label={`Pagina siguiente: ${next.label}`}
+            className="temario-pager-link"
           >
-            <span className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-              Pagina siguiente
-            </span>
-            <span className="mt-1 truncate text-lg font-black">{next.label}</span>
+            <span aria-hidden="true">→</span>
           </Link>
         ) : null}
       </div>
+
+      <style>{`
+        .temario-pager {
+          align-items: center;
+          display: flex;
+          gap: 16px;
+          justify-content: space-between;
+          margin-top: clamp(64px, 9vw, 96px);
+          width: 100%;
+        }
+
+        .temario-pager-side {
+          display: flex;
+          flex: 1 1 0;
+          min-width: 0;
+        }
+
+        .temario-pager-side-next {
+          justify-content: flex-end;
+        }
+
+        .temario-pager-link {
+          align-items: center;
+          border: 2px solid #080808;
+          border-radius: 6px;
+          color: #080808;
+          display: inline-flex;
+          font-size: clamp(28px, 4vw, 38px);
+          font-weight: 950;
+          height: clamp(48px, 8vw, 58px);
+          justify-content: center;
+          line-height: 1;
+          max-width: 100%;
+          text-decoration: none;
+          transition: border-color 160ms ease, color 160ms ease;
+          width: clamp(48px, 8vw, 58px);
+        }
+
+        .temario-pager-link:hover,
+        .temario-pager-link:focus-visible {
+          border-color: #047857;
+          color: #047857;
+        }
+
+        .temario-pager-link:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
+        }
+      `}</style>
     </nav>
   );
 }

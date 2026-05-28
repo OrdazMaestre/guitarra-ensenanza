@@ -98,8 +98,8 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
         <section className="figures-section" aria-labelledby="map-title">
           <header className="section-header">
             <p className="lesson-kicker">Mapa</p>
-            <h2 id="map-title">Todas las notas de Sol Mayor</h2>
-            <p>Al juntarlas vemos claramente que siempre aparecen G, B y D.</p>
+            <h2 id="map-title">Todas las notas dedel acorde mayor</h2>
+            <p>Sol Mayor: G, B y D.</p>
           </header>
           <GChordFretboard />
         </section>
@@ -121,11 +121,12 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
           </p>
           <p>No hace falta tocar las 6 cuerdas a la vez desde el principio.</p>
           <p>Podemos usar solo las 3 cuerdas de arriba.</p>
-          <p>O solo las 3 cuerdas de abajo.</p>
+          <p>O solo las 3 cuerdas de abajo.</p></section><section className="practice-box" aria-label="Ejercicio">
+          <p>Si estamos atentos nos damos cuenta de que son las figuras de todos los acordes mayores básicos.</p>
+          <p>Cada acorde básico está en su propia figura para facilitar tocarlos todos entre los trastes 1 y 5.</p>
         </section>
 
         <section className="theory-link" aria-label="Enlace a teoria">
-          <p>Para entender por que usamos Sol Mayor en las siguientes explicaciones:</p>
           <Link href="/lecciones/temario/escalas">¿Cómo funciona la música y por qué vamos a usar Sol Mayor para el resto de explicaciones?</Link>
         </section>
       </article>

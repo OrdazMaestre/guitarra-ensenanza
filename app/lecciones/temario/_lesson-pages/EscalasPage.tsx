@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -8,19 +9,21 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
       <article className="scales-content">
         <header className="scales-header">
           <p className="lesson-kicker">Teoria</p>
-          <h1>Escalas</h1>
+          <h1>
+            <Link className="scales-title-link" href="/lecciones/temario/patrones-griegos">
+              Escalas
+            </Link>
+          </h1>
           <div className="short-copy">
             <p>Una escala es un patron de tonos y semitonos.</p>
-            <p>Un tono es como saltar dos medios pasos.</p>
-            <p>Un semitono es el medio paso mas pequeno.</p>
+            <p>Un tono son dos semitonos.</p>
+            <p>Un semitono es la distancia que hay entre los trastes de nuestra guitarra.</p>
           </div>
         </header>
 
         <section className="pattern-section" aria-labelledby="pattern-title">
           <header className="section-header">
             <p className="lesson-kicker">Do Mayor</p>
-            <h2 id="pattern-title">Patron griego</h2>
-            <p>Lo vemos primero en Do Mayor porque no usa alteraciones.</p>
           </header>
           <Image
             className="scale-pattern-image"
@@ -30,10 +33,20 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
             height={127}
           />
           <div className="pattern-box">
-            <strong>Patron griego:</strong>
+            <strong>Escala Mayor:</strong>
             <span>
               1T, 1T, <em>T/2</em>, 1T, 1T, 1T, <em>T/2</em>
             </span>
+          </div>
+          <div className="pattern-box">
+            <strong>Escala menor:</strong>
+            <span>
+              1T, <em>T/2</em>, 1T, 1T, <em>T/2</em>, 1T, 1T
+            </span>
+            <p>Igual que la escala Mayor pero empezando desde DOS NOTAS ANTES.</p>
+            <p><strong>Do Mayor: C, D, E, F, G, A, B.</strong></p>
+            <p><strong>La Menor: A, B, C, D, E, F, G.</strong></p>
+            <p>Como usan las mismas notas, decimos que La menor es el RELATIVO MENOR de Do Mayor</p>
           </div>
         </section>
 
@@ -41,28 +54,26 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <h2>¿Que notas hay entre medias?</h2>
           <p>Los cuadrados amarillos son las alteraciones.</p>
           <p>Las alteraciones son los bemoles (b) y los sostenidos (#).</p>
-          <p>Bemol es la nota anterior.</p>
-          <p>Sostenido es la nota siguiente.</p>
-          <p>Entre Do y Re vive Do#.</p>
-          <p>Tambien se puede llamar Reb.</p>
+          <p>Bemol es la nota anterior - Sostenido es la nota siguiente.</p>
+          <p>La nota entre Do y Re es Do# y Reb a la vez.</p>
         </section>
 
         <section className="g-major-box" aria-label="Por que usamos Sol Mayor">
-          <h2>Sol Mayor nos viene muy bien</h2>
-          <p>Do Mayor y La menor son las unicas escalas sin alteraciones.</p>
-          <p>Pero nuestra guitarra esta afinada en Mi estandar.</p>
-          <p>Por eso usaremos mucho la escala de Sol Mayor.</p>
-          <p>Sol Mayor se parece mucho a Mi menor.</p>
-          <p>Y Mi menor aparece de forma muy facil en la guitarra.</p>
+          <h2>Do Mayor vs Sol Mayor</h2>
+          <p>Do Mayor y La menor son las unicas escalas SIN alteraciones.</p>
+          <p>Pero nuestra guitarra esta afinada en Mi estandar y no tenemos Do en las cuerdas al aire.</p>
+          <p>Por eso usaremos mucho más la escala de Sol Mayor y Mi menor.</p>
+          <p>Usan las mismas notas pero una da protagonismo a Sol y la otra a Mi.</p>
           <p>
             La unica alteracion de <strong>G Mayor</strong> y <strong>E menor</strong> es <strong>F#</strong>.
           </p>
         </section>
 
         <section className="memory-box" aria-label="Dato importante">
-          <p>Dato para recordar:</p>
+          <p>Datos para recordar:</p>
+          <p>Hay 12 notas y tenemos 12 trastes.</p>
           <p>El traste 12 tiene las mismas notas que las cuerdas al aire.</p>
-          <p>Solo suena mas agudo.</p>
+          <p>Solo suenan mas agudo.</p>
         </section>
       </article>
 
@@ -120,6 +131,24 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           margin: 0;
           overflow-wrap: break-word;
           text-transform: uppercase;
+        }
+
+        .scales-title-link {
+          color: inherit;
+          display: inline-block;
+          max-width: 100%;
+          text-underline-offset: 0.12em;
+          transition: color 180ms ease, text-decoration-color 180ms ease;
+        }
+
+        .scales-title-link:hover,
+        .scales-title-link:focus-visible {
+          text-decoration: underline;
+        }
+
+        .scales-title-link:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 8px;
         }
 
         .section-header h2,
