@@ -111,19 +111,19 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
         <section className="lesson-close" aria-label="Resumen">
           <p>Estamos aprendiendo a mezclar acordes y punteo.</p>
           <p>Despues del segundo estribillo hay un solo de guitarra.</p>
-          <p>Y durante el último estribillo hay un punteo muy chulo que acompaña a la voz.</p>
+          <p>Otra guitarra hace un punteo muy chulo acompañando a la voz durante el último estribillo.</p>
           <a href="https://www.youtube.com/watch?v=BTDLIG0RbMQ" target="_blank" rel="noreferrer">
             CANCION COMPLETA
           </a>
         </section>
 
         <section className="lesson-close" aria-label="Resumen">
-          <p>En las siguientes paginas lo aprenderemos poco a poco.</p>
+          <p>En las siguientes paginas aprenderemos a hacer esos arreglos poco a poco.</p>
           <a href="https://www.youtube.com/watch?v=E1qyF7KqTao&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=4" target="_blank" rel="noreferrer">
             TUTORIAL COMPLETO CON GUITARRA
           </a>
           <a href="https://www.youtube.com/watch?v=y9rxnsSQB6s" target="_blank" rel="noreferrer">
-            VERSIÓN PRO FREESTYLE + FINGERSTYLE
+            VERSIÓN MUY PRO FREESTYLE + FINGERSTYLE
           </a>
         </section>
       </article>

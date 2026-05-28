@@ -8,6 +8,7 @@ import EscalasPage from '../_lesson-pages/EscalasPage';
 import FigurasAcordesPage from '../_lesson-pages/FigurasAcordesPage';
 import LetItBeConAcordesPage from '../_lesson-pages/LetItBeConAcordesPage';
 import NotacionMusicalPage from '../_lesson-pages/NotacionMusicalPage';
+import PentatonicaPage from '../_lesson-pages/PentatonicaPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
 import TablaturasDosCuerdasPage from '../_lesson-pages/TablaturasDosCuerdasPage';
 import TablaturasPage from '../_lesson-pages/TablaturasPage';
@@ -40,6 +41,30 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
         previous={{
           href: '/lecciones/temario/escalas',
           label: 'Escalas',
+        }}
+      />
+    );
+  }
+
+  if (slug === 'ejercicios-pentatonica') {
+    return (
+      <PlaceholderLessonPage
+        title="Ejercicios de pentatonica"
+        previous={{
+          href: '/lecciones/temario/pentatonica',
+          label: 'Pentatonica',
+        }}
+      />
+    );
+  }
+
+  if (slug === 'pentatonica-blues') {
+    return (
+      <PlaceholderLessonPage
+        title="Pentatonica de blues"
+        previous={{
+          href: '/lecciones/temario/pentatonica',
+          label: 'Pentatonica',
         }}
       />
     );
@@ -104,6 +129,10 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'figuras-de-acordes') {
     return <FigurasAcordesPage {...lessonProps} />;
+  }
+
+  if (slug === 'pentatonica') {
+    return <PentatonicaPage {...lessonProps} />;
   }
 
   if (slug === 'escalas') {

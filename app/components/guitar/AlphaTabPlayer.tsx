@@ -37,9 +37,18 @@ const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
-const POINTER_SELECTION_EVENT_OFFSET = 1;
-const CURSOR_VISUAL_EVENT_OFFSET = -1;
-const FIRST_BAR_BEAT_CURSOR_X_OFFSET = 15;
+const CURSOR_LINE_WIDTH = 3;
+const ANNOTATED_BAR_BASE_WIDTH = 72;
+const ANNOTATED_BAR_TEXT_WIDTH = 7.5;
+const ANNOTATED_BAR_BEAT_WIDTH = 28;
+const ANNOTATED_BAR_NOTE_WIDTH = 6;
+const TIMING_EPSILON = 0.001;
+const DEFAULT_METRONOME_SUBDIVISION: MetronomeSubdivision = 'quarter';
+const METRONOME_SUBDIVISION_QUARTERS: Record<MetronomeSubdivision, number> = {
+  eighth: 0.5,
+  quarter: 1,
+  sixteenth: 0.25,
+};
 let selectedKeyboardPlayerId: symbol | null = null;
 let currentPlayingPlayerId: symbol | null = null;
 let stopCurrentPlayingPlayer: (() => void) | null = null;
@@ -72,6 +81,33 @@ interface CursorBox {
   visible: boolean;
   x: number;
   y: number;
+}
+
+interface BeatBoundsLike {
+  barBounds: {
+    masterBarBounds: {
+      realBounds: {
+        h: number;
+        w: number;
+        x: number;
+        y: number;
+      };
+    };
+  };
+  notes?: Array<{
+    noteHeadBounds: {
+      w: number;
+      x: number;
+    };
+  }> | null;
+  onNotesX: number;
+  realBounds: {
+    w: number;
+    x: number;
+  };
+  visualBounds: {
+    x: number;
+  };
 }
 
 interface HighlightBox {
@@ -178,15 +214,33 @@ interface AlphaTabBeatLike {
   id: number;
   isPalmMute: boolean;
   isRest: boolean;
+  lyrics?: string[] | null;
   notes: AlphaTabNoteLike[];
+  text?: string | null;
   tupletDenominator: number;
   tupletNumerator: number;
 }
 
 interface AlphaTabScoreLike {
+  masterBars?: Array<{
+    displayWidth?: number;
+    section?: {
+      marker?: string;
+      text?: string;
+    } | null;
+  }>;
   tracks: Array<{
     staves: Array<{
       bars: Array<{
+        displayWidth?: number;
+        index?: number;
+        masterBar?: {
+          displayWidth?: number;
+          section?: {
+            marker?: string;
+            text?: string;
+          } | null;
+        };
         voices: Array<{
           beats: AlphaTabBeatLike[];
         }>;
@@ -201,6 +255,12 @@ interface IconButtonProps {
   label: string;
   onClick: () => void;
   children: ReactNode;
+}
+
+type MetronomeSubdivision = 'eighth' | 'quarter' | 'sixteenth';
+
+interface NoteIconProps {
+  size?: number;
 }
 
 function IconButton({ active = false, disabled = false, label, onClick, children }: IconButtonProps) {
@@ -253,6 +313,58 @@ function MetronomeIcon() {
       <path d="M12 7l4 7" />
     </svg>
   );
+}
+
+function MutedMetronomeIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M8 21h8" />
+      <path d="M6 21l4-18h4l4 18" />
+      <path d="M4 4l16 16" />
+    </svg>
+  );
+}
+
+function QuarterNoteIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="currentColor">
+      <ellipse cx="8" cy="18" rx="4.2" ry="3" transform="rotate(-22 8 18)" />
+      <rect x="11.4" y="4" width="2.2" height="14" rx="1" />
+    </svg>
+  );
+}
+
+function EighthNoteIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="currentColor">
+      <ellipse cx="7.5" cy="18" rx="4" ry="2.9" transform="rotate(-22 7.5 18)" />
+      <rect x="10.8" y="4" width="2.2" height="14" rx="1" />
+      <path d="M12.4 4c4.3 1 6.5 3.4 6.5 7.1c0 1.3-.4 2.5-1.1 3.6c-.3.4-.9.2-.9-.3c.1-2.8-1.4-4.6-4.5-5.5z" />
+    </svg>
+  );
+}
+
+function SixteenthNoteIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="currentColor">
+      <ellipse cx="7.2" cy="18.2" rx="3.9" ry="2.8" transform="rotate(-22 7.2 18.2)" />
+      <rect x="10.4" y="3.7" width="2.2" height="14.2" rx="1" />
+      <path d="M12 3.9c4.4.9 6.6 3.1 6.6 6.7c0 1.1-.3 2.1-.8 3c-.3.5-1 .3-1-.3c.1-2.4-1.5-4-4.8-4.8z" />
+      <path d="M12 8.3c3.8.8 5.8 2.9 5.8 6.2c0 1-.3 1.9-.8 2.8c-.3.5-1 .3-1-.3c.1-2.1-1.2-3.5-4-4.3z" />
+    </svg>
+  );
+}
+
+function MetronomeSubdivisionIcon({ subdivision, size = 32 }: NoteIconProps & { subdivision: MetronomeSubdivision }) {
+  if (subdivision === 'sixteenth') {
+    return <SixteenthNoteIcon size={size} />;
+  }
+
+  if (subdivision === 'eighth') {
+    return <EighthNoteIcon size={size} />;
+  }
+
+  return <QuarterNoteIcon size={size} />;
 }
 
 function parseRepeatCount(value: string | undefined) {
@@ -392,6 +504,61 @@ function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
   return ((60 / bpm) * event.quarterNotes) / speed;
 }
 
+function getBarAnnotationText(bar: AlphaTabScoreLike['tracks'][number]['staves'][number]['bars'][number], score: AlphaTabScoreLike) {
+  const textParts: string[] = [];
+  const masterBar = bar.masterBar ?? (typeof bar.index === 'number' ? score.masterBars?.[bar.index] : undefined);
+  if (masterBar?.section) {
+    textParts.push(masterBar.section.marker ?? '', masterBar.section.text ?? '');
+  }
+
+  for (const voice of bar.voices) {
+    for (const beat of voice.beats) {
+      textParts.push(beat.text ?? '', ...(beat.lyrics ?? []));
+    }
+  }
+
+  return textParts.filter(Boolean).join(' ');
+}
+
+function getAnnotatedBarWidth(bar: AlphaTabScoreLike['tracks'][number]['staves'][number]['bars'][number], score: AlphaTabScoreLike) {
+  const beats = bar.voices.flatMap((voice) => voice.beats);
+  const annotationText = getBarAnnotationText(bar, score);
+  if (!annotationText) {
+    return null;
+  }
+
+  const playableBeats = beats.filter((beat) => !beat.isRest && beat.notes.length > 0).length;
+  const noteCount = beats.reduce((total, beat) => total + beat.notes.length, 0);
+  const longestAnnotation = annotationText
+    .split(/\s+/)
+    .reduce((longest, part) => Math.max(longest, part.length), annotationText.length);
+
+  return Math.ceil(
+    ANNOTATED_BAR_BASE_WIDTH +
+      Math.max(annotationText.length, longestAnnotation + 8) * ANNOTATED_BAR_TEXT_WIDTH +
+      playableBeats * ANNOTATED_BAR_BEAT_WIDTH +
+      noteCount * ANNOTATED_BAR_NOTE_WIDTH
+  );
+}
+
+function applyAnnotatedHorizontalBarWidths(score: AlphaTabScoreLike) {
+  for (const track of score.tracks) {
+    for (const staff of track.staves) {
+      for (const bar of staff.bars) {
+        const annotatedWidth = getAnnotatedBarWidth(bar, score);
+        if (annotatedWidth === null) {
+          continue;
+        }
+
+        bar.displayWidth = Math.max(bar.displayWidth ?? 0, annotatedWidth);
+        if (bar.masterBar) {
+          bar.masterBar.displayWidth = Math.max(bar.masterBar.displayWidth ?? 0, annotatedWidth);
+        }
+      }
+    }
+  }
+}
+
 export default function AlphaTabPlayer({
   compact = false,
   initialSpeed = DEFAULT_SPEED,
@@ -413,6 +580,7 @@ export default function AlphaTabPlayer({
   const guitarSamplesRef = useRef<LoadedGuitarSample[] | null>(null);
   const isPlayingRef = useRef(false);
   const keyboardActionRef = useRef<() => void>(() => {});
+  const metronomeSubdivisionRef = useRef<MetronomeSubdivision>(DEFAULT_METRONOME_SUBDIVISION);
   const metronomeRef = useRef(DEFAULT_METRONOME);
   const playbackScrollPendingRef = useRef(false);
   const pointerDragHandleRef = useRef<'end' | 'start' | null>(null);
@@ -429,6 +597,8 @@ export default function AlphaTabPlayer({
   const bpm = useMemo(() => (tab ? parseTempo(tab) : DEFAULT_BPM), [tab]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [metronome, setMetronome] = useState(DEFAULT_METRONOME);
+  const [metronomeMenuOpen, setMetronomeMenuOpen] = useState(false);
+  const [metronomeSubdivision, setMetronomeSubdivision] = useState<MetronomeSubdivision>(DEFAULT_METRONOME_SUBDIVISION);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [speed, setSpeed] = useState(initialSpeed);
   const [startEventIndex, setStartEventIndex] = useState(0);
@@ -441,7 +611,29 @@ export default function AlphaTabPlayer({
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
   const [tabScrollLeft, setTabScrollLeft] = useState(0);
 
-  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, xOffset = 0, shouldScroll = false) {
+  function getTabContainerPadding() {
+    if (!containerRef.current) {
+      return { left: 0, top: 0 };
+    }
+
+    const styles = window.getComputedStyle(containerRef.current);
+    return {
+      left: Number.parseFloat(styles.paddingLeft) || 0,
+      top: Number.parseFloat(styles.paddingTop) || 0,
+    };
+  }
+
+  function getCursorXFromBeatBounds(beatBounds: BeatBoundsLike) {
+    const noteBounds = beatBounds.notes?.map((note) => note.noteHeadBounds).filter((bounds) => bounds.w > 0);
+    if (noteBounds?.length) {
+      const noteCenter = noteBounds.reduce((sum, bounds) => sum + bounds.x + bounds.w / 2, 0) / noteBounds.length;
+      return noteCenter;
+    }
+
+    return beatBounds.onNotesX || beatBounds.visualBounds.x || beatBounds.realBounds.x;
+  }
+
+  function placeCursorForBeat(beat: AlphaTabBeatLike | undefined, shouldScroll = false) {
     const boundsLookup = apiRef.current?.boundsLookup;
     if (!beat || !boundsLookup) {
       return;
@@ -455,12 +647,13 @@ export default function AlphaTabPlayer({
     }
 
     const barBounds = beatBounds.barBounds.masterBarBounds.realBounds;
-    const padding = 24;
+    const padding = getTabContainerPadding();
+    const cursorX = getCursorXFromBeatBounds(beatBounds);
     const nextBox = {
       height: Math.max(40, barBounds.h),
       visible: true,
-      x: Math.max(0, beatBounds.onNotesX || beatBounds.realBounds.x) + padding + xOffset,
-      y: Math.max(0, barBounds.y) + padding,
+      x: Math.max(0, cursorX + padding.left - CURSOR_LINE_WIDTH / 2),
+      y: Math.max(0, barBounds.y) + padding.top,
     };
     setCursorBox({
       height: nextBox.height,
@@ -595,6 +788,9 @@ export default function AlphaTabPlayer({
     isPlayingRef.current = false;
     clearGlobalPlaybackIfCurrent();
     setMetronome(DEFAULT_METRONOME);
+    setMetronomeMenuOpen(false);
+    setMetronomeSubdivision(DEFAULT_METRONOME_SUBDIVISION);
+    metronomeSubdivisionRef.current = DEFAULT_METRONOME_SUBDIVISION;
     metronomeRef.current = DEFAULT_METRONOME;
     setVolume(DEFAULT_VOLUME);
     volumeRef.current = DEFAULT_VOLUME;
@@ -650,6 +846,10 @@ export default function AlphaTabPlayer({
 
     apiRef.current = api;
     const offScoreLoaded = api.scoreLoaded.on((score) => {
+      if (layout === 'horizontal') {
+        applyAnnotatedHorizontalBarWidths(score as AlphaTabScoreLike);
+      }
+
       const scoreEvents = buildEventsFromScore(score as AlphaTabScoreLike);
       if (scoreEvents.length === 0) {
         return;
@@ -858,14 +1058,8 @@ export default function AlphaTabPlayer({
   }
 
   function placeCursorForEvent(index: number, shouldScroll = false) {
-    const visualIndex = Math.min(events.length - 1, Math.max(0, index + CURSOR_VISUAL_EVENT_OFFSET));
-    const event = events[visualIndex];
-    const selectedEvent = events[index];
-    placeCursorForBeat(
-      event?.beat,
-      selectedEvent?.isFirstPlayableBeatOfBar ? FIRST_BAR_BEAT_CURSOR_X_OFFSET : 0,
-      shouldScroll
-    );
+    const event = events[index];
+    placeCursorForBeat(event?.beat, shouldScroll);
   }
 
   function getBeatBounds(index: number) {
@@ -887,13 +1081,14 @@ export default function AlphaTabPlayer({
       return undefined;
     }
 
-    const padding = 24;
+    const padding = getTabContainerPadding();
     const barBounds = beatBounds.barBounds.masterBarBounds.realBounds;
+    const cursorX = getCursorXFromBeatBounds(beatBounds);
     return {
       height: Math.max(40, barBounds.h),
       width: Math.max(10, beatBounds.realBounds.w || 14),
-      x: Math.max(0, beatBounds.onNotesX || beatBounds.realBounds.x) + padding,
-      y: Math.max(0, barBounds.y) + padding,
+      x: Math.max(0, cursorX + padding.left - CURSOR_LINE_WIDTH / 2),
+      y: Math.max(0, barBounds.y) + padding.top,
     };
   }
 
@@ -1006,31 +1201,39 @@ export default function AlphaTabPlayer({
     }
   }
 
-  function getEventIndexFromPointer(event: PointerEvent<HTMLElement>, offset = 0) {
+  function getEventIndexFromPointer(event: PointerEvent<HTMLElement>) {
     if (!containerRef.current) return undefined;
-
-    const boundsLookup = apiRef.current?.boundsLookup;
-    if (!boundsLookup) return undefined;
 
     const rect = containerRef.current.getBoundingClientRect();
     const scrollPosition = getTabScrollPosition();
-    const padding = 24;
-    const x = event.clientX - rect.left + scrollPosition.left;
-    const y = event.clientY - rect.top + scrollPosition.top;
-    const beat =
-      boundsLookup.getBeatAtPos(x - padding, y - padding) ??
-      boundsLookup.getBeatAtPos(x, y);
+    const padding = getTabContainerPadding();
+    const x = event.clientX - rect.left + scrollPosition.left - padding.left;
+    const y = event.clientY - rect.top + scrollPosition.top - padding.top;
+    const candidates = events
+      .map((_, eventIndex) => {
+        const beatBounds = getBeatBounds(eventIndex);
+        if (!beatBounds) {
+          return undefined;
+        }
 
-    const eventIndex = beat ? beatToEventIndexRef.current.get(beat.id) : undefined;
-    if (eventIndex === undefined) {
-      return undefined;
-    }
+        const barBounds = beatBounds.barBounds.masterBarBounds.realBounds;
+        const verticalDistance =
+          y < barBounds.y ? barBounds.y - y : y > barBounds.y + barBounds.h ? y - (barBounds.y + barBounds.h) : 0;
 
-    if (eventIndex === 0 && offset > 0) {
-      return 0;
-    }
+        if (verticalDistance > 28) {
+          return undefined;
+        }
 
-    return Math.min(events.length - 1, Math.max(0, eventIndex + offset));
+        const centerX = getCursorXFromBeatBounds(beatBounds);
+        return {
+          eventIndex,
+          score: Math.abs(x - centerX) + verticalDistance * 8,
+        };
+      })
+      .filter((candidate): candidate is { eventIndex: number; score: number } => candidate !== undefined)
+      .sort((a, b) => a.score - b.score);
+
+    return candidates[0]?.eventIndex;
   }
 
   function applyLoopSelection(startIndex: number, endIndex: number) {
@@ -1131,7 +1334,7 @@ export default function AlphaTabPlayer({
             x: event.clientX,
             y: event.clientY,
           };
-    pointerStartIndexRef.current = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET) ?? null;
+    pointerStartIndexRef.current = getEventIndexFromPointer(event) ?? null;
   }
 
   function endPointerSelection(event: PointerEvent<HTMLDivElement>) {
@@ -1149,7 +1352,7 @@ export default function AlphaTabPlayer({
     }
 
     const pointerStartIndex = pointerStartIndexRef.current;
-    const pointerEndIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
+    const pointerEndIndex = getEventIndexFromPointer(event);
     pointerStartIndexRef.current = null;
 
     if (pointerStartIndex === null || pointerEndIndex === undefined) {
@@ -1180,7 +1383,7 @@ export default function AlphaTabPlayer({
     if (isPlayingRef.current || pointerStartIndexRef.current === null) return;
     event.preventDefault();
 
-    const pointerEndIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
+    const pointerEndIndex = getEventIndexFromPointer(event);
     if (pointerEndIndex !== undefined) {
       setLoopHighlightBoxes(buildLoopHighlightBoxes(pointerStartIndexRef.current, pointerEndIndex));
     }
@@ -1199,7 +1402,7 @@ export default function AlphaTabPlayer({
     event.preventDefault();
     event.stopPropagation();
 
-    const eventIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
+    const eventIndex = getEventIndexFromPointer(event);
     if (eventIndex === undefined) {
       return;
     }
@@ -1378,6 +1581,30 @@ export default function AlphaTabPlayer({
     activeSourcesRef.current.push(noiseSource, bodySource);
   }
 
+  function scheduleMetronomeClicks(
+    context: AudioContext,
+    eventStartQuarter: number,
+    startTime: number,
+    eventDuration: number,
+    eventQuarterNotes: number
+  ) {
+    if (!metronomeRef.current) return;
+
+    const eventEndQuarter = eventStartQuarter + eventQuarterNotes;
+    const subdivisionQuarterNotes = METRONOME_SUBDIVISION_QUARTERS[metronomeSubdivisionRef.current];
+    const secondsPerQuarter = (60 / bpm) / speedRef.current;
+    const firstTickIndex = Math.ceil((eventStartQuarter - TIMING_EPSILON) / subdivisionQuarterNotes);
+    const lastTickIndex = Math.floor((eventEndQuarter - TIMING_EPSILON) / subdivisionQuarterNotes);
+
+    for (let tickIndex = firstTickIndex; tickIndex <= lastTickIndex; tickIndex++) {
+      const tickQuarter = tickIndex * subdivisionQuarterNotes;
+      const offsetSeconds = (tickQuarter - eventStartQuarter) * secondsPerQuarter;
+      if (offsetSeconds >= -TIMING_EPSILON && offsetSeconds < eventDuration + TIMING_EPSILON) {
+        playMetronomeClick(context, startTime + Math.max(0, offsetSeconds));
+      }
+    }
+  }
+
   async function startLocalPlayback() {
     if (events.length === 0) {
       return;
@@ -1421,9 +1648,7 @@ export default function AlphaTabPlayer({
     placeCursorForEvent(index, playbackScrollPendingRef.current);
     playbackScrollPendingRef.current = false;
 
-    if (metronomeRef.current && Math.abs(eventStartQuarter - Math.round(eventStartQuarter)) < 0.001) {
-      playMetronomeClick(context, startTime);
-    }
+    scheduleMetronomeClicks(context, eventStartQuarter, startTime, eventDuration, event.quarterNotes);
 
     const audibleNotes = event.notes;
 
@@ -1457,10 +1682,22 @@ export default function AlphaTabPlayer({
     stopLocalPlayback();
   }
 
-  function toggleMetronome() {
-    const next = !metronomeRef.current;
-    metronomeRef.current = next;
-    setMetronome(next);
+  function toggleMetronomeMenu() {
+    setMetronomeMenuOpen((isOpen) => !isOpen);
+  }
+
+  function disableMetronome() {
+    metronomeRef.current = false;
+    setMetronome(false);
+    setMetronomeMenuOpen(false);
+  }
+
+  function selectMetronomeSubdivision(subdivision: MetronomeSubdivision) {
+    metronomeSubdivisionRef.current = subdivision;
+    metronomeRef.current = true;
+    setMetronomeSubdivision(subdivision);
+    setMetronome(true);
+    setMetronomeMenuOpen(false);
   }
 
   function updateVolume(value: number) {
@@ -1474,16 +1711,83 @@ export default function AlphaTabPlayer({
   }
 
   return (
-    <div className={`max-w-full overflow-hidden border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
+    <div className={`max-w-full overflow-visible border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
       <div className={`${compact ? 'flex justify-center px-1 pb-2' : 'sticky top-3 z-[100] flex justify-center px-1 pb-4'}`}>
         <div className={`flex flex-wrap items-center justify-center border border-zinc-700 bg-zinc-950/95 shadow-xl backdrop-blur ${compact ? 'gap-2 px-2 py-2' : 'gap-4 px-4 py-3'}`}>
           <div className="flex items-center justify-center gap-2">
-          <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
-            {isPlaying ? <StopIcon /> : <PlayIcon />}
-          </IconButton>
-          <IconButton label="Metronomo" active={metronome} onClick={toggleMetronome}>
-            <MetronomeIcon />
-          </IconButton>
+            <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
+              {isPlaying ? <StopIcon /> : <PlayIcon />}
+            </IconButton>
+            <div className="relative flex items-center gap-2">
+              <IconButton label="Configurar metronomo" active={metronome || metronomeMenuOpen} onClick={toggleMetronomeMenu}>
+                <span className="relative flex h-8 w-8 items-center justify-center">
+                  <MetronomeIcon />
+                  {metronome && (
+                    <span className="absolute -bottom-2 -right-2 flex h-5 w-5 items-center justify-center bg-emerald-300 text-zinc-950">
+                      <MetronomeSubdivisionIcon subdivision={metronomeSubdivision} size={18} />
+                    </span>
+                  )}
+                </span>
+              </IconButton>
+              {metronomeMenuOpen && (
+                <div
+                  className="absolute right-0 top-[calc(100%+0.5rem)] z-[130] flex w-[52px] flex-col items-stretch gap-1 border border-zinc-600 bg-zinc-950 p-1 shadow-2xl"
+                  role="menu"
+                  aria-label="Opciones del metronomo"
+                >
+                  <button
+                    type="button"
+                    aria-label="Apagar metronomo"
+                    title="Apagar metronomo"
+                    className={`flex h-11 w-11 items-center justify-center border ${
+                      metronome ? 'border-zinc-600 bg-zinc-900 text-zinc-200' : 'border-emerald-300 bg-emerald-300 text-zinc-950'
+                    }`}
+                    onClick={disableMetronome}
+                  >
+                    <MutedMetronomeIcon size={35} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Metronomo en negras"
+                    title="Metronomo en negras"
+                    className={`flex h-11 w-11 items-center justify-center border ${
+                      metronome && metronomeSubdivision === 'quarter'
+                        ? 'border-emerald-300 bg-emerald-300 text-zinc-950'
+                        : 'border-zinc-600 bg-zinc-900 text-zinc-200'
+                    }`}
+                    onClick={() => selectMetronomeSubdivision('quarter')}
+                  >
+                    <QuarterNoteIcon size={37} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Metronomo en corcheas"
+                    title="Metronomo en corcheas"
+                    className={`flex h-11 w-11 items-center justify-center border ${
+                      metronome && metronomeSubdivision === 'eighth'
+                        ? 'border-emerald-300 bg-emerald-300 text-zinc-950'
+                        : 'border-zinc-600 bg-zinc-900 text-zinc-200'
+                    }`}
+                    onClick={() => selectMetronomeSubdivision('eighth')}
+                  >
+                    <EighthNoteIcon size={37} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Metronomo en semicorcheas"
+                    title="Metronomo en semicorcheas"
+                    className={`flex h-11 w-11 items-center justify-center border ${
+                      metronome && metronomeSubdivision === 'sixteenth'
+                        ? 'border-emerald-300 bg-emerald-300 text-zinc-950'
+                        : 'border-zinc-600 bg-zinc-900 text-zinc-200'
+                    }`}
+                    onClick={() => selectMetronomeSubdivision('sixteenth')}
+                  >
+                    <SixteenthNoteIcon size={37} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-200">

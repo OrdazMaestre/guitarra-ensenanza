@@ -25,8 +25,8 @@ export default function TemarioPage() {
             </h1>
             <p className="cover-author">por: Enrique Ordaz</p>
             <p className="cover-intro">
-              Un recorrido visual y practico con explicaciones sencillas de entender, ejercicios cortos y</p><p className="cover-intro">posibilidad (sin obligación) de profundizar en contenidos.
-            </p>
+              Un recorrido visual y practico con explicaciones sencillas de entender, ejercicios cortos y</p>
+              <p>posibilidad (sin obligación) de profundizar en contenidos.</p>
           </div>
         </div>
 

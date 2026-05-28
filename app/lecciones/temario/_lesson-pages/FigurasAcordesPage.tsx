@@ -97,18 +97,15 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
 
         <section className="figures-section" aria-labelledby="map-title">
           <header className="section-header">
-            <p className="lesson-kicker">Mapa</p>
-            <h2 id="map-title">Todas las notas dedel acorde mayor</h2>
-            <p>Sol Mayor: G, B y D.</p>
+            <h2 id="map-title">Notas del acorde de sol mayor</h2>
+            <p>G, B y D.</p>
           </header>
           <GChordFretboard />
         </section>
 
         <section className="figures-section" aria-labelledby="five-figures-title">
           <header className="section-header">
-            <p className="lesson-kicker">Cinco zonas</p>
             <h2 id="five-figures-title">5 figuras para el mismo acorde</h2>
-            <p>Son 5 dibujos para movernos por el mastil sin perdernos.</p>
           </header>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={210} source="/tabs/figuras-tri.gp" title="Figuras triada" />
