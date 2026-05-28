@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent, ReactNode } from 'react';
+import type { PointerEvent, ReactNode } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
@@ -77,6 +77,12 @@ interface CursorBox {
 interface HighlightBox {
   height: number;
   width: number;
+  x: number;
+  y: number;
+}
+
+interface LoopHandleBox {
+  side: 'end' | 'start';
   x: number;
   y: number;
 }
@@ -409,7 +415,10 @@ export default function AlphaTabPlayer({
   const keyboardActionRef = useRef<() => void>(() => {});
   const metronomeRef = useRef(DEFAULT_METRONOME);
   const playbackScrollPendingRef = useRef(false);
+  const pointerDragHandleRef = useRef<'end' | 'start' | null>(null);
   const pointerStartIndexRef = useRef<number | null>(null);
+  const pointerSuppressUpRef = useRef(false);
+  const pointerTapRef = useRef<{ index: number; time: number; x: number; y: number } | null>(null);
   const playTimerRef = useRef<number | null>(null);
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const speedRef = useRef(initialSpeed);
@@ -424,6 +433,7 @@ export default function AlphaTabPlayer({
   const [speed, setSpeed] = useState(initialSpeed);
   const [startEventIndex, setStartEventIndex] = useState(0);
   const [loopEndIndex, setLoopEndIndex] = useState<number | null>(null);
+  const [loopHandleBoxes, setLoopHandleBoxes] = useState<LoopHandleBox[]>([]);
   const [loopStartIndex, setLoopStartIndex] = useState<number | null>(null);
   const [cursorBox, setCursorBox] = useState<CursorBox>({ height: 0, visible: false, x: 0, y: 0 });
   const [events, setEvents] = useState<TabEvent[]>(fallbackEvents);
@@ -516,6 +526,18 @@ export default function AlphaTabPlayer({
     return nextElement;
   }
 
+  function getTabScrollPosition() {
+    const scrollFrame = bindTabScrollElement();
+    const left = scrollFrame?.scrollLeft ?? containerRef.current?.scrollLeft ?? 0;
+    const top = scrollFrame?.scrollTop ?? containerRef.current?.scrollTop ?? 0;
+
+    if (left !== tabScrollLeft) {
+      setTabScrollLeft(left);
+    }
+
+    return { left, top };
+  }
+
   function keepCursorVisibleHorizontally(cursorX: number) {
     const scrollFrame = bindTabScrollElement();
     if (!scrollFrame || scrollFrame.scrollWidth <= scrollFrame.clientWidth) {
@@ -582,6 +604,7 @@ export default function AlphaTabPlayer({
     setLoopEndIndex(null);
     setLoopStartIndex(null);
     setLoopHighlightBoxes([]);
+    setLoopHandleBoxes([]);
     setStringLabelGroups([]);
     setTabScrollLeft(0);
     setCursorBox({ height: 0, visible: false, x: 0, y: 0 });
@@ -642,6 +665,7 @@ export default function AlphaTabPlayer({
       setLoopEndIndex(null);
       setLoopStartIndex(null);
       setLoopHighlightBoxes([]);
+      setLoopHandleBoxes([]);
       window.setTimeout(() => {
         placeCursorForBeat(scoreEvents[0]?.beat);
         bindTabScrollElement();
@@ -844,16 +868,21 @@ export default function AlphaTabPlayer({
     );
   }
 
-  function getBeatBox(index: number) {
+  function getBeatBounds(index: number) {
     const beat = events[index]?.beat;
     const boundsLookup = apiRef.current?.boundsLookup;
     if (!beat || !boundsLookup) {
       return undefined;
     }
 
-    const beatBounds =
+    return (
       boundsLookup.findBeat(beat as unknown as alphaTab.model.Beat) ??
-      boundsLookup.findBeats(beat as unknown as alphaTab.model.Beat)?.[0];
+      boundsLookup.findBeats(beat as unknown as alphaTab.model.Beat)?.[0]
+    );
+  }
+
+  function getBeatBox(index: number) {
+    const beatBounds = getBeatBounds(index);
     if (!beatBounds) {
       return undefined;
     }
@@ -895,6 +924,33 @@ export default function AlphaTabPlayer({
     }
 
     return boxes;
+  }
+
+  function buildLoopHandleBoxes(startIndex: number | null, endIndex: number | null) {
+    if (startIndex === null || endIndex === null) {
+      return [];
+    }
+
+    const nextStart = Math.max(0, Math.min(startIndex, endIndex));
+    const nextEnd = Math.min(events.length - 1, Math.max(startIndex, endIndex));
+    const startBox = getBeatBox(nextStart);
+    const endBox = getBeatBox(nextEnd);
+    if (!startBox || !endBox) {
+      return [];
+    }
+
+    return [
+      {
+        side: 'start' as const,
+        x: Math.max(0, startBox.x + LOOP_VISUAL_X_OFFSET),
+        y: startBox.y + startBox.height / 2,
+      },
+      {
+        side: 'end' as const,
+        x: Math.max(0, endBox.x + LOOP_VISUAL_X_OFFSET + endBox.width),
+        y: endBox.y + endBox.height / 2,
+      },
+    ];
   }
 
   function buildStringLabelGroups(sourceEvents: TabEvent[]) {
@@ -950,16 +1006,17 @@ export default function AlphaTabPlayer({
     }
   }
 
-  function getEventIndexFromPointer(event: MouseEvent<HTMLDivElement>, offset = 0) {
+  function getEventIndexFromPointer(event: PointerEvent<HTMLElement>, offset = 0) {
     if (!containerRef.current) return undefined;
 
     const boundsLookup = apiRef.current?.boundsLookup;
     if (!boundsLookup) return undefined;
 
     const rect = containerRef.current.getBoundingClientRect();
+    const scrollPosition = getTabScrollPosition();
     const padding = 24;
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = event.clientX - rect.left + scrollPosition.left;
+    const y = event.clientY - rect.top + scrollPosition.top;
     const beat =
       boundsLookup.getBeatAtPos(x - padding, y - padding) ??
       boundsLookup.getBeatAtPos(x, y);
@@ -976,7 +1033,59 @@ export default function AlphaTabPlayer({
     return Math.min(events.length - 1, Math.max(0, eventIndex + offset));
   }
 
-  function selectStartFromPointer(event: MouseEvent<HTMLDivElement>) {
+  function applyLoopSelection(startIndex: number, endIndex: number) {
+    const nextStart = Math.max(0, Math.min(startIndex, endIndex));
+    const nextEnd = Math.min(events.length - 1, Math.max(startIndex, endIndex));
+    setStartEventIndex(nextStart);
+    setLoopStartIndex(nextStart);
+    setLoopEndIndex(nextEnd);
+    setLoopHighlightBoxes(buildLoopHighlightBoxes(nextStart, nextEnd));
+    setLoopHandleBoxes(buildLoopHandleBoxes(nextStart, nextEnd));
+    placeCursorForEvent(nextStart);
+  }
+
+  function getBarRangeForEventIndex(index: number) {
+    const targetBeatBounds = getBeatBounds(index);
+    const targetBarBounds = targetBeatBounds?.barBounds.masterBarBounds.realBounds;
+    if (!targetBarBounds) {
+      return { end: index, start: index };
+    }
+
+    const indexes = events
+      .map((_, eventIndex) => {
+        const beatBounds = getBeatBounds(eventIndex);
+        const barBounds = beatBounds?.barBounds.masterBarBounds.realBounds;
+        if (!barBounds) {
+          return undefined;
+        }
+
+        const sameBar =
+          Math.abs(barBounds.x - targetBarBounds.x) < 2 &&
+          Math.abs(barBounds.y - targetBarBounds.y) < 2 &&
+          Math.abs(barBounds.w - targetBarBounds.w) < 2;
+        return sameBar ? eventIndex : undefined;
+      })
+      .filter((eventIndex): eventIndex is number => eventIndex !== undefined);
+
+    if (indexes.length === 0) {
+      return { end: index, start: index };
+    }
+
+    return { end: indexes[indexes.length - 1], start: indexes[0] };
+  }
+
+  function selectBarLoopFromPointer(event: PointerEvent<HTMLElement>) {
+    const eventIndex = getEventIndexFromPointer(event);
+    if (eventIndex === undefined) {
+      return false;
+    }
+
+    const range = getBarRangeForEventIndex(eventIndex);
+    applyLoopSelection(range.start, range.end);
+    return true;
+  }
+
+  function selectStartFromPointer(event: PointerEvent<HTMLElement>) {
     if (isPlayingRef.current) return;
     event.preventDefault();
 
@@ -986,19 +1095,58 @@ export default function AlphaTabPlayer({
       setLoopEndIndex(null);
       setLoopStartIndex(null);
       setLoopHighlightBoxes([]);
+      setLoopHandleBoxes([]);
       placeCursorForEvent(eventIndex);
     }
   }
 
-  function beginPointerSelection(event: MouseEvent<HTMLDivElement>) {
+  function beginPointerSelection(event: PointerEvent<HTMLDivElement>) {
     if (isPlayingRef.current) return;
     event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const eventIndex = getEventIndexFromPointer(event);
+    const now = window.performance.now();
+    const previousTap = pointerTapRef.current;
+    if (
+      eventIndex !== undefined &&
+      previousTap &&
+      previousTap.index === eventIndex &&
+      now - previousTap.time < 380 &&
+      Math.hypot(event.clientX - previousTap.x, event.clientY - previousTap.y) < 34
+    ) {
+      pointerTapRef.current = null;
+      pointerStartIndexRef.current = null;
+      pointerSuppressUpRef.current = true;
+      selectBarLoopFromPointer(event);
+      return;
+    }
+
+    pointerTapRef.current =
+      eventIndex === undefined
+        ? null
+        : {
+            index: eventIndex,
+            time: now,
+            x: event.clientX,
+            y: event.clientY,
+          };
     pointerStartIndexRef.current = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET) ?? null;
   }
 
-  function endPointerSelection(event: MouseEvent<HTMLDivElement>) {
+  function endPointerSelection(event: PointerEvent<HTMLDivElement>) {
     if (isPlayingRef.current) return;
     event.preventDefault();
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // The pointer may already have been released by the browser.
+    }
+
+    if (pointerSuppressUpRef.current) {
+      pointerSuppressUpRef.current = false;
+      return;
+    }
 
     const pointerStartIndex = pointerStartIndexRef.current;
     const pointerEndIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
@@ -1018,15 +1166,17 @@ export default function AlphaTabPlayer({
       setLoopEndIndex(null);
       setLoopStartIndex(null);
       setLoopHighlightBoxes([]);
+      setLoopHandleBoxes([]);
       return;
     }
 
     setLoopStartIndex(nextStart);
     setLoopEndIndex(nextEnd);
     setLoopHighlightBoxes(buildLoopHighlightBoxes(nextStart, nextEnd));
+    setLoopHandleBoxes(buildLoopHandleBoxes(nextStart, nextEnd));
   }
 
-  function updatePointerSelection(event: MouseEvent<HTMLDivElement>) {
+  function updatePointerSelection(event: PointerEvent<HTMLDivElement>) {
     if (isPlayingRef.current || pointerStartIndexRef.current === null) return;
     event.preventDefault();
 
@@ -1034,6 +1184,37 @@ export default function AlphaTabPlayer({
     if (pointerEndIndex !== undefined) {
       setLoopHighlightBoxes(buildLoopHighlightBoxes(pointerStartIndexRef.current, pointerEndIndex));
     }
+  }
+
+  function beginLoopHandleDrag(side: 'end' | 'start', event: PointerEvent<HTMLButtonElement>) {
+    if (isPlayingRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerDragHandleRef.current = side;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function updateLoopHandleDrag(event: PointerEvent<HTMLButtonElement>) {
+    if (isPlayingRef.current || pointerDragHandleRef.current === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const eventIndex = getEventIndexFromPointer(event, POINTER_SELECTION_EVENT_OFFSET);
+    if (eventIndex === undefined) {
+      return;
+    }
+
+    const side = pointerDragHandleRef.current;
+    const nextStart = side === 'start' ? eventIndex : loopStartIndex ?? startEventIndex;
+    const nextEnd = side === 'end' ? eventIndex : loopEndIndex ?? startEventIndex;
+    applyLoopSelection(nextStart, nextEnd);
+  }
+
+  function endLoopHandleDrag(event: PointerEvent<HTMLButtonElement>) {
+    if (pointerDragHandleRef.current === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerDragHandleRef.current = null;
   }
 
   function cleanupGuitarSampleVoice(voice: GuitarSampleVoice) {
@@ -1351,6 +1532,40 @@ export default function AlphaTabPlayer({
             }}
           />
         ))}
+        {loopHandleBoxes.map((handle) => (
+          <button
+            key={handle.side}
+            type="button"
+            aria-label={handle.side === 'start' ? 'Mover inicio del loop' : 'Mover final del loop'}
+            className="absolute"
+            onPointerDown={(event) => beginLoopHandleDrag(handle.side, event)}
+            onPointerMove={updateLoopHandleDrag}
+            onPointerUp={endLoopHandleDrag}
+            onPointerCancel={endLoopHandleDrag}
+            style={{
+              alignItems: 'center',
+              background: handle.side === 'start' ? '#047857' : '#dc2626',
+              border: '3px solid #ffffff',
+              borderRadius: 999,
+              boxShadow: '0 8px 20px rgba(15, 23, 42, 0.28)',
+              color: '#ffffff',
+              cursor: 'grab',
+              display: 'flex',
+              fontSize: 16,
+              fontWeight: 950,
+              height: 42,
+              justifyContent: 'center',
+              left: handle.x - tabScrollLeft - 21,
+              lineHeight: 1,
+              touchAction: 'none',
+              top: handle.y - 21,
+              width: 42,
+              zIndex: 90,
+            }}
+          >
+            {handle.side === 'start' ? '[' : ']'}
+          </button>
+        ))}
         <div
           aria-hidden="true"
           className="pointer-events-none absolute"
@@ -1368,10 +1583,14 @@ export default function AlphaTabPlayer({
         <div
           ref={containerRef}
           className={`alphatab-container cursor-crosshair ${compact ? 'p-3' : 'p-6'}`}
-          style={{ minHeight: minHeight ?? (compact ? 220 : 520) }}
-          onMouseDown={beginPointerSelection}
-          onMouseMove={updatePointerSelection}
-          onMouseUp={endPointerSelection}
+          style={{ minHeight: minHeight ?? (compact ? 220 : 520), touchAction: 'manipulation' }}
+          onPointerDown={beginPointerSelection}
+          onPointerMove={updatePointerSelection}
+          onPointerUp={endPointerSelection}
+          onPointerCancel={() => {
+            pointerStartIndexRef.current = null;
+            pointerSuppressUpRef.current = false;
+          }}
           onScroll={(event) => setTabScrollLeft(event.currentTarget.scrollLeft)}
         />
         {!compact && stringLabelGroups.map((group) =>
