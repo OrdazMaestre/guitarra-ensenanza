@@ -66,7 +66,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                 La guitarra es un instrumento de cuerda: el sonido nace en las cuerdas y el cuerpo lo amplifica.
               </p>
               <p>
-                Las clavijas ayudan a afinar, los trastes ordenan las notas y la boca proyecta el sonido.
+                Con las clavijas afinamos las cuerdas, los trastes ordenan las notas y la boca amplifica el sonido.
               </p>
             </div>
           </section>
@@ -74,12 +74,12 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           <section className="mastil-section">
             <div className="mastil-copy">
               <p className="lesson-kicker">Lo importante</p>
-              <h2>El mastil</h2>
+              <h2>El mástil</h2>
               <p>
-                El mastil es la parte alargada donde colocamos la mano izquierda. En el estan los trastes: los numeros que escribimos en las tablaturas indican en que traste hay que pisar.
+                Aquí colocamos la mano izquierda. Aquí estan los trastes: los trastes son además los numeros que escribimos en las tablaturas indicando qué traste hay que pisar.
               </p>
               <p>
-                Entre dos trastes consecutivos hay medio tono. Cuando avanzamos dos trastes, subimos un tono entero.
+                Entre dos trastes seguidos hay medio tono. Un tono entero es la distancia entre dos trastes seguidos.
               </p>
             </div>
 

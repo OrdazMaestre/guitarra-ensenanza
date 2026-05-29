@@ -116,8 +116,7 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
             <strong>Ejercicio:</strong> practicar la progresion de acordes de arriba.
           </p>
           <p>No hace falta tocar las 6 cuerdas a la vez desde el principio.</p>
-          <p>Podemos usar solo las 3 cuerdas de arriba.</p>
-          <p>O solo las 3 cuerdas de abajo.</p></section><section className="practice-box" aria-label="Ejercicio">
+          <p>Podemos usar solo las 3 cuerdas de arriba o solo las 3 cuerdas de abajo.</p></section><section className="practice-box" aria-label="Ejercicio">
           <p>Si estamos atentos nos damos cuenta de que son las figuras de todos los acordes mayores básicos.</p>
           <p>Cada acorde básico está en su propia figura para facilitar tocarlos todos entre los trastes 1 y 5.</p>
         </section>
