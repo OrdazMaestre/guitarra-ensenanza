@@ -24,9 +24,9 @@ function FaMajorChordDiagram() {
   return (
     <figure className="reference-chord">
       <figcaption>
-        FA <span>(F)</span>
+        <span className="primary-chord-name">F</span> <span className="local-chord-name">(FA Mayor)</span>
       </figcaption>
-      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label="Acorde FA F">
+      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label="Acorde F FA Mayor">
         <line className="nut" x1="18" x2="118" y1="22" y2="22" />
         {[0, 1, 2, 3, 4, 5].map((index) => (
           <line className="string-line" key={`string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="22" y2="98" />
@@ -86,7 +86,6 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
     <main className="arpeggio-page">
       <article className="arpeggio-content">
         <header className="arpeggio-header">
-          <p className="lesson-kicker">Unidad 8</p>
           <h1>Empezando con los arpegios</h1>
           <div className="short-copy">
             <p>Un arpegio es un acorde tocado nota a nota.</p>
@@ -265,16 +264,22 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
         }
 
         .reference-chord figcaption {
-          color: #047857;
-          font-size: clamp(17px, 2vw, 23px);
+          color: #080808;
+          font-size: clamp(15px, 1.8vw, 21px);
           font-weight: 950;
           line-height: 1.1;
           text-decoration: underline;
           text-underline-offset: 4px;
         }
 
-        .reference-chord figcaption span {
-          color: #303030;
+        .primary-chord-name {
+          color: #047857;
+          font-size: 1.18em;
+        }
+
+        .local-chord-name {
+          color: #080808;
+          font-size: 0.92em;
         }
 
         .chord-diagram {

@@ -8,7 +8,6 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
       <main className="lesson-white-page">
         <article className="lesson-content">
           <header className="lesson-header">
-            <p className="lesson-kicker">Unidad 1</p>
             <h1 className="lesson-title">¿Que es la guitarra?</h1>
             <details className="music-toggle">
               <summary>¿Y la musica?</summary>

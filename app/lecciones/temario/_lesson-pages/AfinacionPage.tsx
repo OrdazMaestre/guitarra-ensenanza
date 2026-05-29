@@ -24,7 +24,6 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
       <main className="tuning-page">
         <article className="tuning-content">
           <header className="tuning-header">
-            <p className="lesson-kicker">Unidad 3</p>
             <h1>Aprendiendo a afinar</h1>
             <p>
               Afinar significa ajustar la tension de cada cuerda hasta que suene en la nota correcta. Para hacerlo, pulsamos una cuerda, giramos su clavija y volvemos a escuchar.

@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -8,7 +9,6 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
     <main className="tablature-page">
       <article className="tablature-content">
         <header className="tablature-header">
-          <p className="lesson-kicker">Unidad 4</p>
           <h1>
             <span>Aprendiendo a</span>
             <span>leer tablaturas</span>
@@ -53,6 +53,12 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
 
           <div className="player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/cumpleanos-feliz-dos-compases.gp" title="Cumpleaños feliz" />
+          </div>
+
+          <div className="extra-practice-link-wrap">
+            <Link href="/lecciones/temario/tablaturas-dos-cuerdas" className="extra-practice-link">
+              Ampliacion: Feliz Navidad
+            </Link>
           </div>
         </section>
       </article>
@@ -239,6 +245,31 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
 
         .player-frame > div {
           min-width: min(100%, 980px);
+        }
+
+        .extra-practice-link-wrap {
+          display: flex;
+          justify-content: center;
+          margin-top: clamp(18px, 3vw, 34px);
+          min-width: 0;
+          width: 100%;
+        }
+
+        .extra-practice-link {
+          color: #047857;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0.14em;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          text-align: center;
+          text-decoration: none;
+          text-transform: uppercase;
+          transition: color 160ms ease;
+        }
+
+        .extra-practice-link:hover {
+          color: #080808;
         }
 
         .alphatab-container {

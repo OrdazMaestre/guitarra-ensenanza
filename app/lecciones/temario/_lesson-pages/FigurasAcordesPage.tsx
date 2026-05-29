@@ -81,7 +81,6 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
     <main className="figures-page">
       <article className="figures-content">
         <header className="figures-header">
-          <p className="lesson-kicker">Unidad 9</p>
           <h1>Figuras de acordes</h1>
           <div className="short-copy">
             <p>Los acordes se pueden tocar de muchas formas.</p>

@@ -21,6 +21,16 @@ type Chord = {
   spanish: string;
 };
 
+type PowerChordShape = {
+  name: string;
+  notes: {
+    fret: number;
+    label: string;
+    string: number;
+  }[];
+  rootLabel: string;
+};
+
 const majorChords: Chord[] = [
   { spanish: 'DO', english: 'C', markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 2, finger: '2' }, { string: 2, fret: 1, finger: '1' }], muted: [6], open: [3, 1] },
   { spanish: 'RE', english: 'D', markers: [{ string: 3, fret: 2, finger: '1' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 2, finger: '2' }], muted: [6, 5], open: [4] },
@@ -43,14 +53,61 @@ const minorChords: Chord[] = [
 
 const stringX = (stringNumber: number) => 18 + (6 - stringNumber) * 20;
 const fretY = (fret: number) => 22 + (fret - 0.5) * 19;
+const powerFretY = (fret: number) => 24 + (fret - 0.5) * 19;
+
+const powerChordShapes: PowerChordShape[] = [
+  {
+    name: 'E5',
+    rootLabel: 'MI5',
+    notes: [
+      { label: 'T', string: 6, fret: 0 },
+      { label: '5', string: 5, fret: 2 },
+      { label: '8', string: 4, fret: 2 },
+    ],
+  },
+  {
+    name: 'F5',
+    rootLabel: 'FA5',
+    notes: [
+      { label: 'T', string: 6, fret: 1 },
+      { label: '5', string: 5, fret: 3 },
+      { label: '8', string: 4, fret: 3 },
+    ],
+  },
+  {
+    name: 'A5',
+    rootLabel: 'LA5',
+    notes: [
+      { label: 'T', string: 5, fret: 0 },
+      { label: '5', string: 4, fret: 2 },
+      { label: '8', string: 3, fret: 2 },
+    ],
+  },
+  {
+    name: 'B5',
+    rootLabel: 'SI5',
+    notes: [
+      { label: 'T', string: 5, fret: 2 },
+      { label: '5', string: 4, fret: 4 },
+      { label: '8', string: 3, fret: 4 },
+    ],
+  },
+];
+
+function spanishChordLabel(chord: Chord) {
+  const isMinor = chord.english.endsWith('m');
+  const spanishRoot = isMinor ? chord.spanish.slice(0, -1) : chord.spanish;
+
+  return `${spanishRoot} ${isMinor ? 'menor' : 'Mayor'}`;
+}
 
 function ChordDiagram({ chord }: { chord: Chord }) {
   return (
     <figure className="chord-card">
       <figcaption>
-        {chord.spanish} <span>({chord.english})</span>
+        <span className="primary-chord-name">{chord.english}</span> <span className="local-chord-name">({spanishChordLabel(chord)})</span>
       </figcaption>
-      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label={`Acorde ${chord.spanish} ${chord.english}`}>
+      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
         <line className="nut" x1="18" x2="118" y1="22" y2="22" />
         {[0, 1, 2, 3, 4, 5].map((index) => (
           <line className="string-line" key={`string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="22" y2="98" />
@@ -59,9 +116,7 @@ function ChordDiagram({ chord }: { chord: Chord }) {
           <line className="fret-line" key={`fret-${index}`} x1="18" x2="118" y1={22 + index * 19} y2={22 + index * 19} />
         ))}
         {(chord.open ?? []).map((string) => (
-          <text className="open-marker" key={`open-${string}`} x={stringX(string)} y="15">
-            o
-          </text>
+          <circle className="open-marker" key={`open-${string}`} cx={stringX(string)} cy="14" r="4.5" />
         ))}
         {(chord.muted ?? []).map((string) => (
           <text className="muted-marker" key={`muted-${string}`} x={stringX(string)} y="15">
@@ -96,12 +151,38 @@ function ChordDiagram({ chord }: { chord: Chord }) {
   );
 }
 
+function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
+  return (
+    <figure className="power-card">
+      <figcaption>
+        <span className="primary-chord-name">{shape.name}</span> <span className="local-chord-name">({shape.rootLabel})</span>
+      </figcaption>
+      <svg className="power-diagram" viewBox="0 0 136 112" role="img" aria-label={`${shape.name}: tonica, quinta y octava`}>
+        <line className="nut" x1="18" x2="118" y1="24" y2="24" />
+        {[0, 1, 2, 3, 4, 5].map((index) => (
+          <line className="string-line" key={`power-string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="24" y2="100" />
+        ))}
+        {[1, 2, 3, 4].map((index) => (
+          <line className="fret-line" key={`power-fret-${index}`} x1="18" x2="118" y1={24 + index * 19} y2={24 + index * 19} />
+        ))}
+        {shape.notes.map((note) => (
+          <g key={`${shape.name}-${note.string}-${note.fret}`}>
+            <circle className={note.fret === 0 ? 'power-dot open-power-dot' : 'power-dot'} cx={stringX(note.string)} cy={note.fret === 0 ? 16 : powerFretY(note.fret)} r="9" />
+            <text className="power-note-label" x={stringX(note.string)} y={note.fret === 0 ? 20 : powerFretY(note.fret) + 4}>
+              {note.label}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </figure>
+  );
+}
+
 export default function AcordesPage({ previous, next }: LessonPageProps) {
   return (
     <main className="chords-page">
       <article className="chords-content">
         <header className="chords-header">
-          <p className="lesson-kicker">Unidad 6</p>
           <h1>Acordes basicos</h1>
           <div className="short-copy">
             <p>Un acorde junta varias notas al mismo tiempo.</p>
@@ -123,6 +204,8 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
             ))}
           </div>
         </section>
+
+      
 
         <section className="chord-library" aria-labelledby="major-title">
           <header className="chord-section-header">
@@ -148,12 +231,29 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           </div>
         </section>
 
+        <section className="shape-guide" aria-labelledby="shape-guide-title">
+          <p className="lesson-kicker">Figuras</p>
+          <h2 id="shape-guide-title">Las formas que mas vamos a usar</h2>
+          <div className="shape-copy">
+            <p>Las figuras de acordes que mas usaremos son <strong>E</strong>, <strong>F</strong>, <strong>G</strong>, <strong>A</strong> y <strong>B</strong>.</p>
+            
+            <p><strong>E</strong>, <strong>F</strong>, <strong>A</strong> y <strong>B</strong> tienen basicamente la misma forma.</p>
+            
+          </div>
+          <div className="power-shape-grid" aria-label="E, F, A y B como power chords">
+            {powerChordShapes.map((shape) => (
+              <PowerChordDiagram key={shape.name} shape={shape} />
+            ))}
+          </div>
+          
+        </section>
+
         <section className="practice-strip" aria-label="Forma de practicar">
           <p>
-            Los acordes que teneis que estudiar y practicar para clase son <strong>todos los mayores</strong>, ademas de <strong>Em</strong> y <strong>Am</strong>.
+            Los acordes que teneis que ir prancticándo para clase son <strong>todos los mayores</strong>, ademas de <strong>Em</strong> y <strong>Am</strong>.
           </p>
           <p>
-            Mejor forma de practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>...
+            Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>...
           </p>
         </section>
       </article>
@@ -213,6 +313,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         .chords-header .short-copy p,
         .finger-guide p,
+        .shape-guide p,
         .practice-strip p {
           color: #303030;
           font-size: 18px;
@@ -247,7 +348,20 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           padding: clamp(20px, 4vw, 34px);
         }
 
+        .shape-guide {
+          border-block: 1px solid #d4d4d8;
+          box-sizing: border-box;
+          display: grid;
+          gap: 12px;
+          margin: 0 auto clamp(44px, 7vw, 76px);
+          max-width: 900px;
+          min-width: 0;
+          padding: clamp(24px, 4vw, 38px) 0;
+          text-align: center;
+        }
+
         .finger-guide h2,
+        .shape-guide h2,
         .chord-section-header h2 {
           font-size: clamp(30px, 4.8vw, 58px);
           font-weight: 950;
@@ -256,6 +370,89 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           margin: 0 0 16px;
           overflow-wrap: break-word;
           text-transform: uppercase;
+        }
+
+        .shape-guide h2 {
+          margin-bottom: 4px;
+        }
+
+        .shape-copy {
+          display: grid;
+          gap: 9px;
+          margin: 0 auto;
+          max-width: 760px;
+          min-width: 0;
+        }
+
+        .shape-copy strong {
+          color: #047857;
+          font-weight: 950;
+        }
+
+        .power-shape-grid {
+          display: grid;
+          gap: clamp(14px, 2.4vw, 22px);
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          margin: clamp(18px, 3vw, 28px) auto 0;
+          max-width: 900px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .power-card {
+          border: 3px solid #d4d4d8;
+          box-sizing: border-box;
+          display: grid;
+          gap: 6px;
+          justify-items: center;
+          margin: 0;
+          min-width: 0;
+          padding: 12px 8px 10px;
+        }
+
+        .power-card figcaption {
+          color: #080808;
+          font-size: clamp(14px, 1.6vw, 18px);
+          font-weight: 950;
+          line-height: 1.1;
+          text-decoration: underline;
+          text-underline-offset: 4px;
+        }
+
+        .primary-chord-name {
+          color: #047857;
+          font-size: 1.18em;
+        }
+
+        .local-chord-name {
+          color: #080808;
+          font-size: 0.92em;
+        }
+
+        .power-diagram {
+          display: block;
+          height: auto;
+          max-width: 148px;
+          overflow: visible;
+          width: 100%;
+        }
+
+        .power-note-label {
+          dominant-baseline: middle;
+          fill: #080808;
+          font-size: 10px;
+          font-weight: 950;
+          text-anchor: middle;
+        }
+
+        .power-dot {
+          fill: #ffffff;
+          stroke: #047857;
+          stroke-width: 2.5;
+        }
+
+        .power-legend {
+          margin-top: 4px;
         }
 
         .finger-row {
@@ -314,16 +511,12 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         }
 
         .chord-card figcaption {
-          color: #047857;
-          font-size: clamp(15px, 1.7vw, 21px);
+          color: #080808;
+          font-size: clamp(14px, 1.7vw, 20px);
           font-weight: 950;
           line-height: 1.1;
           text-decoration: underline;
           text-underline-offset: 4px;
-        }
-
-        .chord-card figcaption span {
-          color: #303030;
         }
 
         .chord-diagram {
@@ -358,7 +551,6 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         }
 
         .finger-label,
-        .open-marker,
         .muted-marker {
           dominant-baseline: middle;
           fill: #080808;
@@ -367,7 +559,12 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           text-anchor: middle;
         }
 
-        .open-marker,
+        .open-marker {
+          fill: #ffffff;
+          stroke: #047857;
+          stroke-width: 2;
+        }
+
         .muted-marker {
           fill: #047857;
           font-size: 12px;
@@ -397,6 +594,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         @media (max-width: 760px) {
           .chords-header,
+          .shape-guide,
           .chord-library {
             text-align: left;
           }
@@ -410,6 +608,10 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           }
 
           .chord-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .power-shape-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
@@ -427,6 +629,10 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           .chord-card {
             padding-left: 12px;
             padding-right: 12px;
+          }
+
+          .power-shape-grid {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>

@@ -31,7 +31,6 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
     <main className="notes-page">
       <article className="notes-content">
         <header className="notes-header">
-          <p className="lesson-kicker">Unidad 2</p>
           <h1>Notas musicales</h1>
           <p>
             Muchas partituras, afinadores y programas traducen las notas a las 7 primeras letras del abecedario. Eso se llama notacion internacional.

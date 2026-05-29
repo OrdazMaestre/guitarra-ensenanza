@@ -8,7 +8,7 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
     <main className="two-strings-page">
       <article className="two-strings-content">
         <header className="two-strings-header">
-          <p className="lesson-kicker">Unidad 4</p>
+          <p className="lesson-kicker">Ampliacion</p>
           <h2>
             <span>Leyendo tablaturas </span>
             <span>en dos cuerdas</span>

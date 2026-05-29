@@ -70,6 +70,17 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
     );
   }
 
+  if (slug === 'tablaturas-dos-cuerdas') {
+    return (
+      <TablaturasDosCuerdasPage
+        previous={{
+          href: '/lecciones/temario/tablaturas',
+          label: 'Tablaturas',
+        }}
+      />
+    );
+  }
+
   const lesson = getLessonBySlug(slug);
 
   if (!lesson) {
@@ -109,10 +120,6 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'tablaturas') {
     return <TablaturasPage {...lessonProps} />;
-  }
-
-  if (slug === 'tablaturas-dos-cuerdas') {
-    return <TablaturasDosCuerdasPage {...lessonProps} />;
   }
 
   if (slug === 'acordes') {

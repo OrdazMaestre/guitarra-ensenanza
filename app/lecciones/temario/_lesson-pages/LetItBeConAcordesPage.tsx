@@ -35,8 +35,8 @@ const songParts: SongPart[] = [
     title: 'Estribillo',
   },
   {
-    chords: [['C', 'G', 'F', 'G']],
-    intro: ['Siempre acabamos con los mismos 4 acordes.', 'El final queda mejor con este pequeno punteo.'],
+    chords: [['C', 'G', 'F', 'C']],
+    intro: ['Siempre acabamos con los mismos 4 acordes.', 'El final queda mejor con este pequeno punteo entre los últimos 2 acordes.'],
     kicker: 'Final correcto',
     redSeparatorAfter: [{ index: 2, row: 0 }],
     source: '/tabs/let-it-be-final-correcto.gp',
@@ -77,7 +77,6 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
     <main className="song-page">
       <article className="song-content">
         <header className="song-header">
-          <p className="lesson-kicker">Unidad 7</p>
           <h1>Let It Be</h1>
           <div className="short-copy">
             <p>Una cancion a base de acordes puede leerse de las dos maneras que vemos abajo.</p>

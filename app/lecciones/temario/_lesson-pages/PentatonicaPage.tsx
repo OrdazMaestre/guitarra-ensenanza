@@ -99,7 +99,6 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
     <main className="pentatonic-page">
       <article className="pentatonic-content">
         <header className="pentatonic-header">
-          <p className="lesson-kicker">Unidad 10</p>
           <h1>Pentatonica</h1>
           <div className="short-copy">
             <p>Al acorde de Sol Mayor le sumamos dos notas extra.</p>

@@ -3,13 +3,12 @@ export const lessonBlocks = [
   { number: 2, title: 'Notacion musical', slug: 'notacion-musical' },
   { number: 3, title: 'Afinacion', slug: 'afinacion' },
   { number: 4, title: 'Tablaturas', slug: 'tablaturas' },
-  { number: 5, title: 'Tablaturas dos cuerdas', slug: 'tablaturas-dos-cuerdas' },
-  { number: 6, title: 'Acordes', slug: 'acordes' },
-  { number: 7, title: 'Let It Be con acordes', slug: 'let-it-be-con-acordes' },
-  { number: 8, title: 'Arpegios', slug: 'arpegios' },
-  { number: 9, title: 'Figuras de acordes', slug: 'figuras-de-acordes' },
-  { number: 10, title: 'Pentatonica', slug: 'pentatonica' },
-  { number: 11, title: 'Escalas', slug: 'escalas' },
+  { number: 5, title: 'Acordes', slug: 'acordes' },
+  { number: 6, title: 'Let It Be con acordes', slug: 'let-it-be-con-acordes' },
+  { number: 7, title: 'Arpegios', slug: 'arpegios' },
+  { number: 8, title: 'Figuras de acordes', slug: 'figuras-de-acordes' },
+  { number: 9, title: 'Pentatonica', slug: 'pentatonica' },
+  { number: 10, title: 'Escalas', slug: 'escalas' },
 ] as const;
 
 export function getLessonBySlug(slug: string) {

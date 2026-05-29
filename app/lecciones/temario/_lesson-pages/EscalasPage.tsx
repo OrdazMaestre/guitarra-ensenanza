@@ -75,6 +75,17 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <p>El traste 12 tiene las mismas notas que las cuerdas al aire.</p>
           <p>Solo suenan mas agudo.</p>
         </section>
+
+        <section className="final-warning" aria-label="Aviso final del temario">
+          <p>Ultima unidad del camino principal.</p>
+          <p>Probablemente te dejaste atras ampliaciones de muchas unidades anteriores.</p>
+          <p>Ahora estas mas preparado para volver a ellas.</p>
+          <p>A partir de aqui toca investigar la web a tu ritmo.</p>
+          <p>Entiende, asimila y practica poco a poco.</p>
+          <p>Practica tempo con el metronomo.</p>
+          <p>Hay enlaces secretos.</p>
+          <p>Explora, aprende y diviertete.</p>
+        </section>
       </article>
 
       <div className="lesson-pager-wrap">
@@ -174,7 +185,8 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         .section-header p,
         .question-box p,
         .g-major-box p,
-        .memory-box p {
+        .memory-box p,
+        .final-warning p {
           color: #303030;
           font-size: clamp(18px, 2vw, 24px);
           font-weight: 650;
@@ -248,6 +260,30 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           border-color: #047857;
         }
 
+        .final-warning {
+          background: #fef2f2;
+          border: 4px solid #dc2626;
+          border-radius: 10px;
+          display: grid;
+          gap: 10px;
+          margin: 0 auto;
+          max-width: 960px;
+          padding: clamp(18px, 3vw, 28px);
+          text-align: center;
+          width: 100%;
+        }
+
+        .final-warning p {
+          color: #991b1b;
+          font-weight: 800;
+        }
+
+        .final-warning p:first-child {
+          color: #dc2626;
+          font-weight: 950;
+          text-transform: uppercase;
+        }
+
         .memory-box p:first-child {
           color: #080808;
           font-weight: 950;
@@ -259,7 +295,8 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           .section-header,
           .question-box,
           .g-major-box,
-          .memory-box {
+          .memory-box,
+          .final-warning {
             text-align: left;
           }
 
