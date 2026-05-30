@@ -308,7 +308,7 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
 
         .finger-dot,
         .barre {
-          fill: #ffffff;
+          fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2.5;
         }

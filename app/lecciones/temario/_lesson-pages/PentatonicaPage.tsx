@@ -75,8 +75,8 @@ function PentatonicFretboard() {
         ))}
         {fretNotes.map((item) => (
           <g key={`${item.string}-${item.fret}-${item.note}`}>
-            <circle className={item.note === 'G' ? 'note-root' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="17" />
-            <text className={item.note === 'G' ? 'note-label root-label' : 'note-label'} x={fretX(item.fret)} y={stringY(item.string) + 5}>
+            <circle className={item.note === 'E' ? 'note-dot note-e' : item.note === 'G' ? 'note-dot note-g' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="17" />
+            <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
               {item.note}
             </text>
           </g>
@@ -121,7 +121,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           <header className="section-header">
             <p className="lesson-kicker">Mapa</p>
             <h2 id="map-title">Las notas en el mastil</h2>
-            <p>Los circulos verdes son la tonica: Sol.</p>
+            <p>E aparece en verde y G aparece en azul.</p>
           </header>
           <PentatonicFretboard />
         </section>
@@ -136,7 +136,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
         </section>
 
         <section className="memory-section" aria-labelledby="memory-title">
-          <h2 id="memory-title">Pero son muchas notas. Como las memorizo?</h2>
+          <h2 id="memory-title">Pero son muchas notas. ¿Cómo las memorizo?</h2>
           <div className="short-copy">
             <p>Dividiendola en trozos.</p>
             <p>Practicando cada trozo por separado.</p>
@@ -318,28 +318,28 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           opacity: 0.78;
         }
 
-        .note-dot,
-        .note-root {
-          fill: #ffffff;
+        .note-dot {
+          fill: #f1f5f9;
+          stroke: #a1a1aa;
+          stroke-width: 3;
         }
 
-        .note-root {
-          stroke: #047857;
+        .note-e {
+          stroke: #059669;
           stroke-width: 6;
         }
 
-        .note-label,
-        .root-label {
-          fill: #2f65ad;
+        .note-g {
+          stroke: #2563eb;
+          stroke-width: 6;
+        }
+
+        .note-label {
+          fill: #080808;
           font-size: 20px;
           font-weight: 950;
           text-anchor: middle;
         }
-
-        .root-label {
-          fill: #047857;
-        }
-
         .fret-number,
         .figure-number,
         .top-label,

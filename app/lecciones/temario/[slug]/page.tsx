@@ -1,13 +1,19 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import AcordesPage from '../_lesson-pages/AcordesPage';
 import AfinacionPage from '../_lesson-pages/AfinacionPage';
 import AmpliacionArpegiosPage from '../_lesson-pages/AmpliacionArpegiosPage';
 import ArpegiosPage from '../_lesson-pages/ArpegiosPage';
 import ConceptosBasicosPage from '../_lesson-pages/ConceptosBasicosPage';
+import EjerciciosPentatonicaBluesPage from '../_lesson-pages/EjerciciosPentatonicaBluesPage';
+import EjerciciosPentatonicaAvanzadosPage from '../_lesson-pages/EjerciciosPentatonicaAvanzadosPage';
+import EjerciciosPentatonicaPage from '../_lesson-pages/EjerciciosPentatonicaPage';
+import EjerciciosEscalasPage from '../_lesson-pages/EjerciciosEscalasPage';
+import EscalaCompletaSolMayorPage from '../_lesson-pages/EscalaCompletaSolMayorPage';
 import EscalasPage from '../_lesson-pages/EscalasPage';
 import FigurasAcordesPage from '../_lesson-pages/FigurasAcordesPage';
 import LetItBeConAcordesPage from '../_lesson-pages/LetItBeConAcordesPage';
 import NotacionMusicalPage from '../_lesson-pages/NotacionMusicalPage';
+import PentatonicaBluesPage from '../_lesson-pages/PentatonicaBluesPage';
 import PentatonicaPage from '../_lesson-pages/PentatonicaPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
 import TablaturasDosCuerdasPage from '../_lesson-pages/TablaturasDosCuerdasPage';
@@ -20,52 +26,94 @@ interface LessonBlockPageProps {
   }>;
 }
 
+function extensionPrevious(href: string, label: string) {
+  // Extension pages only point back to their parent lesson.
+  // They intentionally do not expose a "next" pager link, so branches stay discoverable from their parent page.
+  return {
+    previous: {
+      href,
+      label,
+    },
+  };
+}
+
 export default async function LessonBlockPage({ params }: LessonBlockPageProps) {
   const { slug } = await params;
 
   if (slug === 'ampliacion-arpegios') {
     return (
       <AmpliacionArpegiosPage
-        previous={{
-          href: '/lecciones/temario/arpegios',
-          label: 'Arpegios',
-        }}
+        {...extensionPrevious('/lecciones/temario/arpegios', 'Arpegios')}
       />
     );
   }
 
   if (slug === 'patrones-griegos') {
+    redirect('/lecciones/temario/modos-griegos');
+  }
+
+  if (slug === 'modos-griegos') {
     return (
       <PlaceholderLessonPage
-        title="Patrones griegos"
-        previous={{
-          href: '/lecciones/temario/escalas',
-          label: 'Escalas',
-        }}
+        title="Modos griegos"
+        {...extensionPrevious('/lecciones/temario/escalas', 'Escalas')}
+      />
+    );
+  }
+
+  if (slug === 'escala-completa-sol-mayor') {
+    return (
+      <EscalaCompletaSolMayorPage
+        {...extensionPrevious('/lecciones/temario/escalas', 'Escalas')}
+      />
+    );
+  }
+
+  if (slug === 'ejercicios-escalas') {
+    return (
+      <EjerciciosEscalasPage
+        {...extensionPrevious('/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
+      />
+    );
+  }
+
+  if (slug === 'ejercicios-escalas-avanzados') {
+    return (
+      <PlaceholderLessonPage
+        title="Ejercicios avanzados de escalas"
+        {...extensionPrevious('/lecciones/temario/ejercicios-escalas', 'Ejercicios de escalas')}
       />
     );
   }
 
   if (slug === 'ejercicios-pentatonica') {
     return (
-      <PlaceholderLessonPage
-        title="Ejercicios de pentatonica"
-        previous={{
-          href: '/lecciones/temario/pentatonica',
-          label: 'Pentatonica',
-        }}
+      <EjerciciosPentatonicaPage
+        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatonica')}
+      />
+    );
+  }
+
+  if (slug === 'ejercicios-pentatonica-avanzados') {
+    return (
+      <EjerciciosPentatonicaAvanzadosPage
+        {...extensionPrevious('/lecciones/temario/ejercicios-pentatonica', 'Ejercicios de pentatonica')}
       />
     );
   }
 
   if (slug === 'pentatonica-blues') {
     return (
-      <PlaceholderLessonPage
-        title="Pentatonica de blues"
-        previous={{
-          href: '/lecciones/temario/pentatonica',
-          label: 'Pentatonica',
-        }}
+      <PentatonicaBluesPage
+        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatonica')}
+      />
+    );
+  }
+
+  if (slug === 'ejercicios-pentatonica-blues') {
+    return (
+      <EjerciciosPentatonicaBluesPage
+        {...extensionPrevious('/lecciones/temario/pentatonica-blues', 'Pentatonica de blues')}
       />
     );
   }
@@ -73,10 +121,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'tablaturas-dos-cuerdas') {
     return (
       <TablaturasDosCuerdasPage
-        previous={{
-          href: '/lecciones/temario/tablaturas',
-          label: 'Tablaturas',
-        }}
+        {...extensionPrevious('/lecciones/temario/tablaturas', 'Tablaturas')}
       />
     );
   }

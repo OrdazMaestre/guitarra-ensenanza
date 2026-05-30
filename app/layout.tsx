@@ -1,5 +1,6 @@
 // app/(site)/layout.tsx
 import type { Metadata } from "next";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,9 @@ export default function RootLayout({
     <html lang="es">
       <body className="bg-zinc-950 text-zinc-100 min-h-screen font-sans">
         <div className="site-shell">
+          <Link href="/lecciones/temario" className="site-home-link">
+            Portada
+          </Link>
           {children}
         </div>
       </body>

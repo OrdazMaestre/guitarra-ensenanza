@@ -65,7 +65,7 @@ function GChordFretboard() {
         ))}
         {fretNotes.map((item) => (
           <g key={`${item.fret}-${item.string}-${item.note}`}>
-            <circle className="note-dot" cx={fretX(item.fret)} cy={stringY(item.string)} r="16" />
+            <circle className={item.note === 'G' ? 'note-dot note-g' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="16" />
             <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
               {item.note}
             </text>
@@ -301,11 +301,18 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
         }
 
         .note-dot {
-          fill: #ffffff;
+          fill: #f1f5f9;
+          stroke: #a1a1aa;
+          stroke-width: 3;
+        }
+
+        .note-g {
+          stroke: #2563eb;
+          stroke-width: 5;
         }
 
         .note-label {
-          fill: #2f65ad;
+          fill: #080808;
           font-size: 20px;
           font-weight: 950;
           text-anchor: middle;

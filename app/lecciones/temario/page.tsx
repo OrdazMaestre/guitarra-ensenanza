@@ -45,7 +45,7 @@ export default function TemarioPage() {
           aria-label="Bloques del temario"
           className="cover-nav"
         >
-          <span className="cover-nav-label">Unidades:</span>
+          <span className="cover-nav-label">Páginas:</span>
           <div className="cover-nav-list">
             {lessonBlocks.map((lesson) => (
               <Link

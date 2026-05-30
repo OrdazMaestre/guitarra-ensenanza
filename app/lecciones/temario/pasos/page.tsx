@@ -1,50 +1,454 @@
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
+import { lessonBlocks } from '../temarioData';
 
-const contentTree = [
-  'Conceptos basicos',
-  'Notacion musical',
-  'Afinacion',
-  'Tablaturas',
-  'Acordes',
-  'Arpegios',
-  'Pentatonica',
-  'Escalas',
+// Keep this map in sync whenever a temario route branches from a lesson.
+const branchMap: Record<string, { title: string; href: string; note: string }[]> = {
+  'conceptos-basicos': [
+    {
+      title: 'El sonido en la musica',
+      href: '/lecciones/temario/el-sonido-en-la-musica',
+      note: 'Saber mas',
+    },
+  ],
+  tablaturas: [
+    {
+      title: 'Tablaturas con dos cuerdas',
+      href: '/lecciones/temario/tablaturas-dos-cuerdas',
+      note: 'Practica extra',
+    },
+    {
+      title: 'Mas punteos cortos',
+      href: '/lecciones/temario/mas-punteos-cortos',
+      note: 'Rama de ejercicios',
+    },
+  ],
+  arpegios: [
+    {
+      title: 'Ampliacion de arpegios',
+      href: '/lecciones/temario/ampliacion-arpegios',
+      note: 'Profundizar',
+    },
+  ],
+  pentatonica: [
+    {
+      title: 'Ejercicios de pentatonica',
+      href: '/lecciones/temario/ejercicios-pentatonica',
+      note: 'Practica guiada',
+    },
+    {
+      title: 'Ejercicios avanzados de pentatonica',
+      href: '/lecciones/temario/ejercicios-pentatonica-avanzados',
+      note: 'Mas adelante',
+    },
+    {
+      title: 'Pentatonica de blues',
+      href: '/lecciones/temario/pentatonica-blues',
+      note: 'Color blues',
+    },
+    {
+      title: 'Ejercicios de pentatonica de blues',
+      href: '/lecciones/temario/ejercicios-pentatonica-blues',
+      note: 'Practica blues',
+    },
+  ],
+  escalas: [
+    {
+      title: 'Escala completa de Sol Mayor',
+      href: '/lecciones/temario/escala-completa-sol-mayor',
+      note: 'Pagina 12',
+    },
+    {
+      title: 'Ejercicios de escalas',
+      href: '/lecciones/temario/ejercicios-escalas',
+      note: 'Practica guiada',
+    },
+    {
+      title: 'Ejercicios avanzados de escalas',
+      href: '/lecciones/temario/ejercicios-escalas-avanzados',
+      note: 'Mas adelante',
+    },
+    {
+      title: 'Modos griegos',
+      href: '/lecciones/temario/modos-griegos',
+      note: 'Rama modal',
+    },
+  ],
+};
+
+const lessonToneClasses = [
+  'tone-emerald',
+  'tone-red',
+  'tone-zinc',
+  'tone-amber',
+  'tone-emerald',
+  'tone-red',
+  'tone-zinc',
+  'tone-amber',
+  'tone-emerald',
+  'tone-red',
 ];
 
 export default function PasosPage() {
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <Link href="/lecciones/temario" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
-        Volver a la portada
-      </Link>
+    <main className="steps-page">
+      <section className="steps-hero">
+        <div className="steps-hero-copy">
+          <p className="steps-kicker">Arbol de contenidos</p>
+          <h1>Primeros PASOS</h1>
+          <p>
+            Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. A medida que aprendemos cosas nuevas es más fácil profundizar en conceptos anteriores.
+            </p>
+          <p>El método que te recomiendo aquí es ir a tu ritmo avanzando por lo que consideres &quot;fácil&quot;, mirar alguna idea con mas calma, curiosear lo que habia antes, lo que viene después...
+          </p>
+        </div>
 
-      <section className="mt-8 border border-zinc-700 bg-zinc-900 px-6 py-8 shadow-xl sm:px-10">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-300">
-          Arbol de contenidos
-        </p>
-        <h1 className="mt-4 text-4xl font-black text-zinc-50">
-          Primeros PASOS
-        </h1>
-        <p className="mt-4 max-w-2xl text-lg leading-8 text-zinc-300">
-          Este mapa ira creciendo a medida que convirtamos el cuadernillo en paginas reales de la web.
-        </p>
+      </section>
 
-        <ol className="mt-8 grid gap-3 sm:grid-cols-2">
-          {contentTree.map((item, index) => (
-            <li key={item} className="border border-zinc-700 bg-zinc-950 px-4 py-4">
-              <span className="mr-3 inline-flex h-8 w-8 items-center justify-center bg-emerald-400 font-bold text-zinc-950">
-                {index + 1}
-              </span>
-              <span className="font-semibold text-zinc-100">{item}</span>
+      <section className="learning-map" aria-label="Orden real de las lecciones">
+        
+
+        <ol className="map-trunk">
+          {lessonBlocks.map((lesson, index) => (
+            <li key={lesson.slug} className={`map-node ${lessonToneClasses[index]}`}>
+              <div className="main-lesson">
+                <span className="lesson-number">{lesson.number}</span>
+                <Link href={`/lecciones/temario/${lesson.slug}`} className="lesson-title">
+                  {lesson.title}
+                </Link>
+              </div>
+
+              {branchMap[lesson.slug] ? (
+                <ul className="branch-list" aria-label={`Ramas de ${lesson.title}`}>
+                  {branchMap[lesson.slug].map((branch) => (
+                    <li key={branch.href} className="branch-node">
+                      <span className="branch-note">{branch.note}</span>
+                      <Link href={branch.href}>{branch.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ol>
       </section>
+
       <TemarioPager
         previous={{ href: '/lecciones/temario', label: 'Portada' }}
         next={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos basicos' }}
       />
+
+      <style>{`
+        .steps-page {
+          background:
+            linear-gradient(90deg, rgba(4, 120, 87, 0.08) 1px, transparent 1px),
+            linear-gradient(180deg, rgba(4, 120, 87, 0.08) 1px, transparent 1px),
+            #ffffff;
+          background-size: 38px 38px;
+          color: #080808;
+          min-height: 100vh;
+          overflow-x: clip;
+          padding: clamp(76px, 9vw, 116px) clamp(16px, 6vw, 88px) clamp(48px, 7vw, 84px);
+          position: relative;
+          width: 100%;
+        }
+
+        .steps-hero {
+          align-items: end;
+          display: grid;
+          gap: 28px;
+          grid-template-columns: minmax(0, 1fr) auto;
+          margin: 0 auto clamp(38px, 7vw, 72px);
+          max-width: 1180px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .steps-hero-copy {
+          min-width: 0;
+        }
+
+        .steps-kicker,
+        .branch-note {
+          color: #047857;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+        }
+
+        .steps-kicker {
+          margin: 0 0 16px;
+        }
+
+        .steps-hero h1 {
+          font-size: clamp(46px, 8vw, 112px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 0.92;
+          margin: 0;
+          max-width: 780px;
+          overflow-wrap: break-word;
+        }
+
+        .steps-hero p:not(.steps-kicker) {
+          color: #303030;
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 650;
+          line-height: 1.45;
+          margin: 18px 0 0;
+          max-width: 720px;
+        }
+
+        .steps-legend {
+          align-content: start;
+          border: 1px solid #111111;
+          display: grid;
+          gap: 12px;
+          justify-self: end;
+          min-width: min(100%, 240px);
+          padding: 18px;
+        }
+
+        .steps-legend span {
+          align-items: center;
+          color: #18181b;
+          display: flex;
+          font-size: 14px;
+          font-weight: 900;
+          gap: 10px;
+          line-height: 1.2;
+        }
+
+        .steps-legend i {
+          display: inline-block;
+          flex: 0 0 auto;
+          height: 12px;
+          width: 34px;
+        }
+
+        .legend-main {
+          background: #080808;
+        }
+
+        .legend-branch {
+          background: #047857;
+        }
+
+        .learning-map {
+          margin: 0 auto;
+          max-width: 1180px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .map-root {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin: 0 0 24px;
+          padding-left: clamp(0px, 6vw, 92px);
+        }
+
+        .map-root-link {
+          background: #080808;
+          border: 2px solid #080808;
+          border-radius: 6px;
+          color: #ffffff !important;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0.12em;
+          padding: 12px 14px;
+          text-decoration: none !important;
+          text-transform: uppercase;
+        }
+
+        .map-root-link-active {
+          background: #ffffff;
+          color: #080808 !important;
+        }
+
+        .map-trunk {
+          counter-reset: lessons;
+          display: grid;
+          gap: 0;
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          position: relative;
+        }
+
+        .map-trunk::before {
+          background: #080808;
+          bottom: 36px;
+          content: "";
+          left: clamp(24px, 6vw, 74px);
+          position: absolute;
+          top: 16px;
+          width: 6px;
+        }
+
+        .map-node {
+          display: grid;
+          gap: clamp(14px, 3vw, 34px);
+          grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+          min-width: 0;
+          padding: 0 0 clamp(28px, 5vw, 52px) clamp(58px, 10vw, 124px);
+          position: relative;
+        }
+
+        .map-node::before {
+          background: var(--node-color);
+          border: 5px solid #080808;
+          border-radius: 999px;
+          content: "";
+          height: 28px;
+          left: calc(clamp(24px, 6vw, 74px) - 11px);
+          position: absolute;
+          top: 20px;
+          width: 28px;
+          z-index: 2;
+        }
+
+        .main-lesson {
+          align-items: center;
+          background: #ffffff;
+          border: 2px solid #080808;
+          box-shadow: 8px 8px 0 var(--node-color);
+          display: grid;
+          gap: 16px;
+          grid-template-columns: auto minmax(0, 1fr);
+          min-width: 0;
+          padding: clamp(14px, 3vw, 20px);
+        }
+
+        .lesson-number {
+          align-items: center;
+          background: #080808;
+          color: #ffffff;
+          display: inline-flex;
+          font-size: 18px;
+          font-weight: 950;
+          height: 46px;
+          justify-content: center;
+          width: 46px;
+        }
+
+        .lesson-title {
+          color: #080808 !important;
+          font-size: clamp(22px, 3vw, 34px);
+          font-weight: 950;
+          line-height: 1.04;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          text-decoration-color: var(--node-color) !important;
+          text-decoration-thickness: 0.12em !important;
+          text-underline-offset: 0.16em !important;
+        }
+
+        .branch-list {
+          align-content: start;
+          display: grid;
+          gap: 12px;
+          list-style: none;
+          margin: 12px 0 0;
+          min-width: 0;
+          padding: 0;
+          position: relative;
+        }
+
+        .branch-list::before {
+          background: var(--node-color);
+          content: "";
+          height: 4px;
+          left: calc(clamp(-34px, -3vw, -14px));
+          position: absolute;
+          top: 34px;
+          width: clamp(16px, 3vw, 34px);
+        }
+
+        .branch-node {
+          background: #f4f4f5;
+          border-left: 5px solid var(--node-color);
+          min-width: 0;
+          padding: 14px 16px 16px;
+        }
+
+        .branch-node a {
+          color: #080808 !important;
+          display: inline-block;
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 900;
+          line-height: 1.12;
+          margin-top: 8px;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+        }
+
+        .tone-emerald {
+          --node-color: #10b981;
+        }
+
+        .tone-red {
+          --node-color: #ef4444;
+        }
+
+        .tone-zinc {
+          --node-color: #a1a1aa;
+        }
+
+        .tone-amber {
+          --node-color: #f59e0b;
+        }
+
+        @media (max-width: 820px) {
+          .steps-hero {
+            align-items: start;
+            grid-template-columns: 1fr;
+          }
+
+          .steps-legend {
+            justify-self: stretch;
+          }
+
+          .map-node {
+            grid-template-columns: 1fr;
+            padding-left: clamp(48px, 11vw, 72px);
+          }
+
+          .branch-list {
+            margin-top: 0;
+          }
+
+          .branch-list::before {
+            display: none;
+          }
+        }
+
+        @media (max-width: 560px) {
+          .map-trunk::before {
+            left: 14px;
+          }
+
+          .map-node {
+            padding-left: 38px;
+          }
+
+          .map-node::before {
+            left: 2px;
+          }
+
+          .main-lesson {
+            box-shadow: 5px 5px 0 var(--node-color);
+            grid-template-columns: 1fr;
+          }
+
+          .lesson-number {
+            height: 40px;
+            width: 40px;
+          }
+        }
+      `}</style>
     </main>
   );
 }

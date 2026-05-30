@@ -26,7 +26,7 @@ video {
   max-width: 100%;
 }
 
-a:not(.temario-pager-link) {
+a:not(.temario-pager-link):not(.site-home-link) {
   animation: link-tilt 2.4s ease-in-out infinite !important;
   color: #047857 !important;
   display: inline-block;
@@ -40,12 +40,12 @@ a:not(.temario-pager-link) {
   will-change: transform;
 }
 
-a:not(.temario-pager-link):hover,
-a:not(.temario-pager-link):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):hover,
+a:not(.temario-pager-link):not(.site-home-link):focus-visible {
   color: #dc2626 !important;
 }
 
-a:not(.temario-pager-link):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 4px;
 }
@@ -77,9 +77,65 @@ a:not(.temario-pager-link):focus-visible {
 }
 
 .site-shell {
+  background: #ffffff;
   min-width: 0;
   overflow-x: clip;
   width: 100%;
+}
+
+.site-home-link {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid #080808;
+  border-radius: 6px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
+  color: #080808;
+  display: flex;
+  font-size: 13px;
+  font-weight: 950;
+  gap: 8px;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  margin: 14px auto 0;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  position: relative;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  white-space: nowrap;
+  width: max-content;
+  z-index: 1;
+}
+
+.site-home-link::before {
+  content: "";
+  border-bottom: 7px solid #047857;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  display: block;
+  height: 0;
+  width: 0;
+}
+
+.site-home-link:hover,
+.site-home-link:focus-visible {
+  background: #ffffff;
+  border-color: #047857;
+  color: #047857;
+}
+
+.site-home-link:focus-visible {
+  outline: 3px solid #047857;
+  outline-offset: 4px;
+}
+
+@media (max-width: 620px) {
+  .site-home-link {
+    font-size: 11px;
+    margin-top: 10px;
+    padding: 10px 12px;
+  }
 }
 
 .guitar-container {

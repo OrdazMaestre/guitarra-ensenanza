@@ -167,7 +167,7 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
         ))}
         {shape.notes.map((note) => (
           <g key={`${shape.name}-${note.string}-${note.fret}`}>
-            <circle className={note.fret === 0 ? 'power-dot open-power-dot' : 'power-dot'} cx={stringX(note.string)} cy={note.fret === 0 ? 16 : powerFretY(note.fret)} r="9" />
+            <circle className={`power-dot ${note.label === 'E' ? 'power-note-e' : note.label === 'G' ? 'power-note-g' : ''} ${note.fret === 0 ? 'open-power-dot' : ''}`} cx={stringX(note.string)} cy={note.fret === 0 ? 16 : powerFretY(note.fret)} r="9" />
             <text className="power-note-label" x={stringX(note.string)} y={note.fret === 0 ? 20 : powerFretY(note.fret) + 4}>
               {note.label}
             </text>
@@ -446,9 +446,17 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         }
 
         .power-dot {
-          fill: #ffffff;
-          stroke: #047857;
+          fill: #f1f5f9;
+          stroke: #a1a1aa;
           stroke-width: 2.5;
+        }
+
+        .power-note-e {
+          stroke: #059669;
+        }
+
+        .power-note-g {
+          stroke: #2563eb;
         }
 
         .power-legend {
@@ -545,7 +553,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         .finger-dot,
         .barre {
-          fill: #ffffff;
+          fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2.5;
         }
@@ -560,7 +568,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         }
 
         .open-marker {
-          fill: #ffffff;
+          fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2;
         }

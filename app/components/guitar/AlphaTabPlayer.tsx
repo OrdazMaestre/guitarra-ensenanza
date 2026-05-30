@@ -38,6 +38,7 @@ const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
 const CURSOR_LINE_WIDTH = 3;
+const PLAYBACK_SCROLL_RESUME_DELAY = 900;
 const ANNOTATED_BAR_BASE_WIDTH = 72;
 const ANNOTATED_BAR_TEXT_WIDTH = 7.5;
 const ANNOTATED_BAR_BEAT_WIDTH = 28;
@@ -583,12 +584,17 @@ export default function AlphaTabPlayer({
   const metronomeSubdivisionRef = useRef<MetronomeSubdivision>(DEFAULT_METRONOME_SUBDIVISION);
   const metronomeRef = useRef(DEFAULT_METRONOME);
   const playbackScrollPendingRef = useRef(false);
+  const playbackScrollUserOverrideRef = useRef(false);
   const pointerDragHandleRef = useRef<'end' | 'start' | null>(null);
   const pointerStartIndexRef = useRef<number | null>(null);
   const pointerSuppressUpRef = useRef(false);
   const pointerTapRef = useRef<{ index: number; time: number; x: number; y: number } | null>(null);
   const playTimerRef = useRef<number | null>(null);
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
+  const programmaticPageScrollRef = useRef(false);
+  const programmaticPageScrollTimerRef = useRef<number | null>(null);
+  const programmaticTabScrollRef = useRef(false);
+  const programmaticTabScrollTimerRef = useRef<number | null>(null);
   const speedRef = useRef(initialSpeed);
   const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
@@ -663,12 +669,11 @@ export default function AlphaTabPlayer({
     });
 
     if (isPlayingRef.current) {
-      keepCursorVisibleHorizontally(nextBox.x);
+      keepCursorVisibleDuringPlayback(nextBox);
     }
 
-    if (shouldScroll && containerRef.current) {
-      const viewportY = containerRef.current.getBoundingClientRect().top + nextBox.y - 140;
-      window.scrollBy({ behavior: 'smooth', top: viewportY });
+    if (shouldScroll) {
+      keepCursorVisibleOnPage(nextBox, true);
     }
   }
 
@@ -712,7 +717,12 @@ export default function AlphaTabPlayer({
       return null;
     }
 
-    const handleScroll = () => setTabScrollLeft(nextElement.scrollLeft);
+    const handleScroll = () => {
+      setTabScrollLeft(nextElement.scrollLeft);
+      if (isPlayingRef.current && !programmaticTabScrollRef.current) {
+        playbackScrollUserOverrideRef.current = true;
+      }
+    };
     nextElement.addEventListener('scroll', handleScroll, { passive: true });
     setTabScrollLeft(nextElement.scrollLeft);
     removeTabScrollListenerRef.current = () => nextElement.removeEventListener('scroll', handleScroll);
@@ -731,6 +741,34 @@ export default function AlphaTabPlayer({
     return { left, top };
   }
 
+  function markProgrammaticTabScroll() {
+    programmaticTabScrollRef.current = true;
+    if (programmaticTabScrollTimerRef.current !== null) {
+      window.clearTimeout(programmaticTabScrollTimerRef.current);
+    }
+    programmaticTabScrollTimerRef.current = window.setTimeout(() => {
+      programmaticTabScrollRef.current = false;
+      programmaticTabScrollTimerRef.current = null;
+    }, PLAYBACK_SCROLL_RESUME_DELAY);
+  }
+
+  function markProgrammaticPageScroll() {
+    programmaticPageScrollRef.current = true;
+    if (programmaticPageScrollTimerRef.current !== null) {
+      window.clearTimeout(programmaticPageScrollTimerRef.current);
+    }
+    programmaticPageScrollTimerRef.current = window.setTimeout(() => {
+      programmaticPageScrollRef.current = false;
+      programmaticPageScrollTimerRef.current = null;
+    }, PLAYBACK_SCROLL_RESUME_DELAY);
+  }
+
+  function markManualPlaybackScroll() {
+    if (isPlayingRef.current && !programmaticPageScrollRef.current && !programmaticTabScrollRef.current) {
+      playbackScrollUserOverrideRef.current = true;
+    }
+  }
+
   function keepCursorVisibleHorizontally(cursorX: number) {
     const scrollFrame = bindTabScrollElement();
     if (!scrollFrame || scrollFrame.scrollWidth <= scrollFrame.clientWidth) {
@@ -743,6 +781,7 @@ export default function AlphaTabPlayer({
     const maxScrollLeft = scrollFrame.scrollWidth - scrollFrame.clientWidth;
 
     if (cursorX > visibleRight - comfortMargin) {
+      markProgrammaticTabScroll();
       scrollFrame.scrollTo({
         behavior: 'smooth',
         left: Math.min(maxScrollLeft, Math.max(0, cursorX - scrollFrame.clientWidth * 0.45)),
@@ -751,11 +790,51 @@ export default function AlphaTabPlayer({
     }
 
     if (cursorX < visibleLeft + comfortMargin) {
+      markProgrammaticTabScroll();
       scrollFrame.scrollTo({
         behavior: 'smooth',
         left: Math.max(0, cursorX - comfortMargin),
       });
     }
+  }
+
+  function keepCursorVisibleOnPage(nextBox: CursorBox, force = false) {
+    if (!containerRef.current) {
+      return;
+    }
+
+    const scrollPosition = getTabScrollPosition();
+    const rect = containerRef.current.getBoundingClientRect();
+    const cursorTop = rect.top + nextBox.y - scrollPosition.top;
+    const cursorBottom = cursorTop + nextBox.height;
+    const topComfort = Math.min(180, Math.max(96, window.innerHeight * 0.22));
+    const bottomComfort = Math.min(220, Math.max(120, window.innerHeight * 0.26));
+
+    if (force || cursorTop < topComfort) {
+      markProgrammaticPageScroll();
+      window.scrollBy({
+        behavior: 'smooth',
+        top: cursorTop - topComfort,
+      });
+      return;
+    }
+
+    if (cursorBottom > window.innerHeight - bottomComfort) {
+      markProgrammaticPageScroll();
+      window.scrollBy({
+        behavior: 'smooth',
+        top: cursorBottom - (window.innerHeight - bottomComfort),
+      });
+    }
+  }
+
+  function keepCursorVisibleDuringPlayback(nextBox: CursorBox) {
+    if (playbackScrollUserOverrideRef.current) {
+      return;
+    }
+
+    keepCursorVisibleHorizontally(nextBox.x);
+    keepCursorVisibleOnPage(nextBox);
   }
 
   useEffect(() => {
@@ -805,6 +884,9 @@ export default function AlphaTabPlayer({
     setTabScrollLeft(0);
     setCursorBox({ height: 0, visible: false, x: 0, y: 0 });
     setEvents(fallbackEvents);
+    playbackScrollUserOverrideRef.current = false;
+    programmaticPageScrollRef.current = false;
+    programmaticTabScrollRef.current = false;
     beatToEventIndexRef.current = new Map(
       fallbackEvents
         .map((event, index) => (event.beatId === undefined ? null : ([event.beatId, index] as const)))
@@ -887,6 +969,14 @@ export default function AlphaTabPlayer({
         window.clearTimeout(playTimerRef.current);
         playTimerRef.current = null;
       }
+      if (programmaticPageScrollTimerRef.current !== null) {
+        window.clearTimeout(programmaticPageScrollTimerRef.current);
+        programmaticPageScrollTimerRef.current = null;
+      }
+      if (programmaticTabScrollTimerRef.current !== null) {
+        window.clearTimeout(programmaticTabScrollTimerRef.current);
+        programmaticTabScrollTimerRef.current = null;
+      }
       for (const source of activeSourcesRef.current) {
         try {
           source.stop();
@@ -936,6 +1026,42 @@ export default function AlphaTabPlayer({
     return () => {
       document.removeEventListener('keydown', handleSpace, { capture: true });
       document.removeEventListener('keyup', handleSpace, { capture: true });
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleManualScrollIntent = () => markManualPlaybackScroll();
+    const handleKeyboardScrollIntent = (event: KeyboardEvent) => {
+      if (
+        event.code === 'ArrowDown' ||
+        event.code === 'ArrowLeft' ||
+        event.code === 'ArrowRight' ||
+        event.code === 'ArrowUp' ||
+        event.code === 'End' ||
+        event.code === 'Home' ||
+        event.code === 'PageDown' ||
+        event.code === 'PageUp' ||
+        event.code === 'Space'
+      ) {
+        markManualPlaybackScroll();
+      }
+    };
+    const handleWindowScroll = () => {
+      if (isPlayingRef.current && !programmaticPageScrollRef.current) {
+        playbackScrollUserOverrideRef.current = true;
+      }
+    };
+
+    window.addEventListener('wheel', handleManualScrollIntent, { passive: true });
+    window.addEventListener('touchmove', handleManualScrollIntent, { passive: true });
+    window.addEventListener('keydown', handleKeyboardScrollIntent, { capture: true });
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('wheel', handleManualScrollIntent);
+      window.removeEventListener('touchmove', handleManualScrollIntent);
+      window.removeEventListener('keydown', handleKeyboardScrollIntent, { capture: true });
+      window.removeEventListener('scroll', handleWindowScroll);
     };
   }, []);
 
@@ -1624,6 +1750,7 @@ export default function AlphaTabPlayer({
     isPlayingRef.current = true;
     currentPlayingPlayerId = playerIdRef.current;
     stopCurrentPlayingPlayer = stopLocalPlayback;
+    playbackScrollUserOverrideRef.current = false;
     playbackScrollPendingRef.current = true;
     setIsPlaying(true);
     playEvent(firstIndex);

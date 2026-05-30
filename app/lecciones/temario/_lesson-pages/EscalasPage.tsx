@@ -10,7 +10,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         <header className="scales-header">
           <p className="lesson-kicker">Teoria</p>
           <h1>
-            <Link className="scales-title-link" href="/lecciones/temario/patrones-griegos">
+            <Link className="scales-title-link" href="/lecciones/temario/modos-griegos">
               Escalas
             </Link>
           </h1>
@@ -76,6 +76,21 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <p>Solo suenan mas agudo.</p>
         </section>
 
+        <section className="branch-section" aria-labelledby="branch-title">
+          <p className="lesson-kicker">Ramas</p>
+          <h2 id="branch-title">Caminos que salen de aqui</h2>
+          <div className="branch-grid">
+            <Link href="/lecciones/temario/escala-completa-sol-mayor">
+              <span>Escala completa de Sol Mayor</span>
+              <small>Para ver el mapa entero de G Mayor y Mi menor.</small>
+            </Link>
+            <Link href="/lecciones/temario/modos-griegos">
+              <span>Modos griegos</span>
+              <small>Para estudiar otros centros dentro de la escala.</small>
+            </Link>
+          </div>
+        </section>
+
         <section className="final-warning" aria-label="Aviso final del temario">
           <p>Ultima unidad del camino principal.</p>
           <p>Probablemente te dejaste atras ampliaciones de muchas unidades anteriores.</p>
@@ -128,7 +143,8 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         }
 
         .scales-header,
-        .section-header {
+        .section-header,
+        .branch-section {
           margin: 0 auto;
           max-width: 920px;
           text-align: center;
@@ -164,7 +180,8 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
 
         .section-header h2,
         .question-box h2,
-        .g-major-box h2 {
+        .g-major-box h2,
+        .branch-section h2 {
           font-size: clamp(30px, 4.7vw, 62px);
           font-weight: 950;
           letter-spacing: 0;
@@ -260,6 +277,60 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           border-color: #047857;
         }
 
+        .branch-section {
+          border: 2px solid #bfd7ff;
+          border-radius: 10px;
+          display: grid;
+          gap: 18px;
+          padding: clamp(18px, 3vw, 28px);
+          width: 100%;
+        }
+
+        .branch-grid {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .branch-grid a {
+          border: 2px solid #080808;
+          border-radius: 8px;
+          color: #080808;
+          display: grid;
+          gap: 8px;
+          min-width: 0;
+          padding: 18px;
+          text-align: left;
+          text-decoration: none;
+          transition: border-color 160ms ease, color 160ms ease;
+        }
+
+        .branch-grid a:hover,
+        .branch-grid a:focus-visible {
+          border-color: #047857;
+          color: #047857;
+        }
+
+        .branch-grid a:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
+        }
+
+        .branch-grid span {
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 950;
+          line-height: 1.15;
+          overflow-wrap: anywhere;
+        }
+
+        .branch-grid small {
+          color: #303030;
+          font-size: 15px;
+          font-weight: 700;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
         .final-warning {
           background: #fef2f2;
           border: 4px solid #dc2626;
@@ -296,6 +367,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           .question-box,
           .g-major-box,
           .memory-box,
+          .branch-section,
           .final-warning {
             text-align: left;
           }
@@ -306,6 +378,10 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
 
           .g-major-box {
             border-radius: 10px;
+          }
+
+          .branch-grid {
+            grid-template-columns: 1fr;
           }
         }
 
