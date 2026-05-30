@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -8,6 +9,11 @@ type SongPart = {
   intro?: string[];
   kicker: string;
   redSeparatorAfter?: Array<{
+    index: number;
+    row: number;
+  }>;
+  secretLinkAfter?: Array<{
+    href: string;
     index: number;
     row: number;
   }>;
@@ -22,6 +28,7 @@ const songParts: SongPart[] = [
       ['C', 'G', 'F', 'C'],
     ],
     kicker: 'Introduccion + versos',
+    secretLinkAfter: [{ href: '/lecciones/prueba', index: 2, row: 1 }],
     source: '/tabs/let-it-be-verso.gp',
     title: 'Versos',
   },
@@ -44,28 +51,43 @@ const songParts: SongPart[] = [
   },
 ];
 
-function ChordPattern({ redSeparatorAfter = [], rows }: { redSeparatorAfter?: SongPart['redSeparatorAfter']; rows: string[][] }) {
+function ChordPattern({
+  redSeparatorAfter = [],
+  rows,
+  secretLinkAfter = [],
+}: {
+  redSeparatorAfter?: SongPart['redSeparatorAfter'];
+  rows: string[][];
+  secretLinkAfter?: SongPart['secretLinkAfter'];
+}) {
   return (
     <div className="chord-pattern" aria-label="Patron de acordes">
       {rows.map((row, rowIndex) => (
         <div className="chord-row" key={`row-${rowIndex}`} style={{ '--chord-count': row.length } as CSSProperties}>
-          {row.map((chord, index) => (
-            <span className="chord-cell" key={`${rowIndex}-${chord}-${index}`}>
-              <strong>{chord}</strong>
-              {index < row.length - 1 ? (
-                <i
-                  aria-hidden="true"
-                  className={
-                    redSeparatorAfter.some((separator) => separator.row === rowIndex && separator.index === index)
-                      ? 'is-red-separator'
-                      : undefined
-                  }
-                >
-                  |
-                </i>
-              ) : null}
-            </span>
-          ))}
+          {row.map((chord, index) => {
+            const isRedSeparator = redSeparatorAfter.some((separator) => separator.row === rowIndex && separator.index === index);
+            const secretLink = secretLinkAfter.find((separator) => separator.row === rowIndex && separator.index === index);
+            const separator = (
+              <i aria-hidden="true" className={isRedSeparator ? 'is-red-separator' : undefined}>
+                |
+              </i>
+            );
+
+            return (
+              <span className="chord-cell" key={`${rowIndex}-${chord}-${index}`}>
+                <strong>{chord}</strong>
+                {index < row.length - 1 ? (
+                  secretLink ? (
+                    <Link aria-label="Abrir cancion de prueba" className="secret-separator-link" href={secretLink.href} prefetch={false}>
+                      {separator}
+                    </Link>
+                  ) : (
+                    separator
+                  )
+                ) : null}
+              </span>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -99,7 +121,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
               ) : null}
             </header>
 
-            <ChordPattern redSeparatorAfter={part.redSeparatorAfter} rows={part.chords} />
+            <ChordPattern redSeparatorAfter={part.redSeparatorAfter} rows={part.chords} secretLinkAfter={part.secretLinkAfter} />
 
             <div className="compact-player-frame">
               <AlphaTabPlayer compact initialSpeed={1.35} layout="horizontal" minHeight={190} source={part.source} title={part.title} />
@@ -278,6 +300,28 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
 
         .chord-cell i.is-red-separator {
           color: #dc2626;
+        }
+
+        .song-page .chord-cell .secret-separator-link,
+        .song-page .chord-cell .secret-separator-link:visited,
+        .song-page .chord-cell .secret-separator-link:hover,
+        .song-page .chord-cell .secret-separator-link:active,
+        .song-page .chord-cell .secret-separator-link:focus,
+        .song-page .chord-cell .secret-separator-link:focus-visible {
+          animation: none !important;
+          color: inherit !important;
+          cursor: default;
+          display: contents !important;
+          max-width: none;
+          outline: none !important;
+          text-decoration: none !important;
+          text-decoration-color: transparent !important;
+          text-decoration-thickness: 0 !important;
+          text-underline-offset: 0 !important;
+          transform: none !important;
+          transition: none !important;
+          will-change: auto !important;
+          -webkit-tap-highlight-color: transparent;
         }
 
         .compact-player-frame {
