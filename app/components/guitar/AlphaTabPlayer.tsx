@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent, ReactNode } from 'react';
+import type { PointerEvent, ReactNode, UIEvent } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 
 interface AlphaTabPlayerProps {
@@ -38,8 +38,11 @@ const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
+const LOOP_HANDLE_OUTSIDE_OFFSET = 30;
 const CURSOR_LINE_WIDTH = 3;
-const PLAYBACK_SCROLL_RESUME_DELAY = 900;
+const PLAYBACK_SCROLL_RESUME_DELAY = 1600;
+const PAGE_LAYOUT_HORIZONTAL_SCROLL_MARGIN_RATIO = 0.22;
+const LINEAR_PLAYBACK_CURSOR_RATIO = 0.34;
 const ANNOTATED_BAR_BASE_WIDTH = 72;
 const ANNOTATED_BAR_TEXT_WIDTH = 7.5;
 const ANNOTATED_BAR_BEAT_WIDTH = 28;
@@ -602,9 +605,12 @@ export default function AlphaTabPlayer({
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const programmaticPageScrollRef = useRef(false);
   const programmaticPageScrollTimerRef = useRef<number | null>(null);
+  const programmaticScrollbarScrollRef = useRef(false);
+  const programmaticScrollbarScrollTimerRef = useRef<number | null>(null);
   const programmaticTabScrollRef = useRef(false);
   const programmaticTabScrollTimerRef = useRef<number | null>(null);
   const speedRef = useRef(initialSpeed);
+  const tabScrollbarRef = useRef<HTMLDivElement | null>(null);
   const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
   const voiceIdRef = useRef(0);
@@ -624,7 +630,14 @@ export default function AlphaTabPlayer({
   const [events, setEvents] = useState<TabEvent[]>(fallbackEvents);
   const [loopHighlightBoxes, setLoopHighlightBoxes] = useState<HighlightBox[]>([]);
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
+  const [tabScrollMetrics, setTabScrollMetrics] = useState({ clientWidth: 0, scrollWidth: 0 });
   const [tabScrollLeft, setTabScrollLeft] = useState(0);
+  const linearPlaybackLeftGutter =
+    layout === 'horizontal' && tabScrollMetrics.clientWidth > 0
+      ? Math.round(tabScrollMetrics.clientWidth * LINEAR_PLAYBACK_CURSOR_RATIO)
+      : 0;
+  const linearVisualOffset = layout === 'horizontal' ? linearPlaybackLeftGutter : 0;
+  const visualScrollOffset = tabScrollLeft - linearVisualOffset;
 
   function getTabContainerPadding() {
     if (!containerRef.current) {
@@ -677,12 +690,14 @@ export default function AlphaTabPlayer({
       y: nextBox.y,
     });
 
-    if (isPlayingRef.current) {
-      keepCursorVisibleDuringPlayback(nextBox);
+    if (shouldScroll) {
+      followCursorHorizontally(nextBox.x);
+      keepCursorVisibleOnPage(nextBox, true);
+      return;
     }
 
-    if (shouldScroll) {
-      keepCursorVisibleOnPage(nextBox, true);
+    if (isPlayingRef.current) {
+      keepCursorVisibleDuringPlayback(nextBox);
     }
   }
 
@@ -704,16 +719,23 @@ export default function AlphaTabPlayer({
     }
 
     const candidates = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
-    return (
+    const widestScrollableElement =
       candidates
         .filter((element) => element.scrollWidth > element.clientWidth + 2)
-        .sort((a, b) => b.scrollWidth - b.clientWidth - (a.scrollWidth - a.clientWidth))[0] ?? null
-    );
+        .sort((a, b) => b.scrollWidth - b.clientWidth - (a.scrollWidth - a.clientWidth))[0] ?? null;
+
+    if (widestScrollableElement) {
+      return widestScrollableElement;
+    }
+
+    const surfaceWidth = root.querySelector<HTMLElement>('.at-surface')?.getBoundingClientRect().width ?? 0;
+    return surfaceWidth > root.clientWidth + 2 ? root : null;
   }
 
   function bindTabScrollElement() {
     const nextElement = findTabScrollElement();
     if (nextElement === tabScrollElementRef.current) {
+      updateTabScrollMetrics(nextElement);
       return nextElement;
     }
 
@@ -721,29 +743,95 @@ export default function AlphaTabPlayer({
     tabScrollElementRef.current = nextElement;
 
     if (!nextElement) {
+      setTabScrollMetrics({ clientWidth: 0, scrollWidth: 0 });
       setTabScrollLeft(0);
       removeTabScrollListenerRef.current = () => {};
       return null;
     }
 
     const handleScroll = () => {
+      updateTabScrollMetrics(nextElement);
+      syncVisibleScrollbar(nextElement.scrollLeft);
       setTabScrollLeft(nextElement.scrollLeft);
       if (isPlayingRef.current && !programmaticTabScrollRef.current) {
         playbackScrollUserOverrideRef.current = true;
       }
     };
     nextElement.addEventListener('scroll', handleScroll, { passive: true });
+    updateTabScrollMetrics(nextElement);
     setTabScrollLeft(nextElement.scrollLeft);
+    syncVisibleScrollbar(nextElement.scrollLeft);
     removeTabScrollListenerRef.current = () => nextElement.removeEventListener('scroll', handleScroll);
     return nextElement;
   }
 
+  function syncVisibleScrollbar(scrollLeft: number) {
+    const scrollbar = tabScrollbarRef.current;
+    if (!scrollbar || Math.abs(scrollbar.scrollLeft - scrollLeft) < 1) {
+      return;
+    }
+
+    programmaticScrollbarScrollRef.current = true;
+    if (programmaticScrollbarScrollTimerRef.current !== null) {
+      window.clearTimeout(programmaticScrollbarScrollTimerRef.current);
+    }
+    scrollbar.scrollLeft = scrollLeft;
+    programmaticScrollbarScrollTimerRef.current = window.setTimeout(() => {
+      programmaticScrollbarScrollRef.current = false;
+      programmaticScrollbarScrollTimerRef.current = null;
+    }, 120);
+  }
+
+  function updateTabScrollMetrics(element = tabScrollElementRef.current) {
+    const fallbackElement = containerRef.current;
+    const measuredElement = element ?? fallbackElement;
+    const surface = fallbackElement?.querySelector<HTMLElement>('.at-surface');
+    const surfaceWidth = surface ? Math.ceil(surface.getBoundingClientRect().width) : 0;
+    const clientWidth = measuredElement?.clientWidth ?? 0;
+    const nextMetrics = {
+      clientWidth,
+      scrollWidth:
+        layout === 'horizontal'
+          ? Math.max(clientWidth, surfaceWidth + clientWidth)
+          : Math.max(measuredElement?.scrollWidth ?? 0, surfaceWidth),
+    };
+
+    setTabScrollMetrics((currentMetrics) =>
+      currentMetrics.clientWidth === nextMetrics.clientWidth && currentMetrics.scrollWidth === nextMetrics.scrollWidth
+        ? currentMetrics
+        : nextMetrics
+    );
+  }
+
+  function syncTabScrollFromScrollbar(event: UIEvent<HTMLDivElement>) {
+    if (layout === 'horizontal') {
+      setTabScrollLeft(event.currentTarget.scrollLeft);
+      if (programmaticScrollbarScrollRef.current) {
+        return;
+      }
+      markExplicitManualPlaybackScroll();
+      return;
+    }
+
+    const scrollFrame = bindTabScrollElement();
+    if (!scrollFrame) {
+      return;
+    }
+
+    scrollFrame.scrollLeft = event.currentTarget.scrollLeft;
+    setTabScrollLeft(scrollFrame.scrollLeft);
+    if (programmaticScrollbarScrollRef.current) {
+      return;
+    }
+    markExplicitManualPlaybackScroll();
+  }
+
   function getTabScrollPosition() {
     const scrollFrame = bindTabScrollElement();
-    const left = scrollFrame?.scrollLeft ?? containerRef.current?.scrollLeft ?? 0;
+    const left = layout === 'horizontal' ? tabScrollLeft - linearPlaybackLeftGutter : scrollFrame?.scrollLeft ?? containerRef.current?.scrollLeft ?? 0;
     const top = scrollFrame?.scrollTop ?? containerRef.current?.scrollTop ?? 0;
 
-    if (left !== tabScrollLeft) {
+    if (layout !== 'horizontal' && left !== tabScrollLeft) {
       setTabScrollLeft(left);
     }
 
@@ -775,6 +863,22 @@ export default function AlphaTabPlayer({
   function markManualPlaybackScroll() {
     if (isPlayingRef.current && !programmaticPageScrollRef.current && !programmaticTabScrollRef.current) {
       playbackScrollUserOverrideRef.current = true;
+    }
+  }
+
+  function markExplicitManualPlaybackScroll() {
+    if (isPlayingRef.current) {
+      playbackScrollUserOverrideRef.current = true;
+    }
+  }
+
+  function isPlaybackControlTarget(target: EventTarget | null) {
+    return target instanceof Element && target.closest('button, input, label, [role="menu"]') !== null;
+  }
+
+  function stopFollowingPlaybackOnTouch(pointerType: string, target: EventTarget | null) {
+    if (pointerType === 'touch' && !isPlaybackControlTarget(target)) {
+      markExplicitManualPlaybackScroll();
     }
   }
 
@@ -818,7 +922,7 @@ export default function AlphaTabPlayer({
       pointerStartIndexRef.current = null;
       pointerSuppressUpRef.current = true;
       pointerTapRef.current = null;
-      markManualPlaybackScroll();
+      markExplicitManualPlaybackScroll();
     }
 
     event.preventDefault();
@@ -833,6 +937,35 @@ export default function AlphaTabPlayer({
     return wasDragging;
   }
 
+  function followLinearCursorHorizontally(cursorX: number) {
+    const scrollFrame = bindTabScrollElement();
+    const clientWidth = tabScrollMetrics.clientWidth || scrollFrame?.clientWidth || 0;
+    const scrollWidth = tabScrollMetrics.scrollWidth || scrollFrame?.scrollWidth || 0;
+    if (clientWidth <= 0 || scrollWidth <= clientWidth) {
+      return;
+    }
+
+    const maxScrollLeft = scrollWidth - clientWidth;
+    const targetLeft = Math.min(maxScrollLeft, Math.max(0, cursorX));
+
+    if (Math.abs(tabScrollLeft - targetLeft) < 1) {
+      return;
+    }
+
+    markProgrammaticTabScroll();
+    setTabScrollLeft(targetLeft);
+    syncVisibleScrollbar(targetLeft);
+  }
+
+  function followCursorHorizontally(cursorX: number) {
+    if (layout === 'horizontal') {
+      followLinearCursorHorizontally(cursorX);
+      return;
+    }
+
+    keepCursorVisibleHorizontally(cursorX);
+  }
+
   function keepCursorVisibleHorizontally(cursorX: number) {
     const scrollFrame = bindTabScrollElement();
     if (!scrollFrame || scrollFrame.scrollWidth <= scrollFrame.clientWidth) {
@@ -841,7 +974,7 @@ export default function AlphaTabPlayer({
 
     const visibleLeft = scrollFrame.scrollLeft;
     const visibleRight = visibleLeft + scrollFrame.clientWidth;
-    const comfortMargin = Math.min(180, Math.max(72, scrollFrame.clientWidth * 0.22));
+    const comfortMargin = Math.min(180, Math.max(72, scrollFrame.clientWidth * PAGE_LAYOUT_HORIZONTAL_SCROLL_MARGIN_RATIO));
     const maxScrollLeft = scrollFrame.scrollWidth - scrollFrame.clientWidth;
 
     if (cursorX > visibleRight - comfortMargin) {
@@ -897,7 +1030,7 @@ export default function AlphaTabPlayer({
       return;
     }
 
-    keepCursorVisibleHorizontally(nextBox.x);
+    followCursorHorizontally(nextBox.x);
     keepCursorVisibleOnPage(nextBox);
   }
 
@@ -1037,6 +1170,10 @@ export default function AlphaTabPlayer({
         window.clearTimeout(programmaticPageScrollTimerRef.current);
         programmaticPageScrollTimerRef.current = null;
       }
+      if (programmaticScrollbarScrollTimerRef.current !== null) {
+        window.clearTimeout(programmaticScrollbarScrollTimerRef.current);
+        programmaticScrollbarScrollTimerRef.current = null;
+      }
       if (programmaticTabScrollTimerRef.current !== null) {
         window.clearTimeout(programmaticTabScrollTimerRef.current);
         programmaticTabScrollTimerRef.current = null;
@@ -1094,7 +1231,10 @@ export default function AlphaTabPlayer({
   }, []);
 
   useEffect(() => {
-    const handleManualScrollIntent = () => markManualPlaybackScroll();
+    const handleManualScrollIntent = () => markExplicitManualPlaybackScroll();
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      stopFollowingPlaybackOnTouch(event.pointerType, event.target);
+    };
     const handleKeyboardScrollIntent = (event: KeyboardEvent) => {
       if (
         event.code === 'ArrowDown' ||
@@ -1107,26 +1247,28 @@ export default function AlphaTabPlayer({
         event.code === 'PageUp' ||
         event.code === 'Space'
       ) {
-        markManualPlaybackScroll();
+        markExplicitManualPlaybackScroll();
       }
     };
     const handleWindowScroll = () => {
-      if (isPlayingRef.current && !programmaticPageScrollRef.current) {
-        playbackScrollUserOverrideRef.current = true;
-      }
+      markManualPlaybackScroll();
     };
 
     window.addEventListener('wheel', handleManualScrollIntent, { passive: true });
+    window.addEventListener('pointerdown', handlePointerDown, { capture: true, passive: true });
     window.addEventListener('touchmove', handleManualScrollIntent, { passive: true });
     window.addEventListener('keydown', handleKeyboardScrollIntent, { capture: true });
     window.addEventListener('scroll', handleWindowScroll, { passive: true });
 
     return () => {
       window.removeEventListener('wheel', handleManualScrollIntent);
+      window.removeEventListener('pointerdown', handlePointerDown, { capture: true });
       window.removeEventListener('touchmove', handleManualScrollIntent);
       window.removeEventListener('keydown', handleKeyboardScrollIntent, { capture: true });
       window.removeEventListener('scroll', handleWindowScroll);
     };
+  // These window listeners read mutable refs so they can stay stable for the player lifetime.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1139,6 +1281,43 @@ export default function AlphaTabPlayer({
       void startLocalPlayback();
     };
   });
+
+  useEffect(() => {
+    const surface = containerRef.current?.querySelector<HTMLElement>('.at-surface');
+    if (!surface) {
+      return;
+    }
+
+    if (layout !== 'horizontal') {
+      surface.style.transform = '';
+      surface.style.willChange = '';
+      return;
+    }
+
+    surface.style.transform = `translateX(${linearPlaybackLeftGutter - tabScrollLeft}px)`;
+    surface.style.willChange = 'transform';
+  }, [layout, linearPlaybackLeftGutter, tabScrollLeft, tabScrollMetrics.scrollWidth]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const refresh = () => {
+      bindTabScrollElement();
+      updateTabScrollMetrics();
+    };
+    const observer = new ResizeObserver(refresh);
+    observer.observe(root);
+    window.setTimeout(refresh, 0);
+    window.setTimeout(refresh, 120);
+    window.setTimeout(refresh, 420);
+
+    return () => observer.disconnect();
+  // The observer is tied to the AlphaTab DOM node, not to each render's function identities.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function getAudioContext() {
     if (!audioContextRef.current) {
@@ -1327,12 +1506,12 @@ export default function AlphaTabPlayer({
     return [
       {
         side: 'start' as const,
-        x: Math.max(0, startBox.x + LOOP_VISUAL_X_OFFSET),
+        x: Math.max(0, startBox.x + LOOP_VISUAL_X_OFFSET - LOOP_HANDLE_OUTSIDE_OFFSET),
         y: startBox.y + startBox.height / 2,
       },
       {
         side: 'end' as const,
-        x: Math.max(0, endBox.x + LOOP_VISUAL_X_OFFSET + endBox.width),
+        x: Math.max(0, endBox.x + LOOP_VISUAL_X_OFFSET + endBox.width + LOOP_HANDLE_OUTSIDE_OFFSET),
         y: endBox.y + endBox.height / 2,
       },
     ];
@@ -1498,6 +1677,7 @@ export default function AlphaTabPlayer({
   }
 
   function beginPointerSelection(event: PointerEvent<HTMLDivElement>) {
+    stopFollowingPlaybackOnTouch(event.pointerType, event.target);
     beginTabScrollDrag(event);
     event.currentTarget.setPointerCapture(event.pointerId);
     if (isPlayingRef.current) return;
@@ -2022,6 +2202,16 @@ export default function AlphaTabPlayer({
         </div>
       </div>
       <div className="relative overflow-hidden bg-white">
+        {tabScrollMetrics.scrollWidth > tabScrollMetrics.clientWidth + 2 && (
+          <div
+            ref={tabScrollbarRef}
+            aria-label="Desplazamiento horizontal de la tablatura"
+            className="relative z-[95] h-5 overflow-x-auto overflow-y-hidden border-b border-zinc-200 bg-white"
+            onScroll={syncTabScrollFromScrollbar}
+          >
+            <div style={{ height: 1, width: tabScrollMetrics.scrollWidth }} />
+          </div>
+        )}
         {loopHighlightBoxes.map((box, index) => (
           <div
             key={`${box.x}-${box.y}-${index}`}
@@ -2031,7 +2221,7 @@ export default function AlphaTabPlayer({
               background: 'rgba(250, 204, 21, 0.22)',
               border: '1px solid rgba(202, 138, 4, 0.55)',
               height: box.height,
-              left: box.x - tabScrollLeft,
+              left: box.x - visualScrollOffset,
               top: box.y,
               width: box.width,
               zIndex: 40,
@@ -2061,7 +2251,7 @@ export default function AlphaTabPlayer({
               fontWeight: 950,
               height: 42,
               justifyContent: 'center',
-              left: handle.x - tabScrollLeft - 21,
+              left: handle.x - visualScrollOffset - 21,
               lineHeight: 1,
               touchAction: 'none',
               top: handle.y - 21,
@@ -2080,7 +2270,7 @@ export default function AlphaTabPlayer({
             boxShadow: '0 0 0 1px rgba(6, 78, 59, 0.45), 0 0 10px rgba(16, 185, 129, 0.6)',
             display: cursorBox.visible ? 'block' : 'none',
             height: cursorBox.height,
-            left: cursorBox.x - tabScrollLeft,
+            left: cursorBox.x - visualScrollOffset,
             top: cursorBox.y,
             width: 3,
             zIndex: 50,
@@ -2088,8 +2278,19 @@ export default function AlphaTabPlayer({
         />
         <div
           ref={containerRef}
-          className={`alphatab-container cursor-crosshair ${compact ? 'p-3' : 'p-6'}`}
-          style={{ minHeight: minHeight ?? (compact ? 220 : 520), touchAction: 'pan-y' }}
+          className="alphatab-container cursor-crosshair overflow-x-hidden overflow-y-hidden"
+          style={{
+            maxWidth: '100%',
+            minHeight: minHeight ?? (compact ? 220 : 520),
+            overflowX: 'hidden',
+            overflowY: 'hidden',
+            paddingBottom: compact ? 12 : 24,
+            paddingLeft: compact ? 12 : 24,
+            paddingRight: compact ? 12 : 24,
+            paddingTop: compact ? 12 : 24,
+            touchAction: 'pan-y',
+            width: '100%',
+          }}
           onPointerDown={beginPointerSelection}
           onPointerMove={updatePointerSelection}
           onPointerUp={endPointerSelection}
@@ -2098,7 +2299,10 @@ export default function AlphaTabPlayer({
             pointerStartIndexRef.current = null;
             pointerSuppressUpRef.current = false;
           }}
-          onScroll={(event) => setTabScrollLeft(event.currentTarget.scrollLeft)}
+          onScroll={(event) => {
+            setTabScrollLeft(event.currentTarget.scrollLeft);
+            syncVisibleScrollbar(event.currentTarget.scrollLeft);
+          }}
         />
         {!compact && stringLabelGroups.map((group) =>
           group.labels.map((label, index) => (
@@ -2107,7 +2311,7 @@ export default function AlphaTabPlayer({
               aria-hidden="true"
               className="pointer-events-none absolute text-[12px] font-semibold leading-none text-zinc-900"
               style={{
-                left: label.x - tabScrollLeft,
+                left: label.x - visualScrollOffset,
                 top: label.y,
                 transform: 'translateY(-50%)',
                 zIndex: 80,

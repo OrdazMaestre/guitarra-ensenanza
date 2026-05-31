@@ -146,3 +146,10 @@ a:not(.temario-pager-link):not(.site-home-link):focus-visible {
   background-color: #09090b;
   border: 1px solid #3f3f46;
 }
+
+.player-frame:has(.alphatab-container),
+.compact-player-frame:has(.alphatab-container),
+.figure-tab:has(.alphatab-container),
+.tab-panel:has(.alphatab-container) {
+  overflow-x: clip !important;
+}
