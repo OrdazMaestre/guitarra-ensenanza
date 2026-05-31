@@ -21,6 +21,7 @@ const DEFAULT_SPEED = 1;
 const DEFAULT_BPM = 96;
 const MIN_AUDIBLE_NOTE_LEVEL = 0.028;
 const DENSE_CHORD_NOTE_COUNT = 3;
+const TAB_DRAG_THRESHOLD = 8;
 const MAX_GUITAR_VOICES = 12;
 const GUITAR_SAMPLE_BASE_URL = '/samples/seagull-acoustic/';
 const GUITAR_SAMPLE_CUTOFFS = [2600, 3200, 4200, 5600, 7200, 9000];
@@ -586,6 +587,14 @@ export default function AlphaTabPlayer({
   const playbackScrollPendingRef = useRef(false);
   const playbackScrollUserOverrideRef = useRef(false);
   const pointerDragHandleRef = useRef<'end' | 'start' | null>(null);
+  const pointerScrollDragRef = useRef<{
+    pointerId: number;
+    scrollLeft: number;
+    startX: number;
+    startY: number;
+    target: HTMLElement;
+    wasDragging: boolean;
+  } | null>(null);
   const pointerStartIndexRef = useRef<number | null>(null);
   const pointerSuppressUpRef = useRef(false);
   const pointerTapRef = useRef<{ index: number; time: number; x: number; y: number } | null>(null);
@@ -767,6 +776,61 @@ export default function AlphaTabPlayer({
     if (isPlayingRef.current && !programmaticPageScrollRef.current && !programmaticTabScrollRef.current) {
       playbackScrollUserOverrideRef.current = true;
     }
+  }
+
+  function getScrollableTabElement() {
+    const scrollFrame = bindTabScrollElement();
+    return scrollFrame && scrollFrame.scrollWidth > scrollFrame.clientWidth + 2 ? scrollFrame : null;
+  }
+
+  function beginTabScrollDrag(event: PointerEvent<HTMLDivElement>) {
+    const target = getScrollableTabElement();
+    if (!target) {
+      pointerScrollDragRef.current = null;
+      return;
+    }
+
+    pointerScrollDragRef.current = {
+      pointerId: event.pointerId,
+      scrollLeft: target.scrollLeft,
+      startX: event.clientX,
+      startY: event.clientY,
+      target,
+      wasDragging: false,
+    };
+  }
+
+  function updateTabScrollDrag(event: PointerEvent<HTMLDivElement>) {
+    const drag = pointerScrollDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return false;
+    }
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+
+    if (!drag.wasDragging) {
+      if (Math.abs(deltaX) < TAB_DRAG_THRESHOLD || Math.abs(deltaX) < Math.abs(deltaY) * 1.15) {
+        return false;
+      }
+
+      drag.wasDragging = true;
+      pointerStartIndexRef.current = null;
+      pointerSuppressUpRef.current = true;
+      pointerTapRef.current = null;
+      markManualPlaybackScroll();
+    }
+
+    event.preventDefault();
+    drag.target.scrollLeft = drag.scrollLeft - deltaX;
+    setTabScrollLeft(drag.target.scrollLeft);
+    return true;
+  }
+
+  function endTabScrollDrag(event: PointerEvent<HTMLDivElement>) {
+    const wasDragging = pointerScrollDragRef.current?.pointerId === event.pointerId && pointerScrollDragRef.current.wasDragging;
+    pointerScrollDragRef.current = null;
+    return wasDragging;
   }
 
   function keepCursorVisibleHorizontally(cursorX: number) {
@@ -1415,7 +1479,11 @@ export default function AlphaTabPlayer({
   }
 
   function selectStartFromPointer(event: PointerEvent<HTMLElement>) {
-    if (isPlayingRef.current) return;
+    if (isPlayingRef.current) {
+      pointerStartIndexRef.current = null;
+      pointerSuppressUpRef.current = false;
+      return;
+    }
     event.preventDefault();
 
     const eventIndex = getEventIndexFromPointer(event);
@@ -1430,9 +1498,9 @@ export default function AlphaTabPlayer({
   }
 
   function beginPointerSelection(event: PointerEvent<HTMLDivElement>) {
-    if (isPlayingRef.current) return;
-    event.preventDefault();
+    beginTabScrollDrag(event);
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (isPlayingRef.current) return;
 
     const eventIndex = getEventIndexFromPointer(event);
     const now = window.performance.now();
@@ -1464,13 +1532,19 @@ export default function AlphaTabPlayer({
   }
 
   function endPointerSelection(event: PointerEvent<HTMLDivElement>) {
-    if (isPlayingRef.current) return;
-    event.preventDefault();
+    const wasScrollDrag = endTabScrollDrag(event);
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       // The pointer may already have been released by the browser.
     }
+
+    if (isPlayingRef.current) return;
+    if (wasScrollDrag) {
+      pointerSuppressUpRef.current = false;
+      return;
+    }
+    event.preventDefault();
 
     if (pointerSuppressUpRef.current) {
       pointerSuppressUpRef.current = false;
@@ -1506,6 +1580,7 @@ export default function AlphaTabPlayer({
   }
 
   function updatePointerSelection(event: PointerEvent<HTMLDivElement>) {
+    if (updateTabScrollDrag(event)) return;
     if (isPlayingRef.current || pointerStartIndexRef.current === null) return;
     event.preventDefault();
 
@@ -1588,7 +1663,7 @@ export default function AlphaTabPlayer({
     const release = isPalmMuted ? GUITAR_SAMPLE_PALM_MUTE_RELEASE : GUITAR_SAMPLE_RELEASE;
     const sustainDuration = isPalmMuted ? Math.min(0.16, duration) : clamp(duration, 0.18, 2.4);
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
-    const stringBalance = GUITAR_STRING_GAINS[note.stringNumber] ?? 1;
+    const stringBalance = eventNoteCount >= DENSE_CHORD_NOTE_COUNT ? GUITAR_STRING_GAINS[note.stringNumber] ?? 1 : 1;
     const articulationLevel = isPalmMuted ? 0.34 : 0.58;
     const currentVolume = volumeRef.current;
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
@@ -2014,11 +2089,12 @@ export default function AlphaTabPlayer({
         <div
           ref={containerRef}
           className={`alphatab-container cursor-crosshair ${compact ? 'p-3' : 'p-6'}`}
-          style={{ minHeight: minHeight ?? (compact ? 220 : 520), touchAction: 'manipulation' }}
+          style={{ minHeight: minHeight ?? (compact ? 220 : 520), touchAction: 'pan-y' }}
           onPointerDown={beginPointerSelection}
           onPointerMove={updatePointerSelection}
           onPointerUp={endPointerSelection}
           onPointerCancel={() => {
+            pointerScrollDragRef.current = null;
             pointerStartIndexRef.current = null;
             pointerSuppressUpRef.current = false;
           }}
