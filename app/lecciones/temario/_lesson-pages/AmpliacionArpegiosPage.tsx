@@ -66,8 +66,8 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         </section>
 
         <section className="lesson-close" aria-label="Resumen">
-          <p>Podemos empezar por la figura 5 y luego hacer 1, 2, 3 y 4.</p>
-          <p>La idea es no tener que retroceder nunca en el mastil al pasar del 4 al 5.</p>
+          <p>Podemos empezar por la figura 4 y luego hacer 0, 1, 2 y 3.</p>
+          <p>La idea es no tener que retroceder nunca en el mastil al pasar del 3 al 4.</p>
           <p>Escuchamos el color del acorde mientras cambiamos de zona.</p>
         </section>
       </article>

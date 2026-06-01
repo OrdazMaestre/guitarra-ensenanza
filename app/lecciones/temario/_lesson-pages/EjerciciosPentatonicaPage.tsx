@@ -23,11 +23,11 @@ type PentatonicFigureNote = {
 };
 
 const figures = [
-  { endFret: 3, source: '/tabs/pentat1.gp', startFret: 0, title: 'Figura 1' },
-  { endFret: 5, source: '/tabs/pentat2.gp', startFret: 2, title: 'Figura 2' },
-  { endFret: 8, source: '/tabs/pentat3.gp', startFret: 4, title: 'Figura 3' },
-  { endFret: 10, source: '/tabs/pentat4.gp', startFret: 7, title: 'Figura 4' },
-  { endFret: 12, source: '/tabs/pentat5.gp', startFret: 9, title: 'Figura 5' },
+  { endFret: 3, source: '/tabs/pentat1.gp', startFret: 0, title: 'Figura 0' },
+  { endFret: 5, source: '/tabs/pentat2.gp', startFret: 2, title: 'Figura 1' },
+  { endFret: 8, source: '/tabs/pentat3.gp', startFret: 4, title: 'Figura 2' },
+  { endFret: 10, source: '/tabs/pentat4.gp', startFret: 7, title: 'Figura 3' },
+  { endFret: 12, source: '/tabs/pentat5.gp', startFret: 9, title: 'Figura 4' },
 ];
 
 function notesForFigure(startFret: number, endFret: number) {

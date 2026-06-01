@@ -24,7 +24,7 @@ type PentatonicFigureNote = {
 const figureThree = {
   endFret: 8,
   startFret: 4,
-  title: 'Figura 3',
+  title: 'Figura 2',
 };
 
 const advancedExercises = [
@@ -74,7 +74,7 @@ function notesForFigure(startFret: number, endFret: number) {
 function FigureThreeDiagram() {
   return (
     <ReducedFretboardDiagram
-      ariaLabel="Figura 3 de la pentatonica de Sol Mayor y Mi menor"
+      ariaLabel="Figura 2 de la pentatonica de Sol Mayor y Mi menor"
       endFret={figureThree.endFret}
       guideDots={[5, 7].map((fret) => ({ fret }))}
       notes={notesForFigure(figureThree.startFret, figureThree.endFret)}
@@ -98,7 +98,7 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
         </header>
 
         <section className="rule-box" aria-label="Regla para practicar todas las figuras">
-          <p>Usamos ahora de ejemplo la figura 3.</p>
+          <p>Usamos ahora de ejemplo la figura 2.</p>
           <p>
             Pero luego habrá que hacer los mismos ejercicios con <strong>todas las demás figuras</strong> de la página anterior.
           </p>
@@ -133,7 +133,7 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
         <section className="practice-box" aria-label="Como practicar">
           <p>No corras.</p>
           <p>Hazlo limpio.</p>
-          <p>Cuando salga con la figura 3, prueba con las figuras 1, 2, 4 y 5.</p>
+          <p>Cuando salga con la figura 2, prueba con las figuras 0, 1, 3 y 4.</p>
         </section>
       </article>
 

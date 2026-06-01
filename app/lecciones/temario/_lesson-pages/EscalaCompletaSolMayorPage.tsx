@@ -157,7 +157,8 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
           <p>Este mapa lo aprenderemos igual que el de la pentatónica: con ejercicios en las siguientes 2 páginas.</p>
         </section>
 
-        <section className="practice-link" aria-label="Ejercicios de escalas">
+        <section className="practice-link" aria-label="Ramas de la escala completa">
+          <Link href="/lecciones/temario/acordes-escala-sol-mayor">Acordes de la escala de Sol Mayor</Link>
           <Link href="/lecciones/temario/ejercicios-escalas">Ejercicios de escalas</Link>
         </section>
       </article>

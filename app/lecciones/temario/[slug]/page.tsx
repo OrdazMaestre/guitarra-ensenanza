@@ -1,5 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
+import AcordesEscalaSolMayorPage from '../_lesson-pages/AcordesEscalaSolMayorPage';
 import AcordesPage from '../_lesson-pages/AcordesPage';
+import AcordesSeptimaPage from '../_lesson-pages/AcordesSeptimaPage';
 import AfinacionPage from '../_lesson-pages/AfinacionPage';
 import AmpliacionArpegiosPage from '../_lesson-pages/AmpliacionArpegiosPage';
 import ArpegiosPage from '../_lesson-pages/ArpegiosPage';
@@ -7,6 +9,7 @@ import ConceptosBasicosPage from '../_lesson-pages/ConceptosBasicosPage';
 import EjerciciosPentatonicaBluesPage from '../_lesson-pages/EjerciciosPentatonicaBluesPage';
 import EjerciciosPentatonicaAvanzadosPage from '../_lesson-pages/EjerciciosPentatonicaAvanzadosPage';
 import EjerciciosPentatonicaPage from '../_lesson-pages/EjerciciosPentatonicaPage';
+import EjerciciosEscalasAvanzadosPage from '../_lesson-pages/EjerciciosEscalasAvanzadosPage';
 import EjerciciosEscalasPage from '../_lesson-pages/EjerciciosEscalasPage';
 import EscalaCompletaSolMayorPage from '../_lesson-pages/EscalaCompletaSolMayorPage';
 import EscalasPage from '../_lesson-pages/EscalasPage';
@@ -77,10 +80,25 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
     );
   }
 
+  if (slug === 'acordes-escala-sol-mayor') {
+    return (
+      <AcordesEscalaSolMayorPage
+        {...extensionPrevious('/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
+      />
+    );
+  }
+
+  if (slug === 'acordes-con-septima') {
+    return (
+      <AcordesSeptimaPage
+        {...extensionPrevious('/lecciones/temario/acordes-escala-sol-mayor', 'Acordes de la escala de Sol Mayor')}
+      />
+    );
+  }
+
   if (slug === 'ejercicios-escalas-avanzados') {
     return (
-      <PlaceholderLessonPage
-        title="Ejercicios avanzados de escalas"
+      <EjerciciosEscalasAvanzadosPage
         {...extensionPrevious('/lecciones/temario/ejercicios-escalas', 'Ejercicios de escalas')}
       />
     );

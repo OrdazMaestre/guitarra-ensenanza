@@ -64,6 +64,16 @@ const branchMap: Record<string, { title: string; href: string; note: string }[]>
       note: 'Practica guiada',
     },
     {
+      title: 'Acordes de la escala de Sol Mayor',
+      href: '/lecciones/temario/acordes-escala-sol-mayor',
+      note: 'Pagina 15',
+    },
+    {
+      title: 'Acordes con septima',
+      href: '/lecciones/temario/acordes-con-septima',
+      note: 'Pagina 18',
+    },
+    {
       title: 'Ejercicios avanzados de escalas',
       href: '/lecciones/temario/ejercicios-escalas-avanzados',
       note: 'Mas adelante',

@@ -22,12 +22,17 @@ type BluesFigureNote = {
 };
 
 const figures = [
-  { endFret: 3, source: '/tabs/bluespent1.gp', startFret: 0, title: 'Figura 1' },
-  { endFret: 6, source: '/tabs/bluespent2.gp', startFret: 2, title: 'Figura 2' },
-  { endFret: 8, source: '/tabs/bluespent3.gp', startFret: 4, title: 'Figura 3' },
-  { endFret: 11, source: '/tabs/bluespent4.gp', startFret: 7, title: 'Figura 4' },
-  { endFret: 13, source: '/tabs/bluespent5.gp', startFret: 9, title: 'Figura 5' },
+  { endFret: 3, source: '/tabs/bluespent1.gp', startFret: 0, title: 'Figura 0' },
+  { endFret: 6, source: '/tabs/bluespent2.gp', startFret: 2, title: 'Figura 1' },
+  { endFret: 8, source: '/tabs/bluespent3.gp', startFret: 4, title: 'Figura 2' },
+  { endFret: 11, source: '/tabs/bluespent4.gp', startFret: 7, title: 'Figura 3' },
+  { endFret: 13, source: '/tabs/bluespent5.gp', startFret: 9, title: 'Figura 4' },
 ];
+
+const bluesLick = {
+  source: '/tabs/bluespent-lick.gp',
+  title: 'Lick de pentatonica blues',
+};
 
 function displayNote(note: string) {
   return note === 'A#' ? 'Bb' : note;
@@ -109,6 +114,20 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
           ))}
         </section>
 
+        <section className="lick-section" aria-labelledby="lick-title">
+          <div className="lick-copy">
+            <p className="lesson-kicker">Una idea musical</p>
+            <h2 id="lick-title">{bluesLick.title}</h2>
+            <div>
+              <p>Esta es una forma de usar esa pentatonica.</p>
+              <p>No es solo subir y bajar la escala.</p>
+              <p>Aqui ya suena como una frase.</p>
+            </div>
+          </div>
+
+          <AlphaTabPlayer compact layout="horizontal" minHeight={210} source={bluesLick.source} title={bluesLick.title} />
+        </section>
+
       </article>
 
       <div className="lesson-pager-wrap">
@@ -179,7 +198,8 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
 
         .short-copy p,
         .legend-box p,
-        .practice-box p {
+        .practice-box p,
+        .lick-copy p {
           color: #303030;
           font-size: clamp(18px, 2vw, 24px);
           font-weight: 650;
@@ -211,6 +231,35 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
           display: grid;
           gap: clamp(22px, 4vw, 36px);
           min-width: 0;
+        }
+
+        .lick-section {
+          border-top: 1px solid #d4d4d8;
+          display: grid;
+          gap: clamp(18px, 4vw, 34px);
+          min-width: 0;
+          padding-top: clamp(24px, 4vw, 42px);
+        }
+
+        .lick-copy {
+          display: grid;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .lick-copy h2 {
+          font-size: clamp(28px, 4.6vw, 56px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 1;
+          margin: 0;
+          overflow-wrap: anywhere;
+          text-transform: uppercase;
+        }
+
+        .lick-copy div {
+          display: grid;
+          gap: 8px;
         }
 
         .blues-exercise {

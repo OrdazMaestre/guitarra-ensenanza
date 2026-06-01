@@ -57,7 +57,7 @@ const figures: Array<{
       { fret: 3, string: 1 },
     ],
     startFret: 0,
-    title: 'Figura 1',
+    title: 'Figura 0',
   },
   {
     endFret: 5,
@@ -81,7 +81,7 @@ const figures: Array<{
       { fret: 5, string: 1 },
     ],
     startFret: 2,
-    title: 'Figura 2',
+    title: 'Figura 1',
   },
   {
     endFret: 8,
@@ -106,7 +106,7 @@ const figures: Array<{
       { fret: 8, string: 1 },
     ],
     startFret: 4,
-    title: 'Figura 3',
+    title: 'Figura 2',
   },
   {
     endFret: 10,
@@ -130,7 +130,7 @@ const figures: Array<{
       { fret: 10, string: 1 },
     ],
     startFret: 7,
-    title: 'Figura 4',
+    title: 'Figura 3',
   },
   {
     endFret: 13,
@@ -153,7 +153,7 @@ const figures: Array<{
       { fret: 12, string: 1 },
     ],
     startFret: 9,
-    title: 'Figura 5',
+    title: 'Figura 4',
   },
 ];
 
