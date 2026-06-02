@@ -1,14 +1,29 @@
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import { lessonBlocks } from '../temarioData';
+import SecondaryPaths from './SecondaryPaths';
+
+type BranchItem = {
+  title: string;
+  href: string;
+  note: string;
+  secondaryTarget?: 'harmony' | 'sevenths';
+};
 
 // Keep this map in sync whenever a temario route branches from a lesson.
-const branchMap: Record<string, { title: string; href: string; note: string }[]> = {
+const branchMap: Record<string, BranchItem[]> = {
   'conceptos-basicos': [
     {
       title: 'El sonido en la musica',
       href: '/lecciones/temario/el-sonido-en-la-musica',
       note: 'Saber mas',
+    },
+  ],
+  'notacion-musical': [
+    {
+      title: 'Afinacion',
+      href: '/lecciones/temario/afinacion',
+      note: 'Rama basica',
     },
   ],
   tablaturas: [
@@ -67,11 +82,13 @@ const branchMap: Record<string, { title: string; href: string; note: string }[]>
       title: 'Acordes de la escala de Sol Mayor',
       href: '/lecciones/temario/acordes-escala-sol-mayor',
       note: 'Pagina 15',
+      secondaryTarget: 'harmony',
     },
     {
       title: 'Acordes con septima',
       href: '/lecciones/temario/acordes-con-septima',
       note: 'Pagina 18',
+      secondaryTarget: 'sevenths',
     },
     {
       title: 'Ejercicios avanzados de escalas',
@@ -115,29 +132,32 @@ export default function PasosPage() {
 
       </section>
 
-      <section className="learning-map" aria-label="Orden real de las lecciones">
+      <section className="learning-map" aria-label="Orden real de las lecciones" data-learning-map>
+        <SecondaryPaths />
         
 
         <ol className="map-trunk">
           {lessonBlocks.map((lesson, index) => (
             <li key={lesson.slug} className={`map-node ${lessonToneClasses[index]}`}>
-              <div className="main-lesson">
+              <div className="main-lesson" data-secondary-source={lesson.slug === 'acordes' ? 'acordes' : undefined} data-secondary-target={lesson.slug === 'figuras-de-acordes' ? 'figuras' : undefined}>
                 <span className="lesson-number">{lesson.number}</span>
                 <Link href={`/lecciones/temario/${lesson.slug}`} className="lesson-title">
                   {lesson.title}
                 </Link>
               </div>
 
-              {branchMap[lesson.slug] ? (
-                <ul className="branch-list" aria-label={`Ramas de ${lesson.title}`}>
-                  {branchMap[lesson.slug].map((branch) => (
-                    <li key={branch.href} className="branch-node">
-                      <span className="branch-note">{branch.note}</span>
-                      <Link href={branch.href}>{branch.title}</Link>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
+              <div className="node-side">
+                {branchMap[lesson.slug] ? (
+                  <ul className="branch-list" aria-label={`Ramas de ${lesson.title}`}>
+                    {branchMap[lesson.slug].map((branch) => (
+                      <li key={branch.href} className="branch-node" data-secondary-target={branch.secondaryTarget}>
+                        <span className="branch-note">{branch.note}</span>
+                        <Link href={branch.href}>{branch.title}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </li>
           ))}
         </ol>
@@ -155,6 +175,7 @@ export default function PasosPage() {
             linear-gradient(180deg, rgba(4, 120, 87, 0.08) 1px, transparent 1px),
             #ffffff;
           background-size: 38px 38px;
+          box-sizing: border-box;
           color: #080808;
           min-height: 100vh;
           overflow-x: clip;
@@ -249,7 +270,31 @@ export default function PasosPage() {
           margin: 0 auto;
           max-width: 1180px;
           min-width: 0;
+          position: relative;
           width: 100%;
+        }
+
+        .secondary-path-overlay {
+          height: 100%;
+          inset: 0;
+          overflow: visible;
+          pointer-events: none;
+          position: absolute;
+          width: 100%;
+          z-index: 1;
+        }
+
+        .secondary-path {
+          fill: none;
+          marker-end: url("#secondary-path-arrow");
+          stroke: #f59e0b;
+          stroke-linecap: square;
+          stroke-linejoin: round;
+          stroke-width: 4;
+        }
+
+        .secondary-path-overlay marker path {
+          fill: #f59e0b;
         }
 
         .map-root {
@@ -286,6 +331,7 @@ export default function PasosPage() {
           margin: 0;
           padding: 0;
           position: relative;
+          z-index: 2;
         }
 
         .map-trunk::before {
@@ -299,6 +345,7 @@ export default function PasosPage() {
         }
 
         .map-node {
+          box-sizing: border-box;
           display: grid;
           gap: clamp(14px, 3vw, 34px);
           grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
@@ -317,7 +364,7 @@ export default function PasosPage() {
           position: absolute;
           top: 20px;
           width: 28px;
-          z-index: 2;
+          z-index: 3;
         }
 
         .main-lesson {
@@ -330,6 +377,8 @@ export default function PasosPage() {
           grid-template-columns: auto minmax(0, 1fr);
           min-width: 0;
           padding: clamp(14px, 3vw, 20px);
+          position: relative;
+          z-index: 2;
         }
 
         .lesson-number {
@@ -342,6 +391,8 @@ export default function PasosPage() {
           height: 46px;
           justify-content: center;
           width: 46px;
+          position: relative;
+          z-index: 2;
         }
 
         .lesson-title {
@@ -354,6 +405,17 @@ export default function PasosPage() {
           text-decoration-color: var(--node-color) !important;
           text-decoration-thickness: 0.12em !important;
           text-underline-offset: 0.16em !important;
+          position: relative;
+          z-index: 2;
+        }
+
+        .node-side {
+          align-content: start;
+          display: grid;
+          gap: 12px;
+          min-width: 0;
+          position: relative;
+          z-index: 2;
         }
 
         .branch-list {
@@ -382,6 +444,7 @@ export default function PasosPage() {
           border-left: 5px solid var(--node-color);
           min-width: 0;
           padding: 14px 16px 16px;
+          position: relative;
         }
 
         .branch-node a {
@@ -436,6 +499,11 @@ export default function PasosPage() {
         }
 
         @media (max-width: 560px) {
+          .steps-hero h1 {
+            font-size: clamp(38px, 10vw, 44px);
+            line-height: 1;
+          }
+
           .map-trunk::before {
             left: 14px;
           }

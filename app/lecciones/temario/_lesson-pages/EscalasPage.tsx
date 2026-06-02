@@ -345,12 +345,12 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         }
 
         .final-warning p {
-          color: #991b1b;
+          color: #080808;
           font-weight: 800;
         }
 
         .final-warning p:first-child {
-          color: #dc2626;
+          color: #080808;
           font-weight: 950;
           text-transform: uppercase;
         }

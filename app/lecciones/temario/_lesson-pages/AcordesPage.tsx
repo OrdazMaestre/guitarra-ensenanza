@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -255,6 +256,28 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           <p>
             Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, asique mejor acostumbrarse rápido 
           </p>
+        </section>
+
+        <section className="advanced-bridges" aria-labelledby="advanced-bridges-title">
+          <div className="advanced-warning">
+            <p id="advanced-bridges-title">Zona mas avanzada del temario.</p>
+            <p>Estos enlaces sirven como puente.</p>
+            <p>Si aun cuesta cambiar acordes, puedes dejarlos para mas adelante.</p>
+          </div>
+          <div className="advanced-link-grid">
+            <Link href="/lecciones/temario/figuras-de-acordes">
+              <span>Figuras de acordes</span>
+              <small>Para entender como se repiten las formas por el mastil.</small>
+            </Link>
+            <Link href="/lecciones/temario/acordes-escala-sol-mayor">
+              <span>Acordes de la escala de Sol Mayor</span>
+              <small>Para ver que acordes salen de una escala concreta.</small>
+            </Link>
+            <Link href="/lecciones/temario/acordes-con-septima">
+              <span>Acordes con septima</span>
+              <small>Para ampliar los acordes con una cuarta nota.</small>
+            </Link>
+          </div>
         </section>
       </article>
 
@@ -594,6 +617,83 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           font-weight: 950;
         }
 
+        .advanced-bridges {
+          display: grid;
+          gap: clamp(16px, 3vw, 24px);
+          margin: clamp(34px, 6vw, 64px) auto 0;
+          max-width: 920px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .advanced-warning {
+          background: #fef2f2;
+          border: 4px solid #dc2626;
+          border-radius: 10px;
+          display: grid;
+          gap: 10px;
+          padding: clamp(18px, 3vw, 26px);
+          text-align: center;
+        }
+
+        .advanced-warning p {
+          color: #080808;
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 800;
+          line-height: 1.42;
+          margin: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .advanced-warning p:first-child {
+          font-weight: 950;
+          text-transform: uppercase;
+        }
+
+        .advanced-link-grid {
+          display: grid;
+          gap: 12px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          min-width: 0;
+        }
+
+        .advanced-link-grid a {
+          border: 2px solid #080808;
+          border-radius: 8px;
+          color: #080808;
+          display: grid;
+          gap: 8px;
+          min-width: 0;
+          padding: 18px;
+          text-decoration: none;
+        }
+
+        .advanced-link-grid a:hover,
+        .advanced-link-grid a:focus-visible {
+          border-color: #047857;
+          color: #047857;
+        }
+
+        .advanced-link-grid a:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
+        }
+
+        .advanced-link-grid span {
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 950;
+          line-height: 1.15;
+          overflow-wrap: anywhere;
+        }
+
+        .advanced-link-grid small {
+          color: #303030;
+          font-size: 15px;
+          font-weight: 700;
+          line-height: 1.35;
+          overflow-wrap: anywhere;
+        }
+
         @media (max-width: 980px) {
           .chord-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -621,6 +721,14 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
           .power-shape-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .advanced-warning {
+            text-align: left;
+          }
+
+          .advanced-link-grid {
+            grid-template-columns: 1fr;
           }
         }
 

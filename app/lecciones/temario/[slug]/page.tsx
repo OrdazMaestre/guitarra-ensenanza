@@ -51,6 +51,14 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
     );
   }
 
+  if (slug === 'afinacion') {
+    return (
+      <AfinacionPage
+        {...extensionPrevious('/lecciones/temario/notacion-musical', 'Notacion musical')}
+      />
+    );
+  }
+
   if (slug === 'patrones-griegos') {
     redirect('/lecciones/temario/modos-griegos');
   }
@@ -175,10 +183,6 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'notacion-musical') {
     return <NotacionMusicalPage {...lessonProps} />;
-  }
-
-  if (slug === 'afinacion') {
-    return <AfinacionPage {...lessonProps} />;
   }
 
   if (slug === 'tablaturas') {
