@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -67,6 +68,11 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
             ))}
           </div>
         </section>
+
+        <section className="branch-link-section" aria-label="Rama de afinacion">
+          <p className="lesson-kicker">Rama basica</p>
+          <Link href="/lecciones/temario/afinacion">Afinacion</Link>
+        </section>
       </article>
 
       <div className="lesson-pager-wrap">
@@ -89,6 +95,10 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           max-width: 1120px;
           min-width: 0;
           width: 100%;
+        }
+
+        .notes-content {
+          padding-bottom: clamp(34px, 6vw, 72px);
         }
 
         .notes-header {
@@ -217,6 +227,40 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           margin: 0;
         }
 
+        .branch-link-section {
+          border-top: 1px solid #d4d4d8;
+          display: grid;
+          justify-items: center;
+          margin: clamp(46px, 8vw, 82px) auto 0;
+          max-width: 760px;
+          min-width: 0;
+          padding-top: clamp(24px, 4vw, 38px);
+          text-align: center;
+        }
+
+        .branch-link-section a {
+          color: #080808;
+          font-size: clamp(28px, 4.8vw, 54px);
+          font-weight: 950;
+          line-height: 1;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          text-decoration-color: #047857;
+          text-decoration-thickness: 0.12em;
+          text-underline-offset: 0.14em;
+          text-transform: uppercase;
+        }
+
+        .branch-link-section a:hover,
+        .branch-link-section a:focus-visible {
+          color: #047857;
+        }
+
+        .branch-link-section a:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 6px;
+        }
+
         @media (max-width: 920px) {
           .chromatic-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -241,8 +285,13 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           }
 
           .note-section,
-          .note-section-header {
+          .note-section-header,
+          .branch-link-section {
             justify-items: start;
+          }
+
+          .branch-link-section {
+            text-align: left;
           }
         }
 
