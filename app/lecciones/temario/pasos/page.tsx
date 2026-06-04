@@ -6,7 +6,6 @@ import SecondaryPaths from './SecondaryPaths';
 type BranchItem = {
   title: string;
   href: string;
-  note: string;
   secondaryTarget?: 'harmony' | 'sevenths';
 };
 
@@ -16,89 +15,74 @@ const branchMap: Record<string, BranchItem[]> = {
     {
       title: 'El sonido en la musica',
       href: '/lecciones/temario/el-sonido-en-la-musica',
-      note: 'Saber mas',
     },
   ],
   'notacion-musical': [
     {
       title: 'Afinacion',
       href: '/lecciones/temario/afinacion',
-      note: 'Rama basica',
     },
   ],
   tablaturas: [
     {
       title: 'Tablaturas con dos cuerdas',
       href: '/lecciones/temario/tablaturas-dos-cuerdas',
-      note: 'Practica extra',
     },
     {
       title: 'Mas punteos cortos',
       href: '/lecciones/temario/mas-punteos-cortos',
-      note: 'Rama de ejercicios',
     },
   ],
   arpegios: [
     {
       title: 'Ampliacion de arpegios',
       href: '/lecciones/temario/ampliacion-arpegios',
-      note: 'Profundizar',
     },
   ],
   pentatonica: [
     {
       title: 'Ejercicios de pentatonica',
       href: '/lecciones/temario/ejercicios-pentatonica',
-      note: 'Practica guiada',
     },
     {
       title: 'Ejercicios avanzados de pentatonica',
       href: '/lecciones/temario/ejercicios-pentatonica-avanzados',
-      note: 'Mas adelante',
     },
     {
       title: 'Pentatonica de blues',
       href: '/lecciones/temario/pentatonica-blues',
-      note: 'Color blues',
     },
     {
       title: 'Ejercicios de pentatonica de blues',
       href: '/lecciones/temario/ejercicios-pentatonica-blues',
-      note: 'Practica blues',
     },
   ],
   escalas: [
     {
       title: 'Escala completa de Sol Mayor',
       href: '/lecciones/temario/escala-completa-sol-mayor',
-      note: 'Pagina 12',
     },
     {
       title: 'Ejercicios de escalas',
       href: '/lecciones/temario/ejercicios-escalas',
-      note: 'Practica guiada',
     },
     {
       title: 'Acordes de la escala de Sol Mayor',
       href: '/lecciones/temario/acordes-escala-sol-mayor',
-      note: 'Pagina 15',
       secondaryTarget: 'harmony',
     },
     {
       title: 'Acordes con septima',
       href: '/lecciones/temario/acordes-con-septima',
-      note: 'Pagina 18',
       secondaryTarget: 'sevenths',
     },
     {
       title: 'Ejercicios avanzados de escalas',
       href: '/lecciones/temario/ejercicios-escalas-avanzados',
-      note: 'Mas adelante',
     },
     {
       title: 'Modos griegos',
       href: '/lecciones/temario/modos-griegos',
-      note: 'Rama modal',
     },
   ],
 };
@@ -151,7 +135,6 @@ export default function PasosPage() {
                   <ul className="branch-list" aria-label={`Ramas de ${lesson.title}`}>
                     {branchMap[lesson.slug].map((branch) => (
                       <li key={branch.href} className="branch-node" data-secondary-target={branch.secondaryTarget}>
-                        <span className="branch-note">{branch.note}</span>
                         <Link href={branch.href}>{branch.title}</Link>
                       </li>
                     ))}
@@ -199,8 +182,7 @@ export default function PasosPage() {
           min-width: 0;
         }
 
-        .steps-kicker,
-        .branch-note {
+        .steps-kicker {
           color: #047857;
           font-size: 13px;
           font-weight: 950;
@@ -443,7 +425,7 @@ export default function PasosPage() {
           background: #f4f4f5;
           border-left: 5px solid var(--node-color);
           min-width: 0;
-          padding: 14px 16px 16px;
+          padding: 18px 16px;
           position: relative;
         }
 
@@ -453,7 +435,6 @@ export default function PasosPage() {
           font-size: clamp(18px, 2vw, 24px);
           font-weight: 900;
           line-height: 1.12;
-          margin-top: 8px;
           max-width: 100%;
           overflow-wrap: anywhere;
         }

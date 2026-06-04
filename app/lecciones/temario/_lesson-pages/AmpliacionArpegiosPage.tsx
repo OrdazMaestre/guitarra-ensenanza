@@ -12,8 +12,8 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <h1>Arpegios</h1>
           <div className="warning-box" role="note">
             <p>Esta ampliacion adelanta contenido del temario.</p>
-            <p>Recomendado: llegar antes a acordes cuatriada.</p>
-            <p>Curiosos: podeis aprender solo las tablaturas.</p>
+            <p>Recomendado para entender la explicación: llegar antes a acordes con séptima.</p>
+            <p>Curiosos: podeis aprender solo las tablaturas sin problemas.</p>
           </div>
           <div className="short-copy">
             <p>En la pagina de arpegios practicamos una forma sencilla.</p>
@@ -50,7 +50,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
             <p className="lesson-kicker">Ejercicio 2</p>
             <h2 id="seventh-title">Arpegios cuatriada con septima completos</h2>
             <p>
-              Acorde de <span>Sol mayor septima: G, B, D y F#.</span>
+              Acorde de <span>Sol mayor séptima: G, B, D y F#.</span>
             </p>
           </header>
           <Image
@@ -66,9 +66,10 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         </section>
 
         <section className="lesson-close" aria-label="Resumen">
-          <p>Podemos empezar por la figura 4 y luego hacer 0, 1, 2 y 3.</p>
-          <p>La idea es no tener que retroceder nunca en el mastil al pasar del 3 al 4.</p>
+          <p>Podemos empezar por la figura 5 y luego hacer 1, 2, 3 y 4.</p>
+          <p>La idea es no tener que retroceder nunca en el mastil al pasar del 4 al 5.</p>
           <p>Escuchamos el color del acorde mientras cambiamos de zona.</p>
+          <p>Estos ejercicios y los que vienen despues se llaman "digitaciones": patrones de notas por cuerda.</p>
         </section>
       </article>
 
