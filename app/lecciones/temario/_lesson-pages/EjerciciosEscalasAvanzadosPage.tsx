@@ -58,7 +58,7 @@ const advancedExercises = [
   {
     buildNotes: () => [...figureOne.notes, ...[...figureOne.notes].reverse()],
     note: 'Ejercicio 1',
-    text: ['Subimos la escala completa.', 'Despues la bajamos.'],
+    text: ['Subimos la escala completa.', 'Después la bajamos.'],
     title: 'Ascendente y descendente',
   },
   {
@@ -216,7 +216,7 @@ export default function EjerciciosEscalasAvanzadosPage({ previous, next }: Lesso
           </div>
         </header>
 
-        <section className="rule-box" aria-label="Como practicar estos ejercicios">
+        <section className="rule-box" aria-label="Cómo practicar estos ejercicios">
           <p>Empieza muy despacio.</p>
           <p>Escucha que cada nota suene clara.</p>
           <p>Cuando salga bien, prueba los mismos patrones con las otras figuras a tu ritmo.</p>

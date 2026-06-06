@@ -43,7 +43,7 @@ const songParts: SongPart[] = [
   },
   {
     chords: [['C', 'G', 'F', 'C']],
-    intro: ['Siempre acabamos con los mismos 4 acordes.', 'El final queda mejor con este pequeno punteo entre los últimos 2 acordes.'],
+    intro: ['Siempre acabamos con los mismos 4 acordes.', 'El final queda mejor con este pequeño punteo entre los últimos 2 acordes.'],
     kicker: 'Final correcto',
     redSeparatorAfter: [{ index: 2, row: 0 }],
     source: '/tabs/let-it-be-final-correcto.gp',
@@ -61,7 +61,7 @@ function ChordPattern({
   secretLinkAfter?: SongPart['secretLinkAfter'];
 }) {
   return (
-    <div className="chord-pattern" aria-label="Patron de acordes">
+    <div className="chord-pattern" aria-label="Patrón de acordes">
       {rows.map((row, rowIndex) => (
         <div className="chord-row" key={`row-${rowIndex}`} style={{ '--chord-count': row.length } as CSSProperties}>
           {row.map((chord, index) => {
@@ -78,7 +78,7 @@ function ChordPattern({
                 <strong>{chord}</strong>
                 {index < row.length - 1 ? (
                   secretLink ? (
-                    <Link aria-label="Abrir cancion de prueba" className="secret-separator-link" href={secretLink.href} prefetch={false}>
+                    <Link aria-label="Abrir canción de prueba" className="secret-separator-link" href={secretLink.href} prefetch={false}>
                       {separator}
                     </Link>
                   ) : (
@@ -101,9 +101,9 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
         <header className="song-header">
           <h1>Let It Be</h1>
           <div className="short-copy">
-            <p>Una cancion a base de acordes puede leerse de las dos maneras que vemos abajo.</p>
+            <p>Una canción a base de acordes puede leerse de las dos maneras que vemos abajo.</p>
             
-            <p> Al final del todo hay enlaces a la cancion y a la versión con guitarra.</p>
+            <p> Al final del todo hay enlaces a la canción y a la versión con guitarra.</p>
           </div>
         </header>
 
@@ -131,15 +131,15 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
 
         <section className="lesson-close" aria-label="Resumen">
           <p>Estamos aprendiendo a mezclar acordes y punteo.</p>
-          <p>Despues del segundo estribillo hay un solo de guitarra.</p>
+          <p>Después del segundo estribillo hay un solo de guitarra.</p>
           <p>Otra guitarra hace un punteo muy chulo acompañando a la voz durante el último estribillo.</p>
           <a href="https://www.youtube.com/watch?v=BTDLIG0RbMQ" target="_blank" rel="noreferrer">
-            CANCION COMPLETA
+            CANCIÓN COMPLETA
           </a>
         </section>
 
         <section className="lesson-close" aria-label="Resumen">
-          <p>En las siguientes paginas aprenderemos a hacer esos arreglos poco a poco.</p>
+          <p>En las siguientes páginas aprenderemos a hacer esos arreglos poco a poco.</p>
           <a href="https://www.youtube.com/watch?v=E1qyF7KqTao&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=4" target="_blank" rel="noreferrer">
             TUTORIAL COMPLETO CON GUITARRA
           </a>

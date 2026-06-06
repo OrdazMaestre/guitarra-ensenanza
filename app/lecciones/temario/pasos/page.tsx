@@ -13,13 +13,13 @@ type BranchItem = {
 const branchMap: Record<string, BranchItem[]> = {
   'conceptos-basicos': [
     {
-      title: 'El sonido en la musica',
+      title: 'El sonido en la música',
       href: '/lecciones/temario/el-sonido-en-la-musica',
     },
   ],
   'notacion-musical': [
     {
-      title: 'Afinacion',
+      title: 'Afinación',
       href: '/lecciones/temario/afinacion',
     },
   ],
@@ -29,7 +29,7 @@ const branchMap: Record<string, BranchItem[]> = {
       href: '/lecciones/temario/tablaturas-dos-cuerdas',
     },
     {
-      title: 'Mas punteos cortos',
+      title: 'Más punteos cortos',
       href: '/lecciones/temario/mas-punteos-cortos',
     },
   ],
@@ -41,19 +41,19 @@ const branchMap: Record<string, BranchItem[]> = {
   ],
   pentatonica: [
     {
-      title: 'Ejercicios de pentatonica',
+      title: 'Ejercicios de pentatónica',
       href: '/lecciones/temario/ejercicios-pentatonica',
     },
     {
-      title: 'Ejercicios avanzados de pentatonica',
+      title: 'Ejercicios avanzados de pentatónica',
       href: '/lecciones/temario/ejercicios-pentatonica-avanzados',
     },
     {
-      title: 'Pentatonica de blues',
+      title: 'Pentatónica de blues',
       href: '/lecciones/temario/pentatonica-blues',
     },
     {
-      title: 'Ejercicios de pentatonica de blues',
+      title: 'Ejercicios de pentatónica de blues',
       href: '/lecciones/temario/ejercicios-pentatonica-blues',
     },
   ],
@@ -72,7 +72,7 @@ const branchMap: Record<string, BranchItem[]> = {
       secondaryTarget: 'harmony',
     },
     {
-      title: 'Acordes con septima',
+      title: 'Acordes con séptima',
       href: '/lecciones/temario/acordes-con-septima',
       secondaryTarget: 'sevenths',
     },
@@ -105,12 +105,12 @@ export default function PasosPage() {
     <main className="steps-page">
       <section className="steps-hero">
         <div className="steps-hero-copy">
-          <p className="steps-kicker">Arbol de contenidos</p>
+          <p className="steps-kicker">Árbol de contenidos</p>
           <h1>Primeros PASOS</h1>
           <p>
             Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. A medida que aprendemos cosas nuevas es más fácil profundizar en conceptos anteriores.
             </p>
-          <p>El método que te recomiendo aquí es ir a tu ritmo avanzando por lo que consideres &quot;fácil&quot;, mirar alguna idea con mas calma, curiosear lo que habia antes, lo que viene después...
+          <p>El método que te recomiendo aquí es ir a tu ritmo avanzando por lo que consideres &quot;fácil&quot;, mirar alguna idea con más calma, curiosear lo que había antes, lo que viene después...
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export default function PasosPage() {
 
       <TemarioPager
         previous={{ href: '/lecciones/temario', label: 'Portada' }}
-        next={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos basicos' }}
+        next={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos básicos' }}
       />
 
       <style>{`

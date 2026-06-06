@@ -26,19 +26,19 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
           <header className="tuning-header">
             <h1>Aprendiendo a afinar</h1>
             <p>
-              Afinar significa ajustar la tension de cada cuerda hasta que suene en la nota correcta. Para hacerlo, pulsamos una cuerda, giramos su clavija y volvemos a escuchar.
+              Afinar significa ajustar la tensión de cada cuerda hasta que suene en la nota correcta. Para hacerlo, pulsamos una cuerda, giramos su clavija y volvemos a escuchar.
             </p>
           </header>
 
           <section className="tuning-overview">
             <div className="tuning-copy">
-              <p className="lesson-kicker">Afinacion estandar</p>
+              <p className="lesson-kicker">Afinación estándar</p>
               <h2>La guitarra empieza y termina en <strong>Mi (E)</strong></h2>
               <p>
-                Decimos que la guitarra esta afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
+                Decimos que la guitarra está afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
               </p>
               <p>
-                La afinacion mas habitual es <strong>E A D G B E</strong>, por eso se llama &quot;afinacion estándar&quot;. Aprenderemos por qué más adelante.
+                La afinación más habitual es <strong>E A D G B E</strong>, por eso se llama &quot;afinación estándar&quot;. Aprenderemos por qué más adelante.
               </p>
             </div>
 
@@ -46,7 +46,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               {/* Provisional: imagen extraida del PDF de referencia; revisar copyright antes de publicacion final. */}
               <Image
                 src="/images/guitar/tuning-headstock.jpg"
-                alt="Clavijero de guitarra con afinacion estandar E A D G B E"
+                alt="Clavijero de guitarra con afinación estándar E A D G B E"
                 width={245}
                 height={252}
                 className="headstock-image"
@@ -74,11 +74,11 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               <p className="lesson-kicker">Distancias</p>
               <h2 id="interval-title">Casi todo son saltos de 5 semitonos</h2>
               <p>
-                Entre una cuerda y la siguiente casi siempre hay 5 semitonos. La excepcion esta entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
+                Entre una cuerda y la siguiente casi siempre hay 5 semitonos. La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
               </p>
             </div>
 
-            <div className="interval-row" aria-label="Distancias entre cuerdas de la afinacion estandar">
+            <div className="interval-row" aria-label="Distancias entre cuerdas de la afinación estándar">
               {tuningSteps.map(([from, distance, to]) => (
                 <div
                   className={`interval-step${distance.startsWith('+4') ? ' interval-step-exception' : ''}`}

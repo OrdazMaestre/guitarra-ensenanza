@@ -8,15 +8,15 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
       <main className="lesson-white-page">
         <article className="lesson-content">
           <header className="lesson-header">
-            <h1 className="lesson-title">¿Que es la guitarra?</h1>
+            <h1 className="lesson-title">¿Qué es la guitarra?</h1>
             <details className="music-toggle">
-              <summary>¿Y la musica?</summary>
+              <summary>¿Y la música?</summary>
               <div className="music-panel">
                 <p className="music-lead">
-                  Las notas musicales se producen al vibrar las cuerdas. Si la vibracion es rapida, escuchamos un sonido agudo; si es lenta, escuchamos un sonido grave.
+                  Las notas musicales se producen al vibrar las cuerdas. Si la vibración es rápida, escuchamos un sonido agudo; si es lenta, escuchamos un sonido grave.
                 </p>
 
-                <div className="wave-comparison" aria-label="Comparacion entre sonidos agudos y graves">
+                <div className="wave-comparison" aria-label="Comparación entre sonidos agudos y graves">
                   <figure className="wave-card">
                     <figcaption>
                       <strong>Agudo</strong>
@@ -41,7 +41,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                 </div>
 
                 <p>
-                  Las demas partes de la guitarra ayudan a mantener, modificar y amplificar esa vibracion: clavijas, trastes, cuerpo y boca trabajan alrededor de las cuerdas.
+                  Las demás partes de la guitarra ayudan a mantener, modificar y amplificar esa vibración: clavijas, trastes, cuerpo y boca trabajan alrededor de las cuerdas.
                 </p>
 
                 <Link href="/lecciones/temario/el-sonido-en-la-musica" className="music-more-link">
@@ -76,7 +76,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
               <p className="lesson-kicker">Lo importante</p>
               <h2>El mástil</h2>
               <p>
-                Aquí colocamos la mano izquierda. Aquí estan los trastes: los trastes son además los numeros que escribimos en las tablaturas indicando qué traste hay que pisar.
+                Aquí colocamos la mano izquierda. Aquí están los trastes: los trastes son además los números que escribimos en las tablaturas indicando qué traste hay que pisar.
               </p>
               <p>
                 Entre dos trastes seguidos hay medio tono. Un tono entero es la distancia entre dos trastes seguidos.
@@ -85,7 +85,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
 
             <Image
               src="/images/guitar/fretboard-parts.jpg"
-              alt="Mastil de guitarra con trastes numerados"
+              alt="Mástil de guitarra con trastes numerados"
               width={800}
               height={320}
               className="fretboard-image"

@@ -45,7 +45,7 @@ function PentatonicFretboard() {
         className="pentatonic-board"
         viewBox="0 0 1020 292"
         role="img"
-        aria-label="Mapa de la pentatonica mayor de Sol en los doce primeros trastes"
+        aria-label="Mapa de la pentatónica mayor de Sol en los doce primeros trastes"
       >
         {Array.from({ length: 12 }, (_, fret) => (
           <text className="fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y="26">
@@ -99,18 +99,18 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
     <main className="pentatonic-page">
       <article className="pentatonic-content">
         <header className="pentatonic-header">
-          <h1>Pentatonica</h1>
+          <h1>Pentatónica</h1>
           <div className="short-copy">
             <p>Al acorde de Sol Mayor le sumamos dos notas extra.</p>
             <p>Sol Mayor usa G, B y D.</p>
-            <p>Ahora anadimos E y A.</p>
+            <p>Ahora añadimos E y A.</p>
           </div>
         </header>
 
-        <section className="formula-box" aria-label="Formula de la pentatonica">
-          <p>Asi aparece una escala de 5 tonos.</p>
+        <section className="formula-box" aria-label="Fórmula de la pentatónica">
+          <p>Así aparece una escala de 5 tonos.</p>
           <p>
-            La llamamos <strong>pentatonica mayor de Sol</strong>.
+            La llamamos <strong>pentatónica mayor de Sol</strong>.
           </p>
           <p>
             <strong>G, A, B, D y E</strong>
@@ -120,16 +120,16 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
         <section className="map-section" aria-labelledby="map-title">
           <header className="section-header">
             <p className="lesson-kicker">Mapa</p>
-            <h2 id="map-title">Las notas en el mastil</h2>
+            <h2 id="map-title">Las notas en el mástil</h2>
             <p>E aparece en verde y G aparece en azul.</p>
           </header>
           <PentatonicFretboard />
         </section>
 
-        <section className="minor-box" aria-label="Relacion con Mi menor">
-          <p>Aqui tambien aparece la escala de Mi menor.</p>
+        <section className="minor-box" aria-label="Relación con Mi menor">
+          <p>Aquí también aparece la escala de Mi menor.</p>
           <p>
-            Las pentatonicas de <strong>Mi menor</strong> y <strong>Sol Mayor</strong> son iguales.
+            Las pentatónicas de <strong>Mi menor</strong> y <strong>Sol Mayor</strong> son iguales.
           </p>
           <p>Usan las mismas notas.</p>
           <p>Pero una coloca el centro en Mi y la otra en Sol.</p>
@@ -146,15 +146,15 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
 
         <section className="branch-section" aria-labelledby="branch-title">
           <p className="lesson-kicker">Ramas</p>
-          <h2 id="branch-title">Caminos que salen de aqui</h2>
+          <h2 id="branch-title">Caminos que salen de aquí</h2>
           <div className="branch-grid">
             <Link href="/lecciones/temario/ejercicios-pentatonica">
-              <span>Ejercicios de pentatonica</span>
+              <span>Ejercicios de pentatónica</span>
               <small>Para practicar las 5 figuras por partes.</small>
             </Link>
             <Link href="/lecciones/temario/pentatonica-blues">
-              <span>Pentatonica de blues</span>
-              <small>Para anadir la nota blues mas adelante.</small>
+              <span>Pentatónica de blues</span>
+              <small>Para añadir la nota blues más adelante.</small>
             </Link>
           </div>
         </section>

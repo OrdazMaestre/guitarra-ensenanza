@@ -31,7 +31,7 @@ const figures = [
 
 const bluesLick = {
   source: '/tabs/bluespent-lick.gp',
-  title: 'Lick de pentatonica blues',
+  title: 'Lick de pentatónica blues',
 };
 
 function displayNote(note: string) {
@@ -73,25 +73,25 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
       <article className="blues-exercises-content">
         <header className="blues-exercises-header">
           <p className="lesson-kicker">Blue note en movimiento</p>
-          <h1>Ejercicios pentatonica de blues</h1>
+          <h1>Ejercicios pentatónica de blues</h1>
           <div className="short-copy">
             <p>Ahora practicamos la escala completa.</p>
             <p>E, G, A, Bb, B y D.</p>
-            <p>La tonica es E.</p>
+            <p>La tónica es E.</p>
           </div>
         </header>
 
         <section className="legend-box" aria-label="Leyenda de colores">
           <p>
-            La <strong>tonica E</strong> aparece en verde.
+            La <strong>tónica E</strong> aparece en verde.
           </p>
           <p>
             La <strong>blue note Bb</strong> aparece en rojo.
           </p>
-          <p>Toca despacio y escucha como la Bb pide resolver.</p>
+          <p>Toca despacio y escucha cómo la Bb pide resolver.</p>
         </section>
 
-        <section className="figures-list" aria-label="Cinco ejercicios de pentatonica blues">
+        <section className="figures-list" aria-label="Cinco ejercicios de pentatónica blues">
           {figures.map((figure) => (
             <article className="blues-exercise" key={figure.title}>
               <div className="figure-panel">
@@ -99,7 +99,7 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
                   {figure.title} <span>trastes {figure.startFret}-{figure.endFret}</span>
                 </p>
                 <ReducedFretboardDiagram
-                  ariaLabel={`${figure.title} de la pentatonica de blues de Mi menor`}
+                  ariaLabel={`${figure.title} de la pentatónica de blues de Mi menor`}
                   endFret={figure.endFret}
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}
                   notes={notesForFigure(figure.startFret, figure.endFret)}
@@ -119,9 +119,9 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next }: Lesso
             <p className="lesson-kicker">Una idea musical</p>
             <h2 id="lick-title">{bluesLick.title}</h2>
             <div>
-              <p>Esta es una forma de usar esa pentatonica.</p>
+              <p>Esta es una forma de usar esa pentatónica.</p>
               <p>No es solo subir y bajar la escala.</p>
-              <p>Aqui ya suena como una frase.</p>
+              <p>Aquí ya suena como una frase.</p>
             </div>
           </div>
 

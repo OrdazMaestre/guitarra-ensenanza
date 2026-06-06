@@ -259,7 +259,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
         </section>
 
         <section className="practice-link" aria-label="Extension de acordes">
-          <Link href="/lecciones/temario/acordes-con-septima">Acordes con septima</Link>
+          <Link href="/lecciones/temario/acordes-con-septima">Acordes con séptima</Link>
         </section>
       </article>
 

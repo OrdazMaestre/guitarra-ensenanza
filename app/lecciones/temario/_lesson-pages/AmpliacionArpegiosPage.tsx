@@ -8,16 +8,16 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
     <main className="arpeggio-extension-page">
       <article className="arpeggio-extension-content">
         <header className="extension-header">
-          <p className="lesson-kicker">Ampliacion</p>
+          <p className="lesson-kicker">Ampliación</p>
           <h1>Arpegios</h1>
           <div className="warning-box" role="note">
-            <p>Esta ampliacion adelanta contenido del temario.</p>
+            <p>Esta ampliación adelanta contenido del temario.</p>
             <p>Recomendado para entender la explicación: llegar antes a acordes con séptima.</p>
-            <p>Curiosos: podeis aprender solo las tablaturas sin problemas.</p>
+            <p>Curiosos: podéis aprender solo las tablaturas sin problemas.</p>
           </div>
           <div className="short-copy">
-            <p>En la pagina de arpegios practicamos una forma sencilla.</p>
-            <p>Ahora vamos a completar el dibujo por el mastil.</p>
+            <p>En la página de arpegios practicamos una forma sencilla.</p>
+            <p>Ahora vamos a completar el dibujo por el mástil.</p>
           </div>
         </header>
 
@@ -36,7 +36,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <Image
             className="fretboard-image"
             src="/images/arpegios/arpegios-g-mastil.png"
-            alt="Mastil del arpegio de Sol mayor"
+            alt="Mástil del arpegio de Sol mayor"
             width={614}
             height={111}
           />
@@ -48,7 +48,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         <section className="exercise-block" aria-labelledby="seventh-title">
           <header className="exercise-header">
             <p className="lesson-kicker">Ejercicio 2</p>
-            <h2 id="seventh-title">Arpegios cuatriada con septima completos</h2>
+            <h2 id="seventh-title">Arpegios cuatriada con séptima completos</h2>
             <p>
               Acorde de <span>Sol mayor séptima: G, B, D y F#.</span>
             </p>
@@ -56,7 +56,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <Image
             className="fretboard-image"
             src="/images/arpegios/arpegios-g7-mastil.png"
-            alt="Mastil del arpegio de Sol mayor septima"
+            alt="Mástil del arpegio de Sol mayor séptima"
             width={614}
             height={111}
           />
@@ -67,9 +67,9 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
 
         <section className="lesson-close" aria-label="Resumen">
           <p>Podemos empezar por la figura 5 y luego hacer 1, 2, 3 y 4.</p>
-          <p>La idea es no tener que retroceder nunca en el mastil al pasar del 4 al 5.</p>
+          <p>La idea es no tener que retroceder nunca en el mástil al pasar del 4 al 5.</p>
           <p>Escuchamos el color del acorde mientras cambiamos de zona.</p>
-          <p>Estos ejercicios y los que vienen despues se llaman "digitaciones": patrones de notas por cuerda.</p>
+          <p>Estos ejercicios y los que vienen después se llaman &quot;digitaciones&quot;: patrones de notas por cuerda.</p>
         </section>
       </article>
 

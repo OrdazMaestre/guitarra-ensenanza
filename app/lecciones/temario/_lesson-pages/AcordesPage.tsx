@@ -158,7 +158,7 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
       <figcaption>
         <span className="primary-chord-name">{shape.name}</span> <span className="local-chord-name">({shape.rootLabel})</span>
       </figcaption>
-      <svg className="power-diagram" viewBox="0 0 136 112" role="img" aria-label={`${shape.name}: tonica, quinta y octava`}>
+      <svg className="power-diagram" viewBox="0 0 136 112" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
         <line className="nut" x1="18" x2="118" y1="24" y2="24" />
         {[0, 1, 2, 3, 4, 5].map((index) => (
           <line className="string-line" key={`power-string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="24" y2="100" />
@@ -184,7 +184,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
     <main className="chords-page">
       <article className="chords-content">
         <header className="chords-header">
-          <h1>Acordes basicos</h1>
+          <h1>Acordes básicos</h1>
           <div className="short-copy">
             <p>Un acorde junta varias notas al mismo tiempo.</p>
             <p>De momento usamos mayores y menores para tocar canciones sencillas.</p>
@@ -194,9 +194,9 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         <section className="finger-guide" aria-labelledby="finger-guide-title">
           <div>
             <p className="lesson-kicker">Mano izquierda</p>
-            <h2 id="finger-guide-title">Los numeros son dedos</h2>
+            <h2 id="finger-guide-title">Los números son dedos</h2>
             <p>
-              En los diagramas, los circulos nos dicen qué dedo colocar en cada cuerda y traste.
+              En los diagramas, los círculos nos dicen qué dedo colocar en cada cuerda y traste.
             </p>
           </div>
           <div className="finger-row" aria-label="Dedos de la mano izquierda">
@@ -234,11 +234,11 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         <section className="shape-guide" aria-labelledby="shape-guide-title">
           <p className="lesson-kicker">Figuras</p>
-          <h2 id="shape-guide-title">Las formas que mas vamos a usar</h2>
+          <h2 id="shape-guide-title">Las formas que más vamos a usar</h2>
           <div className="shape-copy">
-            <p>Las figuras de acordes que mas usaremos son <strong>E</strong>, <strong>F</strong>, <strong>G</strong>, <strong>A</strong> y <strong>B</strong>.</p>
+            <p>Las figuras de acordes que más usaremos son <strong>E</strong>, <strong>F</strong>, <strong>G</strong>, <strong>A</strong> y <strong>B</strong>.</p>
             
-            <p><strong>E</strong>, <strong>F</strong>, <strong>A</strong> y <strong>B</strong> tienen basicamente la misma forma.</p>
+            <p><strong>E</strong>, <strong>F</strong>, <strong>A</strong> y <strong>B</strong> tienen básicamente la misma forma.</p>
             
           </div>
           <div className="power-shape-grid" aria-label="E, F, A y B como power chords">
@@ -251,30 +251,30 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         <section className="practice-strip" aria-label="Forma de practicar">
           <p>
-            Los acordes que teneis que ir prancticándo para clase son <strong>todos los mayores</strong>, ademas de <strong>Em</strong> y <strong>Am</strong>.
+            Los acordes que tenéis que ir practicando para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
           </p>
           <p>
-            Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, asique mejor acostumbrarse rápido 
+            Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
           </p>
         </section>
 
         <section className="advanced-bridges" aria-labelledby="advanced-bridges-title">
           <div className="advanced-warning">
-            <p id="advanced-bridges-title">Zona mas avanzada del temario.</p>
+            <p id="advanced-bridges-title">Zona más avanzada del temario.</p>
             <p>Estos enlaces sirven como puente.</p>
-            <p>Si aun cuesta cambiar acordes, puedes dejarlos para mas adelante.</p>
+            <p>Si aún cuesta cambiar acordes, puedes dejarlos para más adelante.</p>
           </div>
           <div className="advanced-link-grid">
             <Link href="/lecciones/temario/figuras-de-acordes">
               <span>Figuras de acordes</span>
-              <small>Para entender como se repiten las formas por el mastil.</small>
+              <small>Para entender cómo se repiten las formas por el mástil.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-escala-sol-mayor">
               <span>Acordes de la escala de Sol Mayor</span>
-              <small>Para ver que acordes salen de una escala concreta.</small>
+              <small>Para ver qué acordes salen de una escala concreta.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-con-septima">
-              <span>Acordes con septima</span>
+              <span>Acordes con séptima</span>
               <small>Para ampliar los acordes con una cuarta nota.</small>
             </Link>
           </div>

@@ -5,11 +5,11 @@ export default function SoundInMusicPage() {
     <main className="sound-page">
       <article className="sound-content">
         <Link href="/lecciones/temario/conceptos-basicos" className="back-link">
-          Volver a conceptos basicos
+          Volver a conceptos básicos
         </Link>
 
         <header className="sound-header">
-          <p className="sound-kicker">Saber mas</p>
+          <p className="sound-kicker">Saber más</p>
           <h1>El sonido en la música</h1>
         </header>
 
@@ -18,13 +18,13 @@ export default function SoundInMusicPage() {
             <p className="sound-kicker">Idea 1</p>
             <h2>Sonidos complejos</h2>
             <p>
-              Casi nunca escuchamos el sonido como una onda perfecta (como en la página anterior), a menos que lo fabriquemos con tecnologia, como el ordenador.
+              Casi nunca escuchamos el sonido como una onda perfecta (como en la página anterior), a menos que lo fabriquemos con tecnología, como el ordenador.
             </p>
             <p>
               Los sonidos complejos son lo que escuchamos siempre: una onda &quot;imperfecta&quot; que, por dentro, mezcla varias ondas perfectas.
             </p>
             <p>
-              La onda principal nos da la altura de la nota, y las ondas mas pequeñas que se suman encima son las responsables de que cada cosa tenga un &quot;sonido propio&quot;.
+              La onda principal nos da la altura de la nota, y las ondas más pequeñas que se suman encima son las responsables de que cada cosa tenga un &quot;sonido propio&quot;.
             </p>
           </div>
 
@@ -55,7 +55,7 @@ export default function SoundInMusicPage() {
             <p className="sound-kicker">Idea 2</p>
             <h2>La serie armónica ordena esas ondas</h2>
             <p>
-              Si una nota tiene una frecuencia fundamental, tambien aparecen vibraciones relacionadas: el doble, el triple, el cuadruple...
+              Si una nota tiene una frecuencia fundamental, también aparecen vibraciones relacionadas: el doble, el triple, el cuádruple...
             </p>
             <p>
               No todas suenan igual de fuertes y eso hace que cada instrumento suene como suene, porque combinan sus armónicos de formas distintas.
@@ -64,7 +64,7 @@ export default function SoundInMusicPage() {
 
           <figure className="sound-figure harmonics">
             <figcaption>Serie armónica de una frecuencia fundamental</figcaption>
-            <svg viewBox="0 0 720 360" role="img" aria-label="Serie armonica con frecuencia fundamental y armonicos superiores">
+            <svg viewBox="0 0 720 360" role="img" aria-label="Serie armónica con frecuencia fundamental y armónicos superiores">
               <line className="spectrum-axis" x1="64" y1="286" x2="656" y2="286" />
               <g className="partials">
                 <line x1="98" y1="94" x2="98" y2="286" />
@@ -102,7 +102,7 @@ export default function SoundInMusicPage() {
             Cuando tocamos una cuerda, no solo importa qué nota pulsamos.
           </p>
           <p>
-            Tambien influye con qué fuerza, cómo vibra la guitarra junto a las cuerdas, la forma de la caja, cómo dejamos sonar o apagamos la cuerda... incluso el tipo de madera y tipo de cuerdas. Cada pieza de la guitarra influye en cómo vibra y el sonido qué terminará sacando.
+            También influye con qué fuerza, cómo vibra la guitarra junto a las cuerdas, la forma de la caja, cómo dejamos sonar o apagamos la cuerda... incluso el tipo de madera y tipo de cuerdas. Cada pieza de la guitarra influye en cómo vibra y el sonido que terminará sacando.
           </p>
         </section>
       </article>

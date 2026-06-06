@@ -65,16 +65,16 @@ export default function EjerciciosPentatonicaPage({ previous, next }: LessonPage
       <article className="pentatonic-exercises-content">
         <header className="pentatonic-exercises-header">
           <p className="lesson-kicker">Sol Mayor y Mi menor</p>
-          <h1>Aprendiendo la pentatonica</h1>
+          <h1>Aprendiendo la pentatónica</h1>
           <div className="short-copy">
-            <p>La pentatonica usa 5 notas.</p>
+            <p>La pentatónica usa 5 notas.</p>
             <p>La pentatónica de Sol Mayor usa G, A, B, D y E.</p>
             <p>La de Mi menor usa las mismas notas.</p>
           </div>
         </header>
 
-        <section className="note-box" aria-label="Notas de la pentatonica">
-          <p>La diferencia esta en la nota a la que damos importancia.</p>
+        <section className="note-box" aria-label="Notas de la pentatónica">
+          <p>La diferencia está en la nota a la que damos importancia.</p>
           <p>
             Si priorizamos <strong>G</strong>, suena a Sol Mayor.
           </p>
@@ -84,10 +84,10 @@ export default function EjerciciosPentatonicaPage({ previous, next }: LessonPage
         </section>
 
         <section className="advanced-link" aria-label="Ejercicios avanzados">
-          <Link href="/lecciones/temario/ejercicios-pentatonica-avanzados">Ejercicios mas avanzados de pentatonica</Link>
+          <Link href="/lecciones/temario/ejercicios-pentatonica-avanzados">Ejercicios más avanzados de pentatónica</Link>
         </section>
 
-        <section className="figures-list" aria-label="Cinco figuras de la pentatonica">
+        <section className="figures-list" aria-label="Cinco figuras de la pentatónica">
           {figures.map((figure) => (
             <article className="pentatonic-figure" key={figure.title}>
               <div className="figure-copy">
@@ -95,7 +95,7 @@ export default function EjerciciosPentatonicaPage({ previous, next }: LessonPage
                   {figure.title} <span>trastes {figure.startFret}-{figure.endFret}</span>
                 </p>
                 <ReducedFretboardDiagram
-                  ariaLabel={`${figure.title} de la pentatonica de Sol Mayor y Mi menor`}
+                  ariaLabel={`${figure.title} de la pentatónica de Sol Mayor y Mi menor`}
                   endFret={figure.endFret}
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}
                   notes={notesForFigure(figure.startFret, figure.endFret)}

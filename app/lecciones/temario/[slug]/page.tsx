@@ -54,7 +54,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'afinacion') {
     return (
       <AfinacionPage
-        {...extensionPrevious('/lecciones/temario/notacion-musical', 'Notacion musical')}
+        {...extensionPrevious('/lecciones/temario/notacion-musical', 'Notación musical')}
       />
     );
   }
@@ -115,7 +115,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica') {
     return (
       <EjerciciosPentatonicaPage
-        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatonica')}
+        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatónica')}
       />
     );
   }
@@ -123,7 +123,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica-avanzados') {
     return (
       <EjerciciosPentatonicaAvanzadosPage
-        {...extensionPrevious('/lecciones/temario/ejercicios-pentatonica', 'Ejercicios de pentatonica')}
+        {...extensionPrevious('/lecciones/temario/ejercicios-pentatonica', 'Ejercicios de pentatónica')}
       />
     );
   }
@@ -131,7 +131,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'pentatonica-blues') {
     return (
       <PentatonicaBluesPage
-        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatonica')}
+        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatónica')}
       />
     );
   }
@@ -139,7 +139,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica-blues') {
     return (
       <EjerciciosPentatonicaBluesPage
-        {...extensionPrevious('/lecciones/temario/pentatonica-blues', 'Pentatonica de blues')}
+        {...extensionPrevious('/lecciones/temario/pentatonica-blues', 'Pentatónica de blues')}
       />
     );
   }
@@ -211,6 +211,25 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
 
   if (slug === 'escalas') {
     return <EscalasPage {...lessonProps} />;
+  }
+
+  if (slug === 'funciones-tonales') {
+    return (
+      <PlaceholderLessonPage title={lesson.title} {...lessonProps}>
+        <p>
+          Hasta tener la página compuesta, podemos ver el{' '}
+          <a
+            className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
+            href="https://www.youtube.com/watch?v=o6aOC3rERF0&list=PLrNRWzkImhnyDJYrUe2h0KgpuPu4ovQKp&index=13"
+            rel="noreferrer"
+            target="_blank"
+          >
+            video de Jaime Altozano
+          </a>
+          , así como todo su canal, dado que son vídeos muy buenos a pesar de que toca piano y no guitarra.
+        </p>
+      </PlaceholderLessonPage>
+    );
   }
 
   return <PlaceholderLessonPage title={lesson.title} {...lessonProps} />;

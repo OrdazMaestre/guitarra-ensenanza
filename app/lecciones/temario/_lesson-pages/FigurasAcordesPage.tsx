@@ -121,7 +121,7 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
           <p>Cada acorde básico está en su propia figura para facilitar tocarlos todos entre los trastes 1 y 5.</p>
         </section>
 
-        <section className="theory-link" aria-label="Enlace a teoria">
+        <section className="theory-link" aria-label="Enlace a teoría">
           <Link href="/lecciones/temario/escalas">¿Cómo funciona la música y por qué vamos a usar Sol Mayor para el resto de explicaciones?</Link>
         </section>
       </article>

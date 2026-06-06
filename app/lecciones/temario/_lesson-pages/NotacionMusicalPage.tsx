@@ -69,9 +69,9 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           </div>
         </section>
 
-        <section className="branch-link-section" aria-label="Rama de afinacion">
-          <p className="lesson-kicker">Rama basica</p>
-          <Link href="/lecciones/temario/afinacion">Afinacion</Link>
+        <section className="branch-link-section" aria-label="Rama de afinación">
+          <p className="lesson-kicker">Rama básica</p>
+          <Link href="/lecciones/temario/afinacion">Afinación</Link>
         </section>
       </article>
 

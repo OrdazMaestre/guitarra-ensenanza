@@ -17,7 +17,7 @@ export default function PruebaPage() {
       />
 
       <p className="text-center text-zinc-400 mt-10">
-        Si ves la tablatura arriba, todo esta funcionando. Con esta canción hice todas las pruebas de sonido. Enhorabuena por encontrarla.
+        Si ves la tablatura arriba, todo está funcionando. Con esta canción hice todas las pruebas de sonido. Enhorabuena por encontrarla.
       </p>
     </div>
   );

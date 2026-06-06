@@ -41,19 +41,19 @@ export default function MasPunteosCortosPage() {
     <main className="short-riffs-page">
       <article className="short-riffs-content">
         <header className="short-riffs-header">
-          <p className="lesson-kicker">Ampliacion</p>
-          <h1>Mas punteos cortos</h1>
+          <p className="lesson-kicker">Ampliación</p>
+          <h1>Más punteos cortos</h1>
           <div className="short-copy">
-            <p>Cuatro melodias breves.</p>
+            <p>Cuatro melodías breves.</p>
             <p>Pocas cuerdas.</p>
             <p>Mucho control con la mano derecha.</p>
           </div>
         </header>
 
-        <section className="practice-note" aria-label="Como practicar los punteos cortos">
+        <section className="practice-note" aria-label="Cómo practicar los punteos cortos">
           <p>Primero toca lento.</p>
           <p>Luego sube la velocidad poco a poco.</p>
-          <p>Si una nota se ensucia, vuelve un paso atras.</p>
+          <p>Si una nota se ensucia, vuelve un paso atrás.</p>
         </section>
 
         <section className="riff-list" aria-label="Punteos cortos con tablatura">

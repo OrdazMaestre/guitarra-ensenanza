@@ -120,7 +120,7 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
         <section className="lesson-close" aria-label="Resumen">
           <p>Esto lo hemos hecho con las 3 cuerdas inferiores del acorde de Fa.</p>
           <p>Tenemos que hacer lo mismo con las 3 cuerdas de arriba.</p>
-          <p>Y lo mismo con los demas acordes de la pagina 4.</p>
+          <p>Y lo mismo con los demás acordes de la página 4.</p>
           <p>Los arpegios se pueden hacer con 3, 4, 5 y 6 cuerdas.</p>
           <p>RETO: Tocar Let It Be arpegiando los acordes de la forma que más os guste.</p>
           <Link href="/lecciones/temario/acordes-completos">ACORDES COMPLETOS</Link>

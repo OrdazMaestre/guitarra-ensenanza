@@ -221,7 +221,7 @@ export default function EjerciciosEscalasPage({ previous, next }: LessonPageProp
           </div>
         </header>
 
-        <section className="note-box" aria-label="Tonica mayor y tonica menor">
+        <section className="note-box" aria-label="Tónica mayor y tónica menor">
           <p>
             <strong>G</strong> aparece en azul.
           </p>

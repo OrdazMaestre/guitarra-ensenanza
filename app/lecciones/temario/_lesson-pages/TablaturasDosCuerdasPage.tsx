@@ -21,14 +21,14 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
             <p className="lesson-kicker">Ejercicio 2</p>
             <h2 id="reading-title">Feliz Navidad</h2>
             <p>
-              En esta tablatura usamos dos cuerdas. Cuando los numeros cambian de linea, cambiamos de cuerda, pero seguimos leyendo de izquierda a derecha.
+              En esta tablatura usamos dos cuerdas. Cuando los números cambian de línea, cambiamos de cuerda, pero seguimos leyendo de izquierda a derecha.
             </p>
           </div>
 
           <div className="practice-note">
             <strong>Punteo</strong>
             <span>
-              Esta forma de tocar se llama punteo: una melodia de notas individuales, una detras de otra.
+              Esta forma de tocar se llama punteo: una melodía de notas individuales, una detrás de otra.
             </span>
           </div>
 
@@ -38,7 +38,7 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
 
           <div className="extra-practice-link-wrap">
             <Link href="/lecciones/temario/mas-punteos-cortos" className="extra-practice-link">
-              Mas punteos cortos con pocas cuerdas
+              Más punteos cortos con pocas cuerdas
             </Link>
           </div>
         </section>

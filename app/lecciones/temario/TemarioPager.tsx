@@ -21,7 +21,7 @@ export default function TemarioPager({ next, previous }: TemarioPagerProps) {
         {previous ? (
           <Link
             href={previous.href}
-            aria-label={`Pagina anterior: ${previous.label}`}
+            aria-label={`Página anterior: ${previous.label}`}
             className="temario-pager-link"
           >
             <span aria-hidden="true">←</span>
@@ -33,7 +33,7 @@ export default function TemarioPager({ next, previous }: TemarioPagerProps) {
         {next ? (
           <Link
             href={next.href}
-            aria-label={`Pagina siguiente: ${next.label}`}
+            aria-label={`Página siguiente: ${next.label}`}
             className="temario-pager-link"
           >
             <span aria-hidden="true">→</span>
@@ -45,8 +45,8 @@ export default function TemarioPager({ next, previous }: TemarioPagerProps) {
 
   return (
     <>
-      {renderPager('temario-pager temario-pager-top', 'Paginas del temario arriba')}
-      {renderPager('temario-pager temario-pager-bottom', 'Paginas del temario abajo')}
+      {renderPager('temario-pager temario-pager-top', 'Páginas del temario arriba')}
+      {renderPager('temario-pager temario-pager-bottom', 'Páginas del temario abajo')}
       <style>{`
         .temario-pager {
           align-items: center;

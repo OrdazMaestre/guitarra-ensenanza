@@ -121,16 +121,16 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
           <header className="section-header">
             <h2 id="pentatonic-title">Pentatónica de Sol Mayor</h2>
             <p>Añadimos A y E.</p>
-            <p>Así aparece la pentatonica mayor de Sol.</p>
-            <p>Es igual que la pentatonica menor de Mi.</p>
+            <p>Así aparece la pentatónica mayor de Sol.</p>
+            <p>Es igual que la pentatónica menor de Mi.</p>
           </header>
-          <ScaleFretboard ariaLabel="Pentatonica mayor de Sol y pentatonica menor de Mi en los doce primeros trastes" notes={gMajorPentatonic} />
+          <ScaleFretboard ariaLabel="Pentatónica mayor de Sol y pentatónica menor de Mi en los doce primeros trastes" notes={gMajorPentatonic} />
           <div className="formula-box">
             <p>
-              <strong>Sol Mayor pentatonica:</strong> G, A, B, D, E.
+              <strong>Sol Mayor pentatónica:</strong> G, A, B, D, E.
             </p>
             <p>
-              <strong>Mi menor pentatonica:</strong> E, G, A, B, D.
+              <strong>Mi menor pentatónica:</strong> E, G, A, B, D.
             </p>
           </div>
         </section>
@@ -153,7 +153,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
 
         <section className="memory-box" aria-label="Idea importante">
           <p>Mi menor es igual que Sol Mayor.</p>
-          <p>Pero usamos la tonica E en lugar de la tonica G.</p>
+          <p>Pero usamos la tónica E en lugar de la tónica G.</p>
           <p>Este mapa lo aprenderemos igual que el de la pentatónica: con ejercicios en las siguientes 2 páginas.</p>
         </section>
 

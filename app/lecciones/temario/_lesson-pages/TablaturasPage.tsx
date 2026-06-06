@@ -18,9 +18,9 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
         <section className="frets-overview" aria-labelledby="frets-title">
           <div className="frets-copy">
             <p className="lesson-kicker">Trastes</p>
-            <h2 id="frets-title">Cada numero marca un lugar del mastil</h2>
+            <h2 id="frets-title">Cada número marca un lugar del mástil</h2>
             <p>
-              El <strong>0</strong> significa cuerda al aire: tocamos sin pisar ningun traste. El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demas numeros nos mandan avanzar por el mastil.
+              El <strong>0</strong> significa cuerda al aire: tocamos sin pisar ningún traste. El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demás números nos mandan avanzar por el mástil.
             </p>
             
           </div>
@@ -30,7 +30,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
             {/* Provisional: imagen extraida del PDF de referencia; revisar copyright antes de publicacion final. */}
             <Image
               src="/images/guitar/fretboard-parts.jpg"
-              alt="Mastil de guitarra con los trastes numerados del 1 al 12"
+              alt="Mástil de guitarra con los trastes numerados del 1 al 12"
               width={637}
               height={212}
               className="fretboard-image"
@@ -47,6 +47,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
               <strong>Importante para este ejercicio</strong>
               <span>
                 Puedes hacerlo en la cuerda que quieras.
+                
               </span>
             </div>
           </div>
@@ -54,11 +55,24 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
           <div className="player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/cumpleanos-feliz-dos-compases.gp" title="Cumpleaños feliz" />
           </div>
-
+              <p>
+               Elegí estas canciones porque tarde o temprano se aprenden, son muy fáciles y ayudan a aprender.
+              </p>
+              <p>
+               Parte del trabajo de un músico es tocar lo que piden los demás y lo mínimo que deberíamos sabernos son estas canciones.
+              </p>
           <div className="extra-practice-link-wrap">
             <Link href="/lecciones/temario/tablaturas-dos-cuerdas" className="extra-practice-link">
-              Ampliacion: Feliz Navidad
+              Feliz Navidad y más punteos cortos
             </Link>
+            <a
+              className="extra-practice-link"
+              href="https://www.youtube.com/watch?v=BM09di1bJRc&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=9"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Hay que tener paciencia al empezar a tocar la guitarra
+            </a>
           </div>
         </section>
       </article>
@@ -249,6 +263,8 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
 
         .extra-practice-link-wrap {
           display: flex;
+          flex-wrap: wrap;
+          gap: 14px 24px;
           justify-content: center;
           margin-top: clamp(18px, 3vw, 34px);
           min-width: 0;

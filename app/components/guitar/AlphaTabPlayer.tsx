@@ -973,6 +973,25 @@ export default function AlphaTabPlayer({
   }
 
   function beginTabScrollDrag(event: PointerEvent<HTMLDivElement>) {
+    if (layout === 'horizontal') {
+      const clientWidth = tabScrollMetrics.clientWidth || tabScrollbarRef.current?.clientWidth || containerRef.current?.clientWidth || 0;
+      const scrollWidth = estimatedHorizontalScrollWidth || tabScrollbarRef.current?.scrollWidth || 0;
+      if (scrollWidth <= clientWidth + 2) {
+        pointerScrollDragRef.current = null;
+        return;
+      }
+
+      pointerScrollDragRef.current = {
+        pointerId: event.pointerId,
+        scrollLeft: tabScrollLeft,
+        startX: event.clientX,
+        startY: event.clientY,
+        target: tabScrollbarRef.current ?? event.currentTarget,
+        wasDragging: false,
+      };
+      return;
+    }
+
     const target = getScrollableTabElement();
     if (!target) {
       pointerScrollDragRef.current = null;
@@ -1011,6 +1030,16 @@ export default function AlphaTabPlayer({
     }
 
     event.preventDefault();
+    if (layout === 'horizontal') {
+      const clientWidth = tabScrollMetrics.clientWidth || tabScrollbarRef.current?.clientWidth || containerRef.current?.clientWidth || 0;
+      const scrollWidth = estimatedHorizontalScrollWidth || tabScrollbarRef.current?.scrollWidth || 0;
+      const maxScrollLeft = Math.max(0, scrollWidth - clientWidth);
+      const nextScrollLeft = clamp(drag.scrollLeft - deltaX, 0, maxScrollLeft);
+      setTabScrollLeft(nextScrollLeft);
+      syncVisibleScrollbar(nextScrollLeft);
+      return true;
+    }
+
     drag.target.scrollLeft = drag.scrollLeft - deltaX;
     setTabScrollLeft(drag.target.scrollLeft);
     return true;
@@ -2242,7 +2271,7 @@ export default function AlphaTabPlayer({
               {isPlaying ? <StopIcon /> : <PlayIcon />}
             </IconButton>
             <div className="relative flex items-center gap-2">
-              <IconButton label="Configurar metronomo" active={metronome || metronomeMenuOpen} onClick={toggleMetronomeMenu}>
+              <IconButton label="Configurar metrónomo" active={metronome || metronomeMenuOpen} onClick={toggleMetronomeMenu}>
                 <span className="relative flex h-8 w-8 items-center justify-center">
                   <MetronomeIcon />
                   {metronome && (
@@ -2256,12 +2285,12 @@ export default function AlphaTabPlayer({
                 <div
                   className="absolute right-0 top-[calc(100%+0.5rem)] z-[130] flex w-[52px] flex-col items-stretch gap-1 border border-zinc-600 bg-zinc-950 p-1 shadow-2xl"
                   role="menu"
-                  aria-label="Opciones del metronomo"
+                  aria-label="Opciones del metrónomo"
                 >
                   <button
                     type="button"
-                    aria-label="Apagar metronomo"
-                    title="Apagar metronomo"
+                    aria-label="Apagar metrónomo"
+                    title="Apagar metrónomo"
                     className={`flex h-11 w-11 items-center justify-center border ${
                       metronome ? 'border-zinc-600 bg-zinc-900 text-zinc-200' : 'border-emerald-300 bg-emerald-300 text-zinc-950'
                     }`}
@@ -2271,8 +2300,8 @@ export default function AlphaTabPlayer({
                   </button>
                   <button
                     type="button"
-                    aria-label="Metronomo en negras"
-                    title="Metronomo en negras"
+                    aria-label="Metrónomo en negras"
+                    title="Metrónomo en negras"
                     className={`flex h-11 w-11 items-center justify-center border ${
                       metronome && metronomeSubdivision === 'quarter'
                         ? 'border-emerald-300 bg-emerald-300 text-zinc-950'
@@ -2284,8 +2313,8 @@ export default function AlphaTabPlayer({
                   </button>
                   <button
                     type="button"
-                    aria-label="Metronomo en corcheas"
-                    title="Metronomo en corcheas"
+                    aria-label="Metrónomo en corcheas"
+                    title="Metrónomo en corcheas"
                     className={`flex h-11 w-11 items-center justify-center border ${
                       metronome && metronomeSubdivision === 'eighth'
                         ? 'border-emerald-300 bg-emerald-300 text-zinc-950'
@@ -2297,8 +2326,8 @@ export default function AlphaTabPlayer({
                   </button>
                   <button
                     type="button"
-                    aria-label="Metronomo en semicorcheas"
-                    title="Metronomo en semicorcheas"
+                    aria-label="Metrónomo en semicorcheas"
+                    title="Metrónomo en semicorcheas"
                     className={`flex h-11 w-11 items-center justify-center border ${
                       metronome && metronomeSubdivision === 'sixteenth'
                         ? 'border-emerald-300 bg-emerald-300 text-zinc-950'

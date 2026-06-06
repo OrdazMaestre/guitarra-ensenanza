@@ -98,7 +98,7 @@ function FretboardMap({
         })}
         {blues ? (
           <text className="map-note-hint" x={boardX + boardWidth / 2} y={boardY + boardHeight + 22}>
-            Bb tambien puede llamarse A#
+            Bb también puede llamarse A#
           </text>
         ) : null}
       </svg>
@@ -121,7 +121,12 @@ const evolutionItems = [
       </>
     ),
     period: 'Siglos XVII-XIX',
-    title: 'Música clásica',
+    title: (
+      <a className="timeline-title-link" href="https://www.youtube.com/watch?v=E1HHKGlBugA" rel="noreferrer" target="_blank">
+        Música clásica
+      </a>
+    ),
+    titleKey: 'Música clásica',
   },
   {
     body: (
@@ -143,6 +148,7 @@ const evolutionItems = [
     ),
     period: 'Finales siglo XIX',
     title: 'Blues',
+    titleKey: 'Blues',
   },
   {
     body: (
@@ -161,7 +167,12 @@ const evolutionItems = [
       </>
     ),
     period: 'Principios del siglo XX',
-    title: 'Jazz',
+    title: (
+      <a className="timeline-title-link" href="https://www.youtube.com/shorts/l87WjFlE86Q" rel="noreferrer" target="_blank">
+        Jazz
+      </a>
+    ),
+    titleKey: 'Jazz',
   },
   {
     body: (
@@ -192,6 +203,7 @@ const evolutionItems = [
     ),
     period: 'Mediados del siglo XX',
     title: 'Rock&Roll',
+    titleKey: 'Rock&Roll',
   },
 ];
 
@@ -200,35 +212,35 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
     <main className="blues-page">
       <article className="blues-content">
         <header className="blues-header">
-          <p className="lesson-kicker">Ampliacion de la pentatonica</p>
-          <h1>Pentatonica de blues</h1>
+          <p className="lesson-kicker">Ampliación de la pentatónica</p>
+          <h1>Pentatónica de blues</h1>
           <div className="short-copy">
             <p>Vamos a centrarnos en Mi menor.</p>
             <p>Es una escala muy usada en blues.</p>
-            <p>Y sale de la pentatonica que ya conocemos.</p>
+            <p>Y sale de la pentatónica que ya conocemos.</p>
           </div>
         </header>
 
         <section className="map-section" aria-labelledby="minor-title">
           <header className="section-header">
             <p className="lesson-kicker">Mi menor</p>
-            <h2 id="minor-title">Pentatonica de Mi menor</h2>
+            <h2 id="minor-title">Pentatónica de Mi menor</h2>
             <p>E, G, A, B y D.</p>
             <p>Son las mismas notas que Sol Mayor.</p>
           </header>
-          <FretboardMap ariaLabel="Pentatonica de Mi menor en los doce primeros trastes" notes={eMinorPentatonicNotes} />
+          <FretboardMap ariaLabel="Pentatónica de Mi menor en los doce primeros trastes" notes={eMinorPentatonicNotes} />
         </section>
 
         <section className="map-section" aria-labelledby="blues-title">
           <header className="section-header">
-            <h2 id="blues-title">Pentatonica de blues</h2>
-            <p>Ahora anadimos una nota rara: <strong>Bb</strong>.
+            <h2 id="blues-title">Pentatónica de blues</h2>
+            <p>Ahora añadimos una nota rara: <strong>Bb</strong>.
             </p>
           </header>
-          <FretboardMap ariaLabel="Pentatonica de blues de Mi menor con Bb en los doce primeros trastes" blues notes={eMinorBluesNotes} />
+          <FretboardMap ariaLabel="Pentatónica de blues de Mi menor con Bb en los doce primeros trastes" blues notes={eMinorBluesNotes} />
         </section>
 
-        <section className="formula-box" aria-label="Formula de la escala de blues">
+        <section className="formula-box" aria-label="Fórmula de la escala de blues">
           <p>
             <strong>La pentatónica de blues usa 6 notas, no 5.</strong>
           </p>
@@ -241,21 +253,20 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           <Link href="/lecciones/temario/ejercicios-pentatonica">Antes de correr: repasar las 5 figuras</Link>
         </section>
 
-        <section className="practice-link" aria-label="Ejercicios de pentatonica blues">
-          <Link href="/lecciones/temario/ejercicios-pentatonica-blues">Ejercicios de pentatonica de blues</Link>
+        <section className="practice-link" aria-label="Ejercicios de pentatónica blues">
+          <Link href="/lecciones/temario/ejercicios-pentatonica-blues">Ejercicios de pentatónica de blues</Link>
         </section>
 
         <section className="history-box" aria-labelledby="history-title">
           <div className="history-copy">
-            <p>El blues salió de la mezcla entre la música folclórica del lugar con la complejidad armónica que presentaba la música clásica.</p>
-            <p>Los músicos de blues dominaban la música de su tierra y la teoría musical del clasicismo.</p>
+            <p>Los músicos de blues dominaban la música folk de su tierra además de la teoría y técnica de la música clásica.</p>
             <p>
               Ellos fueron los primeros en proponer una música compleja y distinta a como{' '}
               <span className="underlined">se creía en aquella época que era la única manera de hacer música bien</span>.
             </p>
             <p>Muy pocos clásicos (como Claude Debussy o Igor Stravinsky) usaban estos recursos “raros”.</p>
             <p>
-              <span className="underlined">Así nace la <strong>música moderna</strong>, diferenciandose</span> de forma fundamental con la{' '}
+              <span className="underlined">Así nace la <strong>música moderna</strong>, diferenciándose</span> de forma fundamental con la{' '}
               <span className="underlined"><strong>música clásica</strong></span>.
             </p>
             <p>El Jazz fue la cúspide de esa experimentación musical: escalas de 7 a 12 notas, múltiples escalas en la misma canción... etc.</p>
@@ -268,7 +279,7 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
 
           <div className="timeline-grid">
             {evolutionItems.map((item, index) => (
-              <article className="timeline-card" key={item.title}>
+              <article className="timeline-card" key={item.titleKey}>
                 <h3>
                   {item.title} <span>({item.period})</span>
                 </h3>
@@ -575,6 +586,18 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           line-height: 1.2;
           margin-top: 6px;
           text-transform: none;
+        }
+
+        .timeline-title-link {
+          color: inherit;
+          text-decoration-color: #047857;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 0.16em;
+        }
+
+        .timeline-title-link:hover,
+        .timeline-title-link:focus-visible {
+          color: #080808;
         }
 
         .timeline-card-copy {

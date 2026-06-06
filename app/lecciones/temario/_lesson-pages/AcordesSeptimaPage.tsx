@@ -39,7 +39,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '1',
     firstFret: 1,
-    formula: 'Mayor septima',
+    formula: 'Mayor séptima',
     fretCount: 4,
     name: 'GMaj7',
     notes: ['G', 'B', 'D', 'F#'],
@@ -61,7 +61,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '2',
     firstFret: 4,
-    formula: 'menor septima',
+    formula: 'menor séptima',
     fretCount: 5,
     name: 'Am7',
     notes: ['A', 'C', 'E', 'G'],
@@ -83,7 +83,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '3',
     firstFret: 6,
-    formula: 'menor septima',
+    formula: 'menor séptima',
     fretCount: 3,
     name: 'Bm7',
     notes: ['B', 'D', 'F#', 'A'],
@@ -105,7 +105,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '4',
     firstFret: 8,
-    formula: 'Mayor septima',
+    formula: 'Mayor séptima',
     fretCount: 4,
     name: 'CMaj7',
     notes: ['C', 'E', 'G', 'B'],
@@ -127,7 +127,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '5',
     firstFret: 10,
-    formula: 'DOMINANTE septima',
+    formula: 'DOMINANTE séptima',
     fretCount: 4,
     name: 'D7',
     notes: ['D', 'F#', 'A', 'C'],
@@ -149,7 +149,7 @@ const seventhChords: SeventhChord[] = [
   {
     degree: '6',
     firstFret: 0,
-    formula: 'menor septima',
+    formula: 'menor séptima',
     fretCount: 3,
     name: 'Em7',
     notes: ['E', 'G', 'B', 'D'],
@@ -205,7 +205,7 @@ const chordCropRanges: Record<string, { end: number; labelX: number; start: numb
   D7: { end: 11, labelX: 1070, start: 10 },
 };
 
-const seventhProgressionTab = `\\title "Acordes con septima"
+const seventhProgressionTab = `\\title "Acordes con séptima"
 \\tempo 68
 .
 :2
@@ -218,7 +218,7 @@ const seventhProgressionTab = `\\title "Acordes con septima"
 (2.4 2.3 1.2 2.1){ch "F#m7b5"} |
 (4.4 4.3 3.2 3.1){ch "GMaj7"} |`;
 
-const seventhProgressionE2Tab = `\\title "Acordes con septima E2"
+const seventhProgressionE2Tab = `\\title "Acordes con séptima E2"
 \\tempo 68
 .
 :2
@@ -321,7 +321,7 @@ function ScaleWithChordPositions() {
   }
 
   return (
-    <figure className="position-map" aria-label="Acordes con septima colocados sobre el mastil de Sol Mayor">
+    <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
       <svg className="position-board" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img">
         {miniRows.map((row) => (
           <g key={row.label}>
@@ -387,12 +387,12 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
       <article className="seventh-chords-content">
         <header className="seventh-header">
           <p className="lesson-kicker">Ampliacion acordes</p>
-          <h1>Acordes con septima: cuatriadas</h1>
+          <h1>Acordes con séptima: cuatriadas</h1>
           <div className="short-copy">
             <p>La escala tiene 7 notas y 7 acordes.</p>
             <p>Cada nota y acorde tienen un número: 1, 2, 3, 4, 5, 6 y 7.</p>
             <p>Un acorde triada usa 1, 3 y 5.</p>
-            <p>Un acorde con septima usa 1, 3, 5 y 7.</p>
+            <p>Un acorde con séptima usa 1, 3, 5 y 7.</p>
           </div>
         </header>
 
@@ -405,7 +405,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           </p>
         </section>
 
-        <section className="sequence-box" aria-label="Secuencia de acordes con septima">
+        <section className="sequence-box" aria-label="Secuencia de acordes con séptima">
           <p>
             <strong>Acordes Triada:</strong>{' '}G &rarr; Am &rarr; Bm &rarr; C &rarr; D &rarr; Em &rarr; F# disminuido &rarr; G.
           </p>
@@ -420,13 +420,13 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
             <h2 id="exercise-title">Usando cuerda Mi agudo (E4)</h2>
           </header>
           <div className="seventh-alphatab-frame seventh-alphatab-frame-top">
-            <AlphaTabPlayer compact horizontalBarWidth={82} layout="horizontal" minHeight={230} tab={seventhProgressionTab} title="Acordes con septima" />
+            <AlphaTabPlayer compact horizontalBarWidth={82} layout="horizontal" minHeight={230} tab={seventhProgressionTab} title="Acordes con séptima" />
           </div>
           <div className="exercise-subhead">
             <h3>Usando cuerda Mi grave (E2)</h3>
           </div>
           <div className="seventh-alphatab-frame">
-            <AlphaTabPlayer compact horizontalBarWidth={82} layout="horizontal" minHeight={230} tab={seventhProgressionE2Tab} title="Acordes con septima E2" />
+            <AlphaTabPlayer compact horizontalBarWidth={82} layout="horizontal" minHeight={230} tab={seventhProgressionE2Tab} title="Acordes con séptima E2" />
           </div>
         </section>
 

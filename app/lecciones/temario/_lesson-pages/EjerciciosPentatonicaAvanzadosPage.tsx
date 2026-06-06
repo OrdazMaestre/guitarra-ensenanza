@@ -37,7 +37,7 @@ const advancedExercises = [
   {
     note: 'Ejercicio 3 y 4',
     source: '/tabs/ejerciciopent2.gp',
-    text: ['Subimos 2 y bajamos 1.', 'Despues bajamos 2 y subimos 1.', 'Aqui empieza el movimiento de verdad.'],
+    text: ['Subimos 2 y bajamos 1.', 'Después bajamos 2 y subimos 1.', 'Aquí empieza el movimiento de verdad.'],
     title: 'Patrones de tres notas',
   },
 ];
@@ -74,7 +74,7 @@ function notesForFigure(startFret: number, endFret: number) {
 function FigureThreeDiagram() {
   return (
     <ReducedFretboardDiagram
-      ariaLabel="Figura 2 de la pentatonica de Sol Mayor y Mi menor"
+      ariaLabel="Figura 2 de la pentatónica de Sol Mayor y Mi menor"
       endFret={figureThree.endFret}
       guideDots={[5, 7].map((fret) => ({ fret }))}
       notes={notesForFigure(figureThree.startFret, figureThree.endFret)}
@@ -89,10 +89,10 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
       <article className="advanced-pentatonic-content">
         <header className="advanced-pentatonic-header">
           <p className="lesson-kicker">Ejercicios de verdad</p>
-          <h1>Practicando la pentatonica</h1>
+          <h1>Practicando la pentatónica</h1>
           <div className="short-copy">
-            <p>En la pagina anterior tocamos las notas una a una.</p>
-            <p>De mas grave a mas agudo.</p>
+            <p>En la página anterior tocamos las notas una a una.</p>
+            <p>De más grave a más agudo.</p>
             <p>A eso lo llamamos ascendente.</p>
           </div>
         </header>
@@ -104,7 +104,7 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
           </p>
         </section>
 
-        <section className="exercise-list" aria-label="Ejercicios avanzados de pentatonica">
+        <section className="exercise-list" aria-label="Ejercicios avanzados de pentatónica">
           {advancedExercises.map((exercise) => (
             <article className="advanced-exercise" key={exercise.source}>
               <div className="figure-panel">
@@ -130,7 +130,7 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
           ))}
         </section>
 
-        <section className="practice-box" aria-label="Como practicar">
+        <section className="practice-box" aria-label="Cómo practicar">
           <p>No corras.</p>
           <p>Hazlo limpio.</p>
           <p>Cuando salga con la figura 2, prueba con las figuras 0, 1, 3 y 4.</p>

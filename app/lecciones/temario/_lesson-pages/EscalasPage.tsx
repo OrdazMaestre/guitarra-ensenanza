@@ -8,14 +8,14 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
     <main className="scales-page">
       <article className="scales-content">
         <header className="scales-header">
-          <p className="lesson-kicker">Teoria</p>
+          <p className="lesson-kicker">Teoría</p>
           <h1>
             <Link className="scales-title-link" href="/lecciones/temario/modos-griegos">
               Escalas
             </Link>
           </h1>
           <div className="short-copy">
-            <p>Una escala es un patron de tonos y semitonos.</p>
+            <p>Una escala es un patrón de tonos y semitonos.</p>
             <p>Un tono son dos semitonos.</p>
             <p>Un semitono es la distancia que hay entre los trastes de nuestra guitarra.</p>
           </div>
@@ -28,7 +28,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <Image
             className="scale-pattern-image"
             src="/images/figuras-acordes/patron-tonos-semitonos.svg"
-            alt="Patron de tonos y semitonos de Do Mayor"
+            alt="Patrón de tonos y semitonos de Do Mayor"
             width={700}
             height={127}
           />
@@ -46,26 +46,26 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
             <p>Igual que la escala Mayor pero empezando desde DOS NOTAS ANTES.</p>
             <p><strong>Do Mayor: C, D, E, F, G, A, B.</strong></p>
             <p><strong>La Menor: A, B, C, D, E, F, G.</strong></p>
-            <p>Como usan las mismas notas, decimos que La menor es el RELATIVO MENOR de Do Mayor</p>
+            <p>Como usan las mismas notas, decimos que La menor es el RELATIVO MENOR de Do Mayor.</p>
           </div>
         </section>
 
         <section className="question-box" aria-label="Alteraciones">
-          <h2>¿Que notas hay entre medias?</h2>
+          <h2>¿Qué notas hay entre medias?</h2>
           <p>Los cuadrados amarillos son las alteraciones.</p>
           <p>Las alteraciones son los bemoles (b) y los sostenidos (#).</p>
           <p>Bemol es la nota anterior - Sostenido es la nota siguiente.</p>
           <p>La nota entre Do y Re es Do# y Reb a la vez.</p>
         </section>
 
-        <section className="g-major-box" aria-label="Por que usamos Sol Mayor">
+        <section className="g-major-box" aria-label="Por qué usamos Sol Mayor">
           <h2>Do Mayor vs Sol Mayor</h2>
-          <p>Do Mayor y La menor son las unicas escalas SIN alteraciones.</p>
-          <p>Pero nuestra guitarra esta afinada en Mi estandar y no tenemos Do en las cuerdas al aire.</p>
+          <p>Do Mayor y La menor son las únicas escalas SIN alteraciones.</p>
+          <p>Pero nuestra guitarra está afinada en Mi estándar y no tenemos Do en las cuerdas al aire.</p>
           <p>Por eso usaremos mucho más la escala de Sol Mayor y Mi menor.</p>
           <p>Usan las mismas notas pero una da protagonismo a Sol y la otra a Mi.</p>
           <p>
-            La unica alteracion de <strong>G Mayor</strong> y <strong>E menor</strong> es <strong>F#</strong>.
+            La única alteración de <strong>G Mayor</strong> y <strong>E menor</strong> es <strong>F#</strong>.
           </p>
         </section>
 
@@ -73,12 +73,12 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <p>Datos para recordar:</p>
           <p>Hay 12 notas y tenemos 12 trastes.</p>
           <p>El traste 12 tiene las mismas notas que las cuerdas al aire.</p>
-          <p>Solo suenan mas agudo.</p>
+          <p>Solo suenan más agudo.</p>
         </section>
 
         <section className="branch-section" aria-labelledby="branch-title">
           <p className="lesson-kicker">Ramas</p>
-          <h2 id="branch-title">Caminos que salen de aqui</h2>
+          <h2 id="branch-title">Caminos que salen de aquí</h2>
           <div className="branch-grid">
             <Link href="/lecciones/temario/escala-completa-sol-mayor">
               <span>Escala completa de Sol Mayor</span>
@@ -92,14 +92,14 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         </section>
 
         <section className="final-warning" aria-label="Aviso final del temario">
-          <p>Ultima unidad del camino principal.</p>
-          <p>Probablemente te dejaste atras ampliaciones de muchas unidades anteriores.</p>
-          <p>Ahora estas mas preparado para volver a ellas.</p>
-          <p>A partir de aqui toca investigar la web a tu ritmo.</p>
+          <p>Última unidad del camino principal.</p>
+          <p>Probablemente te dejaste atrás ampliaciones de muchas unidades anteriores.</p>
+          <p>Ahora estás más preparado para volver a ellas.</p>
+          <p>A partir de aquí toca investigar la web a tu ritmo.</p>
           <p>Entiende, asimila y practica poco a poco.</p>
-          <p>Practica tempo con el metronomo.</p>
+          <p>Practica tempo con el metrónomo.</p>
           <p>Hay enlaces secretos.</p>
-          <p>Explora, aprende y diviertete.</p>
+          <p>Explora, aprende y diviértete.</p>
         </section>
       </article>
 

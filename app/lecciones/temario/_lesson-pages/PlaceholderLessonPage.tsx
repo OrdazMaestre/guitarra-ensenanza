@@ -1,12 +1,14 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
 interface PlaceholderLessonPageProps extends LessonPageProps {
+  children?: ReactNode;
   title: string;
 }
 
-export default function PlaceholderLessonPage({ next, previous, title }: PlaceholderLessonPageProps) {
+export default function PlaceholderLessonPage({ children, next, previous, title }: PlaceholderLessonPageProps) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <Link href="/lecciones/temario" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
@@ -19,8 +21,13 @@ export default function PlaceholderLessonPage({ next, previous, title }: Placeho
         </p>
         <h1 className="mt-4 text-4xl font-black text-zinc-50">{title}</h1>
         <p className="mt-4 text-lg leading-8 text-zinc-300">
-          Esta pagina queda preparada para escribir la leccion real cuando empecemos a desarrollar este bloque.
+          Esta página queda preparada para escribir la lección real cuando empecemos a desarrollar este bloque.
         </p>
+        {children ? (
+          <div className="mt-6 grid gap-3 text-lg leading-8 text-zinc-300">
+            {children}
+          </div>
+        ) : null}
       </section>
 
       <TemarioPager previous={previous} next={next} />
