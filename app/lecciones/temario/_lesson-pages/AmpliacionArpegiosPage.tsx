@@ -11,9 +11,8 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <p className="lesson-kicker">Ampliación</p>
           <h1>Arpegios</h1>
           <div className="warning-box" role="note">
-            <p>Esta ampliación adelanta contenido del temario.</p>
-            <p>Recomendado para entender la explicación: llegar antes a acordes con séptima.</p>
-            <p>Curiosos: podéis aprender solo las tablaturas sin problemas.</p>
+            <p>Esta ampliación adelanta un poco de contenido del temario</p>
+            <p>pero todos podemos aprender los ejercicios de las tablaturas sin problemas.</p>
           </div>
           <div className="short-copy">
             <p>En la página de arpegios practicamos una forma sencilla.</p>

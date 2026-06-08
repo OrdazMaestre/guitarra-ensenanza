@@ -123,7 +123,7 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
           <p>Y lo mismo con los demás acordes de la página 4.</p>
           <p>Los arpegios se pueden hacer con 3, 4, 5 y 6 cuerdas.</p>
           <p>RETO: Tocar Let It Be arpegiando los acordes de la forma que más os guste.</p>
-          <Link href="/lecciones/temario/acordes-completos">ACORDES COMPLETOS</Link>
+          <Link href="/lecciones/temario/acordes">ACORDES BÁSICOS</Link>
         </section>
 
         <section className="lesson-close" aria-label="Resumen">

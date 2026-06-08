@@ -216,6 +216,7 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
         }
 
         .altered-note {
+          background: #d1d5db;
           border-color: #047857;
         }
 

@@ -10,9 +10,9 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         <header className="scales-header">
           <p className="lesson-kicker">Teoría</p>
           <h1>
-            <Link className="scales-title-link" href="/lecciones/temario/modos-griegos">
+            <a className="scales-title-link" href="https://www.youtube.com/watch?v=OdYIS8KXdFI" rel="noreferrer" target="_blank">
               Escalas
-            </Link>
+            </a>
           </h1>
           <div className="short-copy">
             <p>Una escala es un patrón de tonos y semitonos.</p>
@@ -52,10 +52,11 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
 
         <section className="question-box" aria-label="Alteraciones">
           <h2>¿Qué notas hay entre medias?</h2>
-          <p>Los cuadrados amarillos son las alteraciones.</p>
+          <p>Los cuadrados grises son las alteraciones.</p>
+          <p>En un piano corresponden a la teclas negras.</p>
           <p>Las alteraciones son los bemoles (b) y los sostenidos (#).</p>
           <p>Bemol es la nota anterior - Sostenido es la nota siguiente.</p>
-          <p>La nota entre Do y Re es Do# y Reb a la vez.</p>
+          <p>La nota que hay entre Do y Re es a la vez Do# y Reb.</p>
         </section>
 
         <section className="g-major-box" aria-label="Por qué usamos Sol Mayor">
@@ -82,24 +83,13 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <div className="branch-grid">
             <Link href="/lecciones/temario/escala-completa-sol-mayor">
               <span>Escala completa de Sol Mayor</span>
-              <small>Para ver el mapa entero de G Mayor y Mi menor.</small>
+              <small> Para ver el mapa entero de G Mayor y Mi menor.</small>
             </Link>
             <Link href="/lecciones/temario/modos-griegos">
-              <span>Modos griegos</span>
-              <small>Para estudiar otros centros dentro de la escala.</small>
+              <span>Modos</span>
+              <small> Para entender otros centros dentro de la escala.</small>
             </Link>
           </div>
-        </section>
-
-        <section className="final-warning" aria-label="Aviso final del temario">
-          <p>Última unidad del camino principal.</p>
-          <p>Probablemente te dejaste atrás ampliaciones de muchas unidades anteriores.</p>
-          <p>Ahora estás más preparado para volver a ellas.</p>
-          <p>A partir de aquí toca investigar la web a tu ritmo.</p>
-          <p>Entiende, asimila y practica poco a poco.</p>
-          <p>Practica tempo con el metrónomo.</p>
-          <p>Hay enlaces secretos.</p>
-          <p>Explora, aprende y diviértete.</p>
         </section>
       </article>
 
@@ -202,8 +192,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         .section-header p,
         .question-box p,
         .g-major-box p,
-        .memory-box p,
-        .final-warning p {
+        .memory-box p {
           color: #303030;
           font-size: clamp(18px, 2vw, 24px);
           font-weight: 650;
@@ -331,30 +320,6 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           overflow-wrap: anywhere;
         }
 
-        .final-warning {
-          background: #fef2f2;
-          border: 4px solid #dc2626;
-          border-radius: 10px;
-          display: grid;
-          gap: 10px;
-          margin: 0 auto;
-          max-width: 960px;
-          padding: clamp(18px, 3vw, 28px);
-          text-align: center;
-          width: 100%;
-        }
-
-        .final-warning p {
-          color: #080808;
-          font-weight: 800;
-        }
-
-        .final-warning p:first-child {
-          color: #080808;
-          font-weight: 950;
-          text-transform: uppercase;
-        }
-
         .memory-box p:first-child {
           color: #080808;
           font-weight: 950;
@@ -367,8 +332,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           .question-box,
           .g-major-box,
           .memory-box,
-          .branch-section,
-          .final-warning {
+          .branch-section {
             text-align: left;
           }
 

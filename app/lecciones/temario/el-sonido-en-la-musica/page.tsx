@@ -105,6 +105,13 @@ export default function SoundInMusicPage() {
             También influye con qué fuerza, cómo vibra la guitarra junto a las cuerdas, la forma de la caja, cómo dejamos sonar o apagamos la cuerda... incluso el tipo de madera y tipo de cuerdas. Cada pieza de la guitarra influye en cómo vibra y el sonido que terminará sacando.
           </p>
         </section>
+
+        <section className="sound-video" aria-labelledby="sound-video-title">
+          
+          <a href="https://www.youtube.com/watch?v=xcHbm0vXFFE" rel="noreferrer" target="_blank">
+            Vídeo sobre sonido en música
+          </a>
+        </section>
       </article>
 
       <style>{`
@@ -301,7 +308,8 @@ export default function SoundInMusicPage() {
           text-anchor: middle;
         }
 
-        .sound-summary {
+        .sound-summary,
+        .sound-video {
           border-top: 1px solid #d4d4d8;
           margin-top: clamp(56px, 9vw, 108px);
           padding-top: clamp(28px, 5vw, 48px);
@@ -311,6 +319,42 @@ export default function SoundInMusicPage() {
         .sound-summary p {
           margin: 14px auto 0;
           max-width: 760px;
+        }
+
+        .sound-video {
+          display: grid;
+          gap: 18px;
+          justify-items: center;
+        }
+
+        .sound-video h2 {
+          font-size: clamp(32px, 4vw, 58px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 1;
+          margin: 0;
+        }
+
+        .sound-video a {
+          color: #080808;
+          font-size: clamp(20px, 2.4vw, 30px);
+          font-weight: 950;
+          line-height: 1.16;
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          text-decoration-color: #047857;
+          text-decoration-thickness: 3px;
+          text-underline-offset: 6px;
+        }
+
+        .sound-video a:hover,
+        .sound-video a:focus-visible {
+          color: #047857;
+        }
+
+        .sound-video a:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
         }
 
         @media (max-width: 820px) {
@@ -327,8 +371,13 @@ export default function SoundInMusicPage() {
             order: 0;
           }
 
-          .sound-summary {
+          .sound-summary,
+          .sound-video {
             text-align: left;
+          }
+
+          .sound-video {
+            justify-items: start;
           }
         }
       `}</style>

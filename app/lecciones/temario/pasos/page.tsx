@@ -81,7 +81,7 @@ const branchMap: Record<string, BranchItem[]> = {
       href: '/lecciones/temario/ejercicios-escalas-avanzados',
     },
     {
-      title: 'Modos griegos',
+      title: 'Modos',
       href: '/lecciones/temario/modos-griegos',
     },
   ],

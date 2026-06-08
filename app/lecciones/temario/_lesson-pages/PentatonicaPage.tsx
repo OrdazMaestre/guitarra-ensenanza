@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -106,6 +107,22 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
             <p>Ahora añadimos E y A.</p>
           </div>
         </header>
+
+        <section className="reference-map-section" aria-labelledby="reference-map-title">
+          <header className="section-header">
+            <p className="lesson-kicker">Antes</p>
+            <h2 id="reference-map-title">Arpegio de Sol Mayor</h2>
+            <p>Este era nuestro mapa de 3 notas.</p>
+            <p>G, B y D.</p>
+          </header>
+          <Image
+            className="reference-map-image"
+            src="/images/arpegios/arpegios-g-mastil.png"
+            alt="Mástil del arpegio triada de Sol Mayor"
+            width={614}
+            height={111}
+          />
+        </section>
 
         <section className="formula-box" aria-label="Fórmula de la pentatónica">
           <p>Así aparece una escala de 5 tonos.</p>
@@ -271,12 +288,21 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           font-weight: 950;
         }
 
+        .reference-map-section,
         .map-section {
           border-top: 1px solid #d4d4d8;
           display: grid;
           gap: clamp(18px, 3vw, 30px);
           min-width: 0;
           padding-top: clamp(24px, 4vw, 42px);
+        }
+
+        .reference-map-image {
+          display: block;
+          height: auto;
+          margin: 0 auto;
+          max-width: 100%;
+          width: min(100%, 980px);
         }
 
         .pentatonic-board-wrap {

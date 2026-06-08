@@ -14,6 +14,7 @@ const stringTunings = [
 
 const gMajorChord = ['G', 'B', 'D'];
 const gMajorPentatonic = ['G', 'A', 'B', 'D', 'E'];
+const gMajorSeventh = ['G', 'A', 'B', 'D', 'E', 'F#'];
 const gMajorScale = ['G', 'A', 'B', 'C', 'D', 'E', 'F#'];
 
 function noteNameForFret(open: number, fret: number) {
@@ -110,11 +111,11 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
 
         <section className="map-section" aria-labelledby="chord-title">
           <header className="section-header">
-            <h2 id="chord-title">Acorde de Sol Mayor</h2>
-            <p>Ya vimos las figuras del acorde de Sol Mayor.</p>
+            <h2 id="chord-title">Arpegio de Sol Mayor</h2>
+            <p>Ya vimos el mapa del arpegio de Sol Mayor.</p>
             <p>G, B y D.</p>
           </header>
-          <ScaleFretboard ariaLabel="Notas del acorde de Sol Mayor en los doce primeros trastes" notes={gMajorChord} />
+          <ScaleFretboard ariaLabel="Notas del arpegio triada de Sol Mayor en los doce primeros trastes" notes={gMajorChord} />
         </section>
 
         <section className="map-section dashed-section" aria-labelledby="pentatonic-title">
@@ -135,10 +136,19 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
           </div>
         </section>
 
+        <section className="map-section dashed-section" aria-labelledby="seventh-title">
+          <header className="section-header">
+            <h2 id="seventh-title">Pentatónica + séptima</h2>
+            <p>Añadimos la séptima nota de Sol Mayor: <strong>F#</strong>.</p>
+          </header>
+          <ScaleFretboard ariaLabel="Pentatónica de Sol Mayor con la séptima F# en los doce primeros trastes" notes={gMajorSeventh} />
+          
+        </section>
+
         <section className="map-section dashed-section" aria-labelledby="complete-title">
           <header className="section-header">
             <h2 id="complete-title">Escala de Sol Mayor</h2>
-            <p>Añadimos las dos notas que faltaban: C y F#.</p>
+            <p>Ahora añadimos la nota que faltaba: C (la cuarta nota de esta escala).</p>
           </header>
           <ScaleFretboard ariaLabel="Escala completa de Sol Mayor en los doce primeros trastes" notes={gMajorScale} showFretNumbers />
           <div className="formula-box formula-green">

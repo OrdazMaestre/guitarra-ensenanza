@@ -58,8 +58,8 @@ const powerFretY = (fret: number) => 24 + (fret - 0.5) * 19;
 
 const powerChordShapes: PowerChordShape[] = [
   {
-    name: 'E5',
-    rootLabel: 'MI5',
+    name: 'E',
+    rootLabel: 'Mi',
     notes: [
       { label: 'T', string: 6, fret: 0 },
       { label: '5', string: 5, fret: 2 },
@@ -67,8 +67,8 @@ const powerChordShapes: PowerChordShape[] = [
     ],
   },
   {
-    name: 'F5',
-    rootLabel: 'FA5',
+    name: 'F',
+    rootLabel: 'Fa',
     notes: [
       { label: 'T', string: 6, fret: 1 },
       { label: '5', string: 5, fret: 3 },
@@ -76,8 +76,8 @@ const powerChordShapes: PowerChordShape[] = [
     ],
   },
   {
-    name: 'A5',
-    rootLabel: 'LA5',
+    name: 'A',
+    rootLabel: 'La',
     notes: [
       { label: 'T', string: 5, fret: 0 },
       { label: '5', string: 4, fret: 2 },
@@ -85,8 +85,8 @@ const powerChordShapes: PowerChordShape[] = [
     ],
   },
   {
-    name: 'B5',
-    rootLabel: 'SI5',
+    name: 'B',
+    rootLabel: 'Si',
     notes: [
       { label: 'T', string: 5, fret: 2 },
       { label: '5', string: 4, fret: 4 },
@@ -169,9 +169,6 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
         {shape.notes.map((note) => (
           <g key={`${shape.name}-${note.string}-${note.fret}`}>
             <circle className={`power-dot ${note.label === 'E' ? 'power-note-e' : note.label === 'G' ? 'power-note-g' : ''} ${note.fret === 0 ? 'open-power-dot' : ''}`} cx={stringX(note.string)} cy={note.fret === 0 ? 16 : powerFretY(note.fret)} r="9" />
-            <text className="power-note-label" x={stringX(note.string)} y={note.fret === 0 ? 20 : powerFretY(note.fret) + 4}>
-              {note.label}
-            </text>
           </g>
         ))}
       </svg>
@@ -186,17 +183,18 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         <header className="chords-header">
           <h1>Acordes básicos</h1>
           <div className="short-copy">
-            <p>Un acorde junta varias notas al mismo tiempo.</p>
-            <p>De momento usamos mayores y menores para tocar canciones sencillas.</p>
+            <p>Un acorde junta 3 o más notas al mismo tiempo.</p>
+            <p>De momento aprendemos acordes mayores y menores para tocar canciones sencillas.</p>
           </div>
         </header>
 
         <section className="finger-guide" aria-labelledby="finger-guide-title">
           <div>
-            <p className="lesson-kicker">Mano izquierda</p>
-            <h2 id="finger-guide-title">Los números son dedos</h2>
             <p>
-              En los diagramas, los círculos nos dicen qué dedo colocar en cada cuerda y traste.
+              En estos dibujos, los números dicen qué dedos colocar.
+            </p>
+            <p>
+              El 1 es el dedo índice y el 4 es el meñique.
             </p>
           </div>
           <div className="finger-row" aria-label="Dedos de la mano izquierda">

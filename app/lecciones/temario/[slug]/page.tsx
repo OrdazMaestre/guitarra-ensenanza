@@ -66,9 +66,31 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'modos-griegos') {
     return (
       <PlaceholderLessonPage
-        title="Modos griegos"
+        title="Modos"
         {...extensionPrevious('/lecciones/temario/escalas', 'Escalas')}
-      />
+      >
+        <section className="grid gap-4">
+          <h2 className="text-2xl font-black text-zinc-50">Vídeos para empezar</h2>
+          <div className="grid gap-3">
+            <a
+              className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
+              href="https://www.youtube.com/watch?v=e9ay6zMICw8&t=2s"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Jaime Altozano: modos
+            </a>
+            <a
+              className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
+              href="https://www.youtube.com/watch?v=8i7K9GYzbIY"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Jaime Altozano: más sobre modos
+            </a>
+          </div>
+        </section>
+      </PlaceholderLessonPage>
     );
   }
 
@@ -216,11 +238,24 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'funciones-tonales') {
     return (
       <PlaceholderLessonPage title={lesson.title} {...lessonProps}>
+        <section className="grid gap-3 rounded-lg border-4 border-red-600 bg-red-50 p-5 text-center text-zinc-950">
+          <p className="font-black uppercase">Última unidad del camino principal.</p>
+          <p>Probablemente te dejaste atrás ampliaciones de muchas unidades anteriores.</p>
+          <p>Ahora estás más preparado para volver a ellas.</p>
+          <p>A partir de aquí toca investigar la web a tu ritmo.</p>
+          <p>Entiende, asimila y practica poco a poco.</p>
+          <p>Practica tempo con el metrónomo.</p>
+          <p>Hay enlaces secretos.</p>
+          <p>Explora, aprende y diviértete.</p>
+          <p>Con un profesor siempre será más fácil avanzar contenidos.</p>
+          <p>Pero luego hay que practicar mucho en casa.</p>
+        </section>
+
         <p>
           Hasta tener la página compuesta, podemos ver el{' '}
           <a
             className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
-            href="https://www.youtube.com/watch?v=o6aOC3rERF0&list=PLrNRWzkImhnyDJYrUe2h0KgpuPu4ovQKp&index=13"
+            href="https://www.youtube.com/watch?v=o6aOC3rERF0&t=65s"
             rel="noreferrer"
             target="_blank"
           >
