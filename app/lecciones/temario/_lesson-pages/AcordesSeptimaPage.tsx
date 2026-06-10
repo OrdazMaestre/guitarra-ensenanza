@@ -391,21 +391,24 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           <div className="short-copy">
             <p>La escala tiene 7 notas y 7 acordes.</p>
             <p>Cada nota y acorde tienen un número: 1, 2, 3, 4, 5, 6 y 7.</p>
-            <p>Un acorde triada usa 1, 3 y 5.</p>
-            <p>Un acorde con séptima usa 1, 3, 5 y 7.</p>
+            <p>Un acorde triada usa las notas 1, 3 y 5.</p>
+            <p>Un acorde con séptima usa las notas 1, 3, 5 y 7.</p>
           </div>
         </header>
 
         <section className="rule-box" aria-label="Acordes triada y cuatriada">
           <p>
-            <strong>Acordes triada:</strong> 3 notas. Por ejemplo Sol Mayor: G, B y D.
+            <strong>acorde Sol Mayor triada (G):</strong> G, B y D.
           </p>
           <p>
-            <strong>Acordes cuatriada:</strong> 4 notas. G se convierte en GMaj7: G, B, D y F#.
+            <strong>Sol Mayor cuatriada (GMaj7):</strong> G, B, D y F#.
           </p>
         </section>
 
         <section className="sequence-box" aria-label="Secuencia de acordes con séptima">
+          <p>
+            <strong>Escala de Sol Mayor</strong>
+          </p>
           <p>
             <strong>Acordes Triada:</strong>{' '}G &rarr; Am &rarr; Bm &rarr; C &rarr; D &rarr; Em &rarr; F# disminuido &rarr; G.
           </p>
@@ -432,7 +435,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
 
         <section className="position-section" aria-labelledby="position-title">
           <header className="section-header">
-            <h2 id="position-title">Acordes séptima de la escala de Sol Mayor</h2>
+            <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
           </header>
           <div className="position-scroll">
             <ScaleWithChordPositions />

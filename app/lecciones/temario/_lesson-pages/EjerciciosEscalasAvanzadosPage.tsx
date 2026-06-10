@@ -1,5 +1,5 @@
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
-import { ReducedFretboardDiagram } from '../../../components/guitar/ReducedFretboardDiagram';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -257,6 +257,8 @@ export default function EjerciciosEscalasAvanzadosPage({ previous, next }: Lesso
         <TemarioPager previous={previous} next={next} />
       </div>
 
+      <ReducedFretboardStyles />
+
       <style>{`
         .advanced-scale-page {
           background: #ffffff;
@@ -410,67 +412,6 @@ export default function EjerciciosEscalasAvanzadosPage({ previous, next }: Lesso
           color: #047857;
           font-size: 13px;
           letter-spacing: 0.18em;
-        }
-
-        .reduced-fretboard {
-          display: block;
-          height: auto;
-          max-width: 100%;
-          width: 100%;
-        }
-
-        .reduced-board-bg {
-          fill: #27313d;
-        }
-
-        .reduced-string {
-          stroke: #9ca3af;
-          stroke-width: 3;
-        }
-
-        .reduced-fret {
-          stroke: #d1d5db;
-          stroke-width: 4;
-        }
-
-        .reduced-nut {
-          stroke: #e5e7eb;
-          stroke-width: 8;
-        }
-
-        .reduced-guide-dot {
-          fill: #cbd5e1;
-          opacity: 0.82;
-        }
-
-        .reduced-note {
-          fill: #f1f5f9;
-          stroke: #a1a1aa;
-          stroke-width: 3;
-        }
-
-        .reduced-note-e {
-          stroke: #059669;
-          stroke-width: 5;
-        }
-
-        .reduced-note-g {
-          stroke: #2563eb;
-          stroke-width: 5;
-        }
-
-        .reduced-note-label {
-          fill: #080808;
-          font-size: 18px;
-          font-weight: 950;
-          text-anchor: middle;
-        }
-
-        .reduced-roman-fret {
-          fill: #080808;
-          font-size: 15px;
-          font-weight: 950;
-          text-anchor: middle;
         }
 
         @media (max-width: 840px) {
