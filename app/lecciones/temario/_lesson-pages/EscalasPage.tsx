@@ -30,7 +30,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
             src="/images/figuras-acordes/patron-tonos-semitonos.svg"
             alt="Patrón de tonos y semitonos de Do Mayor"
             width={700}
-            height={127}
+            height={220}
           />
           <div className="pattern-box">
             <strong>Escala Mayor:</strong>

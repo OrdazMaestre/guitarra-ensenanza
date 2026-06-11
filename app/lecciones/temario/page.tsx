@@ -24,9 +24,11 @@ export default function TemarioPage() {
               </span>
             </h1>
             <p className="cover-author">por: Enrique Ordaz</p>
-            <p className="cover-intro">
-              Un recorrido visual y practico con explicaciones sencillas de entender, ejercicios cortos y</p>
-              <p>posibilidad (sin obligación) de profundizar en contenidos.</p>
+            <p className="cover-intro">Recorrido visual y practico pensado para los más pequeños.</p>
+              <p className="cover-intro">Frases cortas, ejercicios cortos y videos chulos.</p>
+              <p className="cover-intro">Cada uno aprende a su <strong>ritmo</strong> y cada uno tiene sus <strong>objetivos</strong>.</p>
+              <p className="cover-intro">Aquí preferimos enseñar <strong>un poco de todo</strong> por si llega el día que queremos estudiar de verdad.</p>
+              <p className="cover-intro">La mejor forma de <strong>aprender</strong> y <strong>mejorar</strong> más rápido es en clase con un profesor, en un grupo de música y practicando en casa.</p>
           </div>
         </div>
 

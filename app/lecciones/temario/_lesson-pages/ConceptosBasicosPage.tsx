@@ -63,10 +63,11 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
             />
             <div className="overview-notes">
               <p>
-                La guitarra es un instrumento de cuerda: el sonido nace en las cuerdas y el cuerpo lo amplifica.
+                La guitarra es un instrumento de cuerda: </p>
+              <p>el sonido nace en las cuerdas y el cuerpo lo amplifica.
               </p>
               <p>
-                Con las clavijas afinamos las cuerdas, los trastes ordenan las notas y la boca amplifica el sonido.
+                Con las clavijas afinamos las cuerdas, los trastes ordenan las notas y la caja amplifica el sonido.
               </p>
             </div>
           </section>
@@ -76,10 +77,14 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
               <p className="lesson-kicker">Lo importante</p>
               <h2>El mástil</h2>
               <p>
-                Aquí colocamos la mano izquierda. Aquí están los trastes: los trastes son además los números que escribimos en las tablaturas indicando qué traste hay que pisar.
+                Aquí colocamos la mano izquierda. </p>
+              <p>Aquí están los trastes: </p>
+              <p>los trastes son además los números que escribimos en las tablaturas </p>
+              <p>indican qué traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>
-                Entre dos trastes seguidos hay medio tono. Un tono entero es la distancia entre dos trastes seguidos.
+                La distancia entre los trastes 1-2 es medio tono. </p>
+              <p>La distancia entre los trastes 1-3 es un tono entero.
               </p>
             </div>
 

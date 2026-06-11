@@ -1,12 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 220" role="img" aria-labelledby="title desc">
-  <title id="title">Patron de tonos y semitonos en C mayor</title>
-  <desc id="desc">Las doce notas en fila, representadas como teclas de piano que se tocan entre si: las naturales muestran su nombre en el centro y las alteradas muestran el sostenido arriba y el bemol abajo, alineados con el nombre de las naturales. Flechas curvas debajo muestran los saltos de cada tecla blanca a la siguiente en la escala de Do mayor, marcando tonos y semitonos.</desc>
-  <rect width="700" height="220" fill="#ffffff"/>
-  <defs>
-    <marker id="open-arrow" markerHeight="10" markerWidth="10" orient="auto" refX="8" refY="5">
-      <path d="M1,1 L8,5 L1,9" fill="none" stroke="#17213a" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
-    </marker>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 160" role="img" aria-labelledby="title desc">
+  <title id="title">Las doce notas en forma de teclado</title>
+  <desc id="desc">Las doce notas en fila, representadas como teclas de piano que se tocan entre si: las naturales muestran su nombre en el centro y las alteradas muestran el sostenido arriba y el bemol abajo, alineados con el nombre de las naturales.</desc>
+  <rect width="700" height="160" fill="#ffffff"/>
   <g font-family="Georgia, 'Times New Roman', serif" text-anchor="middle">
     <g fill="#f7f8fb" stroke="#7c8798" stroke-width="1.4">
       <rect x="25" y="10" width="75" height="140" rx="8"/>
@@ -46,24 +41,6 @@
       <text x="450" y="95" font-size="20">Ab</text>
       <text x="550" y="50" font-size="20">A#</text>
       <text x="550" y="95" font-size="20">Bb</text>
-    </g>
-    <g fill="none" marker-end="url(#open-arrow)" stroke="#17213a" stroke-linecap="round" stroke-width="1.8">
-      <path d="M50 162 Q100 182 150 162"/>
-      <path d="M150 162 Q200 182 250 162"/>
-      <path d="M250 162 Q275 172 300 162"/>
-      <path d="M300 162 Q350 182 400 162"/>
-      <path d="M400 162 Q450 182 500 162"/>
-      <path d="M500 162 Q550 182 600 162"/>
-      <path d="M600 162 Q625 172 650 162"/>
-    </g>
-    <g font-family="Georgia, 'Times New Roman', serif" font-size="16">
-      <text x="100" y="212" fill="#17213a">1 TONO</text>
-      <text x="200" y="212" fill="#17213a">1 TONO</text>
-      <text x="275" y="212" fill="#dc2626">1/2 TONO</text>
-      <text x="350" y="212" fill="#17213a">1 TONO</text>
-      <text x="450" y="212" fill="#17213a">1 TONO</text>
-      <text x="550" y="212" fill="#17213a">1 TONO</text>
-      <text x="625" y="212" fill="#dc2626">1/2 TONO</text>
     </g>
   </g>
 </svg>

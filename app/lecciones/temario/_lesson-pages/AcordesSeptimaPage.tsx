@@ -237,20 +237,18 @@ function noteNameForFret(open: number, fret: number) {
 
 function ScaleWithChordPositions() {
   const boardX = 58;
-  const boardY = 432;
+  const boardY = 232;
   const fretWidth = 92;
   const boardWidth = fretWidth * 12;
   const boardHeight = 174;
   const stringGap = boardHeight / 5;
-  const miniRows = [
-    { label: 'E4', mode: 'chordNotes', top: 44 },
-    { label: 'E2', mode: 'lowShape', top: 244 },
-  ] as const;
+  const e4Row = { label: 'E4', mode: 'chordNotes', top: 44 } as const;
+  const e2Row = { label: 'E2', mode: 'lowShape', top: 470 } as const;
   const miniFretWidth = 42;
   const miniStringGap = 22;
   const miniHeight = miniStringGap * 5;
   const viewBoxWidth = boardX + boardWidth + 74;
-  const viewBoxHeight = boardY + boardHeight + 34;
+  const viewBoxHeight = e2Row.top + 26 + miniHeight + 34;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
   const scaleNotes = stringTunings.flatMap((string, stringIndex) =>
@@ -320,19 +318,23 @@ function ScaleWithChordPositions() {
     );
   }
 
+  function MiniRow({ row }: { row: { label: string; mode: 'chordNotes' | 'lowShape'; top: number } }) {
+    return (
+      <g>
+        <text className="mini-row-label" x="8" y={row.top + 88}>
+          {row.label}
+        </text>
+        {positionedChords.map((chord) => (
+          <MiniCrop chord={chord} key={`${row.label}-${chord.name}`} mode={row.mode} top={row.top} />
+        ))}
+      </g>
+    );
+  }
+
   return (
     <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
       <svg className="position-board" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img">
-        {miniRows.map((row) => (
-          <g key={row.label}>
-            <text className="mini-row-label" x="8" y={row.top + 88}>
-              {row.label}
-            </text>
-            {positionedChords.map((chord) => (
-              <MiniCrop chord={chord} key={`${row.label}-${chord.name}`} mode={row.mode} top={row.top} />
-            ))}
-          </g>
-        ))}
+        <MiniRow row={e4Row} />
 
         {Array.from({ length: 12 }, (_, fret) => (
           <text className="fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y={boardY - 18}>
@@ -376,6 +378,8 @@ function ScaleWithChordPositions() {
             </g>
           );
         })}
+
+        <MiniRow row={e2Row} />
       </svg>
     </figure>
   );
@@ -395,6 +399,15 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
             <p>Un acorde con séptima usa las notas 1, 3, 5 y 7.</p>
           </div>
         </header>
+
+        <section className="position-section" aria-labelledby="position-title">
+          <header className="section-header">
+            <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
+          </header>
+          <div className="position-scroll">
+            <ScaleWithChordPositions />
+          </div>
+        </section>
 
         <section className="rule-box" aria-label="Acordes triada y cuatriada">
           <p>
@@ -430,15 +443,6 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           </div>
           <div className="seventh-alphatab-frame">
             <AlphaTabPlayer compact horizontalBarWidth={82} layout="horizontal" minHeight={230} tab={seventhProgressionE2Tab} title="Acordes con séptima E2" />
-          </div>
-        </section>
-
-        <section className="position-section" aria-labelledby="position-title">
-          <header className="section-header">
-            <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
-          </header>
-          <div className="position-scroll">
-            <ScaleWithChordPositions />
           </div>
         </section>
       </article>
