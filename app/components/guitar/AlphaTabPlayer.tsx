@@ -1230,6 +1230,11 @@ export default function AlphaTabPlayer({
         staveProfile: alphaTab.StaveProfile.Tab,
         systemPaddingBottom: compact ? 14 : 40,
         systemPaddingTop: compact ? 14 : 40,
+        // AlphaTab dibuja sobre fondo transparente con sus colores por
+        // defecto (negro sobre hoja blanca). El wrapper `.alphatab-surface`
+        // (línea ~2386, bg-white de Tailwind) es el fondo real detrás del
+        // SVG, así que los colores por defecto ya son correctos aquí.
+        // No tocar: ver "Colores de notación" en AlphaTabPlayer.NOTES.md.
       },
       notation: {
         elements: new Map([
@@ -2371,7 +2376,7 @@ export default function AlphaTabPlayer({
           </label>
         </div>
       </div>
-      <div className="relative overflow-hidden bg-white">
+      <div className="alphatab-surface relative overflow-hidden bg-white">
         {shouldShowTabScrollbar && (
           <div
             ref={tabScrollbarRef}

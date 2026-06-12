@@ -170,16 +170,10 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
 
         <section className="note-section fretboard-section" aria-labelledby="fretboard-title">
           <header className="note-section-header">
-            <h2 id="fretboard-title">Las 12 notas en el mástil</h2>
           </header>
 
           <div className="fretboard-copy">
-            <p>Aquí vemos las 12 notas en el mástil de la guitarra.</p>
-            <p>Las cuerdas Mi agudo, Si y Mi grave muestran todas las notas, del traste 0 al 12.</p>
-            <p>Las otras cuerdas solo muestran la nota al aire y la del traste 12.</p>
-            <p>
-              Las notas de la cuerda Si están marcadas en <span className="highlight-note">rojo</span>.
-            </p>
+            
           </div>
 
           <FullFretboardDiagram />
