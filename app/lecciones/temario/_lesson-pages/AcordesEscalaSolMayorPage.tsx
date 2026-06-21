@@ -132,7 +132,7 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
   const boardHeight = 150;
   const boardWidth = fretWidth * 5;
   const viewBoxWidth = boardX + boardWidth + 34;
-  const viewBoxHeight = boardY + boardHeight + 22;
+  const viewBoxHeight = boardY + boardHeight + 36;
   const stringY = (string: number) => boardY + (string - 1) * (boardHeight / 5);
   const fretX = (fret: number) => (fret === 0 ? boardX - 20 : boardX + (fret - 0.5) * fretWidth);
 
@@ -178,6 +178,7 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
           />
         ))}
         <circle className="guide-dot" cx={boardX + 2.5 * fretWidth} cy={stringY(3.5)} r="7" />
+        <text className="roman-fret" x={boardX + 2.5 * fretWidth} y={boardY + boardHeight + 22}>III</text>
         {notes.map((note) => (
           <g key={`${note.string}-${note.fret}-${note.label}`}>
             <circle
@@ -489,6 +490,13 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
         .guide-dot {
           fill: #cbd5e1;
           opacity: 0.82;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .note-dot {

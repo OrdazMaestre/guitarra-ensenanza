@@ -35,7 +35,7 @@ function FullFretboardDiagram() {
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 26 : boardX + (fret - 0.5) * fretWidth);
   const viewBoxWidth = boardX + boardWidth + 30;
-  const viewBoxHeight = boardY + boardHeight + 24;
+  const viewBoxHeight = boardY + boardHeight + 42;
 
   return (
     <figure className="fretboard-wrap">
@@ -71,8 +71,15 @@ function FullFretboardDiagram() {
             y2={boardY + boardHeight}
           />
         ))}
-        {[3, 5, 7, 9, 12].map((fret) => (
+        {[3, 5, 7, 9].map((fret) => (
           <circle className="fretboard-guide-dot" cx={fretX(fret)} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+        ))}
+        <circle className="fretboard-guide-dot" cx={fretX(12)} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="fretboard-guide-dot" cx={fretX(12)} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        {([3, 5, 7, 9, 12] as const).map((fret) => (
+          <text className="roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={boardY + boardHeight + 28}>
+            {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
+          </text>
         ))}
         {fretboardNotes.map((item) => (
           <g key={`${item.string}-${item.fret}`}>
@@ -181,8 +188,8 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
 
         <section className="branch-link-section" aria-label="Rama de afinación">
           <Link href="/lecciones/temario/afinacion">Afinación</Link>
-          <p>Aquí aprendemos cómo hacer que suene bien nuestra guitarra</p>
-          <p>ajustando las cuerdas con las clavijas</p>
+          <p>Ajustar las cuerdas con las clavijas hasta</p>
+          <p>tener el patrón de la izquierda en el mástil de arriba</p>
         </section>
       </article>
 
@@ -401,6 +408,13 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
         .fretboard-guide-dot {
           fill: #cad2dc;
           opacity: 0.78;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .fretboard-note {

@@ -53,7 +53,7 @@ export default function MasPunteosCortosPage() {
         <section className="practice-note" aria-label="Cómo practicar los punteos cortos">
           <p>Primero toca lento.</p>
           <p>Luego sube la velocidad poco a poco.</p>
-          <p>Si una nota se ensucia, vuelve un paso atrás.</p>
+          <p>Si nos equivocamos, volvemos un paso atrás.</p>
         </section>
 
         <section className="riff-list" aria-label="Punteos cortos con tablatura">

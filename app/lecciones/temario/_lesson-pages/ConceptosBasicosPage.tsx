@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -13,7 +14,10 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
               <summary>¿Y la música?</summary>
               <div className="music-panel">
                 <p className="music-lead">
-                  Las notas musicales se producen al vibrar las cuerdas. Si la vibración es rápida, escuchamos un sonido agudo; si es lenta, escuchamos un sonido grave.
+                  Las notas musicales se producen al vibrar las cuerdas. </p>
+              <p>Estas hacen vibrar el aire a su alrededor.</p>
+              <p>Si la vibración es rápida, escuchamos un sonido agudo; </p>
+              <p>si es lenta, escuchamos un sonido grave.
                 </p>
 
                 <div className="wave-comparison" aria-label="Comparación entre sonidos agudos y graves">
@@ -41,7 +45,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                 </div>
 
                 <p>
-                  Las demás partes de la guitarra ayudan a mantener, modificar y amplificar esa vibración: clavijas, trastes, cuerpo y boca trabajan alrededor de las cuerdas.
+                  Las demás partes de la guitarra ayudan a mantener, modificar y amplificar esa vibración.
                 </p>
 
                 <Link href="/lecciones/temario/el-sonido-en-la-musica" className="music-more-link">
@@ -88,19 +92,32 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
               </p>
             </div>
 
-            <Image
-              src="/images/guitar/fretboard-parts.jpg"
-              alt="Mástil de guitarra con trastes numerados"
-              width={800}
-              height={320}
-              className="fretboard-image"
-            />
+            <div className="mastil-right">
+              <Image
+                src="/images/guitar/fretboard-parts.jpg"
+                alt="Mástil de guitarra con trastes numerados"
+                width={800}
+                height={320}
+                className="fretboard-image"
+              />
+
+              <div className="mastil-diagram">
+                <ReducedFretboardDiagram
+                  ariaLabel="Mástil de guitarra con los números de los trastes del 0 al 12"
+                  startFret={0}
+                  endFret={12}
+                  fretLabels
+                  notes={[]}
+                />
+              </div>
+            </div>
           </section>
         </article>
 
         <div className="lesson-pager-wrap">
           <TemarioPager previous={previous} next={next} />
         </div>
+        <ReducedFretboardStyles />
         <style>{`
           .lesson-white-page {
             background: #ffffff;
@@ -293,11 +310,18 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           }
 
           .mastil-section {
-            align-items: end;
+            align-items: start;
             display: grid;
             gap: 28px;
             grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr);
             margin-top: clamp(44px, 7vw, 92px);
+          }
+
+          .mastil-right {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 0;
           }
 
           .mastil-copy h2 {
@@ -318,6 +342,11 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           .fretboard-image {
             height: auto;
             width: 100%;
+          }
+
+          .mastil-diagram {
+            max-width: 100%;
+            min-width: 0;
           }
 
           .lesson-pager-wrap {

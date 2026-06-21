@@ -39,7 +39,7 @@ function ScaleFretboard({
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
   const viewBoxWidth = boardX + boardWidth + 64;
-  const viewBoxHeight = boardY + boardHeight + 32;
+  const viewBoxHeight = boardY + boardHeight + 42;
   const fretNotes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 13 }, (_, fret) => {
       const note = noteNameForFret(string.open, fret);
@@ -84,8 +84,15 @@ function ScaleFretboard({
             y2={boardY + boardHeight}
           />
         ))}
-        {[3, 5, 7, 9, 12].map((fret) => (
+        {[3, 5, 7, 9].map((fret) => (
           <circle className="guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+        ))}
+        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        {([3, 5, 7, 9, 12] as const).map((fret) => (
+          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y={boardY + boardHeight + 28}>
+            {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
+          </text>
         ))}
         {fretNotes.map((item) => (
           <g key={`${item.string}-${item.fret}-${item.note}`}>
@@ -150,7 +157,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
             <h2 id="complete-title">Escala de Sol Mayor</h2>
             <p>Ahora añadimos la nota que faltaba: C (la cuarta nota de esta escala).</p>
           </header>
-          <ScaleFretboard ariaLabel="Escala completa de Sol Mayor en los doce primeros trastes" notes={gMajorScale} showFretNumbers />
+          <ScaleFretboard ariaLabel="Escala completa de Sol Mayor en los doce primeros trastes" notes={gMajorScale} />
           <div className="formula-box formula-green">
             <p>
               <strong>Sol Mayor:</strong> G, A, B, C, D, E, F#.
@@ -317,6 +324,13 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         .guide-dot {
           fill: #cad2dc;
           opacity: 0.78;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .note-dot {

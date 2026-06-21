@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -32,6 +33,25 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
             </span>
           </div>
 
+          <div className="fretboard-diagram">
+            <ReducedFretboardDiagram
+              ariaLabel="Mástil con las notas de Feliz Navidad, cuerdas 1 y 2, trastes 0 al 5"
+              startFret={0}
+              endFret={5}
+              fretLabelsAbove
+              notes={[
+                { fret: 0, string: 1, label: '' },
+                { fret: 2, string: 1, label: '' },
+                { fret: 3, string: 1, label: '' },
+                { fret: 5, string: 1, label: '' },
+                { fret: 0, string: 2, label: '' },
+                { fret: 1, string: 2, label: '' },
+                { fret: 3, string: 2, label: '' },
+                { fret: 5, string: 2, label: '' },
+              ]}
+            />
+          </div>
+
           <div className="player-frame">
             <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
           </div>
@@ -47,6 +67,8 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
       <div className="lesson-pager-wrap">
         <TemarioPager previous={previous} next={next} />
       </div>
+
+      <ReducedFretboardStyles />
 
       <style>{`
         .two-strings-page {
@@ -120,6 +142,13 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
           display: grid;
           gap: clamp(20px, 3vw, 36px);
           min-width: 0;
+        }
+
+        .fretboard-diagram {
+          margin: 0 auto;
+          max-width: 680px;
+          min-width: 0;
+          width: 100%;
         }
 
         .reading-copy {

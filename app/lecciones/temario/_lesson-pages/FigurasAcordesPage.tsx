@@ -27,12 +27,6 @@ const fretNotes = [
   { fret: 12, string: 4, note: 'D' },
 ];
 
-const guideDots = [
-  { fret: 3, string: 3 },
-  { fret: 5, string: 3 },
-  { fret: 7, string: 3 },
-  { fret: 12, string: 5 },
-];
 
 function GChordFretboard() {
   const fretWidth = 74;
@@ -45,7 +39,7 @@ function GChordFretboard() {
 
   return (
     <figure className="fretboard-figure">
-      <svg className="g-fretboard" viewBox="0 0 980 220" role="img" aria-label="Mapa del acorde de Sol Mayor con las notas G, B y D">
+      <svg className="g-fretboard" viewBox="0 0 980 232" role="img" aria-label="Mapa del acorde de Sol Mayor con las notas G, B y D">
         <rect x={boardX} y={boardY} width={boardWidth} height={boardHeight} fill="#27313d" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
           <line className="g-string" key={string} x1={boardX} x2={boardX + boardWidth} y1={stringY(string)} y2={stringY(string)} />
@@ -60,8 +54,15 @@ function GChordFretboard() {
             ) : null}
           </g>
         ))}
-        {guideDots.map((dot) => (
-          <circle className="guide-dot" cx={fretX(dot.fret)} cy={stringY(dot.string)} key={`${dot.fret}-${dot.string}`} r="8" />
+        {[3, 5, 7, 9].map((fret) => (
+          <circle className="guide-dot" cx={fretX(fret)} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+        ))}
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        {([3, 5, 7, 9, 12] as const).map((fret) => (
+          <text className="roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={boardY + boardHeight + 20}>
+            {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
+          </text>
         ))}
         {fretNotes.map((item) => (
           <g key={`${item.fret}-${item.string}-${item.note}`}>
@@ -298,6 +299,13 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
         .guide-dot {
           fill: #cbd5e1;
           opacity: 0.8;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .note-dot {

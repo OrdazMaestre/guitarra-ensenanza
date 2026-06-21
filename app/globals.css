@@ -170,8 +170,9 @@ a:not(.temario-pager-link):not(.site-home-link):focus-visible {
 
 /* Modo oscuro a voluntad: invierte toda la página (texto y fondos juntos),
    para que las notas dentro de mástiles/teclados sigan teniendo contraste.
-   Las imágenes y el reproductor de tablaturas se contra-invierten para
-   conservar su aspecto original. */
+   Las imágenes se contra-invierten para conservar sus colores reales.
+   Las tablaturas de AlphaTab quedan invertidas a propósito (negativo),
+   igual que en el modo oscuro nativo del sistema operativo. */
 html[data-theme='dark'] {
   color-scheme: dark;
 }
@@ -180,8 +181,7 @@ html[data-theme='dark'] .site-shell {
   filter: invert(1) hue-rotate(180deg);
 }
 
-html[data-theme='dark'] .site-shell img,
-html[data-theme='dark'] .site-shell .alphatab-surface {
+html[data-theme='dark'] .site-shell img {
   filter: invert(1) hue-rotate(180deg);
 }
 

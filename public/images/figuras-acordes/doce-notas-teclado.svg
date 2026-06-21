@@ -31,16 +31,11 @@
       <text x="650" y="72" font-size="26">C</text>
     </g>
     <g font-weight="700" fill="#14213d">
-      <text x="100" y="50" font-size="20">C#</text>
-      <text x="100" y="95" font-size="20">Db</text>
-      <text x="200" y="50" font-size="20">D#</text>
-      <text x="200" y="95" font-size="20">Eb</text>
-      <text x="350" y="50" font-size="20">F#</text>
-      <text x="350" y="95" font-size="20">Gb</text>
-      <text x="450" y="50" font-size="20">G#</text>
-      <text x="450" y="95" font-size="20">Ab</text>
-      <text x="550" y="50" font-size="20">A#</text>
-      <text x="550" y="95" font-size="20">Bb</text>
+      <text x="100" y="75" font-size="20">C#</text>
+      <text x="200" y="75" font-size="20">D#</text>
+      <text x="350" y="75" font-size="20">F#</text>
+      <text x="450" y="75" font-size="20">G#</text>
+      <text x="550" y="75" font-size="20">A#</text>
     </g>
   </g>
 </svg>

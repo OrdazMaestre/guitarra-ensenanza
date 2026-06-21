@@ -44,7 +44,7 @@ function PentatonicFretboard() {
     <figure className="pentatonic-board-wrap">
       <svg
         className="pentatonic-board"
-        viewBox="0 0 1020 292"
+        viewBox="0 0 1020 318"
         role="img"
         aria-label="Mapa de la pentatónica mayor de Sol en los doce primeros trastes"
       >
@@ -71,9 +71,11 @@ function PentatonicFretboard() {
             y2={boardY + boardHeight}
           />
         ))}
-        {[3, 5, 7, 9, 12].map((fret) => (
+        {[3, 5, 7, 9].map((fret) => (
           <circle className="guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
         ))}
+        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
         {fretNotes.map((item) => (
           <g key={`${item.string}-${item.fret}-${item.note}`}>
             <circle className={item.note === 'E' ? 'note-dot note-e' : item.note === 'G' ? 'note-dot note-g' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="17" />
@@ -82,11 +84,16 @@ function PentatonicFretboard() {
             </text>
           </g>
         ))}
-        <text className="bottom-label" x={boardX + boardWidth / 2} y="236">
+        {([3, 5, 7, 9, 12] as const).map((fret) => (
+          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y="240">
+            {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
+          </text>
+        ))}
+        <text className="bottom-label" x={boardX + boardWidth / 2} y="260">
           figuras
         </text>
         {[1, 2, 3, 4, 5].map((figure, index) => (
-          <text className="figure-number" key={`figure-${figure}`} x={boardX + 76 + index * 190} y="270">
+          <text className="figure-number" key={`figure-${figure}`} x={boardX + 76 + index * 190} y="294">
             {figure}
           </text>
         ))}
@@ -342,6 +349,13 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
         .guide-dot {
           fill: #cad2dc;
           opacity: 0.78;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .note-dot {

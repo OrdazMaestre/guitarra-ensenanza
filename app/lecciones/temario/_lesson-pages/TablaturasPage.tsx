@@ -1,6 +1,6 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -25,18 +25,24 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
             
           </div>
 
-          <figure className="fretboard-figure">
-            <span className="open-fret" aria-hidden="true">0</span>
-            {/* Provisional: imagen extraida del PDF de referencia; revisar copyright antes de publicacion final. */}
-            <Image
-              src="/images/guitar/fretboard-parts.jpg"
-              alt="Mástil de guitarra con los trastes numerados del 1 al 12"
-              width={637}
-              height={212}
-              className="fretboard-image"
-              priority
+          <div className="fretboard-diagram">
+            <ReducedFretboardDiagram
+              ariaLabel="Mástil con las notas de Cumpleaños feliz, cuerda 1, trastes 0 al 12"
+              startFret={0}
+              endFret={12}
+              fretLabelsAbove
+              notes={[
+                { fret: 0, string: 1, label: '' },
+                { fret: 2, string: 1, label: '' },
+                { fret: 4, string: 1, label: '' },
+                { fret: 5, string: 1, label: '' },
+                { fret: 7, string: 1, label: '' },
+                { fret: 9, string: 1, label: '' },
+                { fret: 10, string: 1, label: '' },
+                { fret: 12, string: 1, label: '' },
+              ]}
             />
-          </figure>
+          </div>
         </section>
 
         <section className="exercise-section" aria-labelledby="birthday-title">
@@ -80,6 +86,8 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
       <div className="lesson-pager-wrap">
         <TemarioPager previous={previous} next={next} />
       </div>
+
+      <ReducedFretboardStyles />
 
       <style>{`
         .tablature-page {
@@ -202,32 +210,11 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
           overflow-wrap: anywhere;
         }
 
-        .fretboard-figure {
-          border-top: 4px solid #111111;
+        .fretboard-diagram {
           margin: 0 auto;
           max-width: 1040px;
           min-width: 0;
-          padding-top: 10px;
-          position: relative;
           width: min(100%, 1040px);
-        }
-
-        .open-fret {
-          color: #111111;
-          font-size: clamp(18px, 2.6vw, 28px);
-          font-weight: 950;
-          left: 0;
-          line-height: 1;
-          position: absolute;
-          top: 38%;
-          transform: translateX(-22%);
-        }
-
-        .fretboard-image {
-          display: block;
-          height: auto;
-          max-width: 100%;
-          width: 100%;
         }
 
         .exercise-section {

@@ -13,6 +13,8 @@ type GuideDot = {
 interface ReducedFretboardDiagramProps {
   ariaLabel: string;
   endFret: number;
+  fretLabels?: boolean;
+  fretLabelsAbove?: boolean;
   guideDots?: GuideDot[];
   notes: FretboardNote[];
   startFret: number;
@@ -54,20 +56,29 @@ function noteToneClass(note: FretboardNote) {
   return '';
 }
 
-export function ReducedFretboardDiagram({ ariaLabel, endFret, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   const boardX = 42;
-  const boardY = 28;
   const fretWidth = 58;
   const boardHeight = 158;
+  const allRomanFrets = Object.keys(romanFretLabels)
+    .map(Number)
+    .filter((fret) => fret >= startFret && fret <= endFret);
+  const romansGoAbove = !!fretLabels && allRomanFrets.length > 0;
+  const boardY = (fretLabelsAbove || romansGoAbove) ? 44 : 28;
   const boardWidth = fretCount * fretWidth;
   const bottomLabelY = boardY + boardHeight + 30;
+  const hasBottomLabels = !!fretLabels || (allRomanFrets.length > 0 && !romansGoAbove);
   const viewBoxWidth = boardX + boardWidth + 42;
-  const viewBoxHeight = startFret > 0 ? bottomLabelY + 18 : boardY + boardHeight + 20;
+  const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + 20;
   const stringY = (string: number) => boardY + (string - 1) * (boardHeight / 5);
-  const visibleRomanFrets = Object.keys(romanFretLabels)
-    .map(Number)
-    .filter((fret) => startFret > 0 && fret >= startFret && fret <= endFret);
+  const passedFrets = new Set(guideDots.map((d) => d.fret));
+  const mergedGuideDots = [
+    ...guideDots,
+    ...[3, 5, 7, 9, 12]
+      .filter((f) => f >= startFret && f <= endFret && !passedFrets.has(f))
+      .map((f) => ({ fret: f })),
+  ];
 
   return (
     <svg className="reduced-fretboard" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img" aria-label={ariaLabel}>
@@ -90,7 +101,11 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, guideDots = [], no
           />
         );
       })}
-      {guideDots.map((dot) => (
+      {mergedGuideDots.flatMap((dot): Array<{ fret: number; string?: number }> =>
+        dot.fret === 12
+          ? [{ fret: 12, string: 2 }, { fret: 12, string: 5 }]
+          : [dot]
+      ).map((dot) => (
         <circle
           className="reduced-guide-dot"
           cx={fretMarkerX(boardX, fretWidth, startFret, dot.fret)}
@@ -112,11 +127,33 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, guideDots = [], no
           </text>
         </g>
       ))}
-      {visibleRomanFrets.map((fret) => (
-        <text className="reduced-roman-fret" key={`roman-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={bottomLabelY}>
+      {fretLabelsAbove && Array.from(
+        { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
+        (_, index) => {
+          const fret = startFret === 0 ? index : startFret + index;
+          return (
+            <text className="reduced-fret-number-above" key={`fretnumtop-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={boardY - 20}>
+              {fret}
+            </text>
+          );
+        }
+      )}
+      {allRomanFrets.map((fret) => (
+        <text className="reduced-roman-fret" key={`roman-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={romansGoAbove ? boardY - 20 : bottomLabelY}>
           {romanFretLabels[fret]}
         </text>
       ))}
+      {fretLabels && Array.from(
+        { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
+        (_, index) => {
+          const fret = startFret === 0 ? index : startFret + index;
+          return (
+            <text className="reduced-fret-number" key={`fretnum-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={bottomLabelY}>
+              {fret}
+            </text>
+          );
+        }
+      )}
     </svg>
   );
 }
@@ -187,6 +224,20 @@ export function ReducedFretboardStyles() {
         fill: #080808;
         font-size: 15px;
         font-weight: 950;
+        text-anchor: middle;
+      }
+
+      .reduced-fret-number {
+        fill: #080808;
+        font-size: 15px;
+        font-weight: 700;
+        text-anchor: middle;
+      }
+
+      .reduced-fret-number-above {
+        fill: #080808;
+        font-size: 15px;
+        font-weight: 700;
         text-anchor: middle;
       }
     `}</style>

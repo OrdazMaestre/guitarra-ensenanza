@@ -39,7 +39,7 @@ function FretboardMap({
   const boardWidth = fretWidth * 12;
   const boardHeight = 178;
   const viewBoxWidth = boardX + boardWidth + 64;
-  const viewBoxHeight = boardY + boardHeight + 28;
+  const viewBoxHeight = boardY + boardHeight + 56;
   const stringGap = boardHeight / 5;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
@@ -76,8 +76,15 @@ function FretboardMap({
             y2={boardY + boardHeight}
           />
         ))}
-        {[3, 5, 7, 9, 12].map((fret) => (
+        {[3, 5, 7, 9].map((fret) => (
           <circle className="map-guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+        ))}
+        <circle className="map-guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="map-guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        {([3, 5, 7, 9, 12] as const).map((fret) => (
+          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y={boardY + boardHeight + 22}>
+            {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
+          </text>
         ))}
         {fretNotes.map((item) => {
           const isBlueNote = item.note === 'A#';
@@ -97,7 +104,7 @@ function FretboardMap({
           );
         })}
         {blues ? (
-          <text className="map-note-hint" x={boardX + boardWidth / 2} y={boardY + boardHeight + 22}>
+          <text className="map-note-hint" x={boardX + boardWidth / 2} y={boardY + boardHeight + 44}>
             Bb también puede llamarse A#
           </text>
         ) : null}
@@ -433,6 +440,13 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
         .map-guide-dot {
           fill: #cad2dc;
           opacity: 0.78;
+        }
+
+        .roman-fret {
+          fill: #080808;
+          font-size: 15px;
+          font-weight: 950;
+          text-anchor: middle;
         }
 
         .map-note {
