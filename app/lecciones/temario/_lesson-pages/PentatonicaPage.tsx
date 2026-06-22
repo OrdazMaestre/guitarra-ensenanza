@@ -1,7 +1,31 @@
-import Image from 'next/image';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+
+const gTriadNotes = [
+  { fret: 3, label: 'G', string: 1 },
+  { fret: 7, label: 'B', string: 1 },
+  { fret: 10, label: 'D', string: 1 },
+  { fret: 0, label: 'B', string: 2 },
+  { fret: 3, label: 'D', string: 2 },
+  { fret: 8, label: 'G', string: 2 },
+  { fret: 0, label: 'G', string: 3 },
+  { fret: 4, label: 'B', string: 3 },
+  { fret: 7, label: 'D', string: 3 },
+  { fret: 0, label: 'D', string: 4 },
+  { fret: 5, label: 'G', string: 4 },
+  { fret: 9, label: 'B', string: 4 },
+  { fret: 2, label: 'B', string: 5 },
+  { fret: 5, label: 'D', string: 5 },
+  { fret: 10, label: 'G', string: 5 },
+  { fret: 3, label: 'G', string: 6 },
+  { fret: 7, label: 'B', string: 6 },
+  { fret: 10, label: 'D', string: 6 },
+  { fret: 12, label: 'B', string: 2 },
+  { fret: 12, label: 'G', string: 3 },
+  { fret: 12, label: 'D', string: 4 },
+];
 
 const pentatonicNotes = ['G', 'A', 'B', 'D', 'E'];
 
@@ -122,13 +146,14 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
             <p>Este era nuestro mapa de 3 notas.</p>
             <p>G, B y D.</p>
           </header>
-          <Image
-            className="reference-map-image"
-            src="/images/arpegios/arpegios-g-mastil.png"
-            alt="Mástil del arpegio triada de Sol Mayor"
-            width={614}
-            height={111}
-          />
+          <div className="arpegio-ref-wrap">
+            <ReducedFretboardDiagram
+              ariaLabel="Mapa del arpegio de Sol Mayor: G, B y D"
+              startFret={0}
+              endFret={12}
+              notes={gTriadNotes}
+            />
+          </div>
         </section>
 
         <section className="formula-box" aria-label="Fórmula de la pentatónica">
@@ -188,6 +213,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
         <TemarioPager previous={previous} next={next} />
       </div>
 
+      <ReducedFretboardStyles />
       <style>{`
         .pentatonic-page {
           background: #ffffff;
@@ -304,12 +330,11 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           padding-top: clamp(24px, 4vw, 42px);
         }
 
-        .reference-map-image {
-          display: block;
-          height: auto;
+        .arpegio-ref-wrap {
           margin: 0 auto;
-          max-width: 100%;
-          width: min(100%, 980px);
+          max-width: min(100%, 980px);
+          min-width: 0;
+          width: 100%;
         }
 
         .pentatonic-board-wrap {

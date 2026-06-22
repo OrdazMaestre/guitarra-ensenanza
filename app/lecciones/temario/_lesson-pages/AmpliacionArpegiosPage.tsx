@@ -1,7 +1,61 @@
-import Image from 'next/image';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+
+const gTriadNotes = [
+  { fret: 3, label: 'G', string: 1 },
+  { fret: 7, label: 'B', string: 1 },
+  { fret: 10, label: 'D', string: 1 },
+  { fret: 0, label: 'B', string: 2 },
+  { fret: 3, label: 'D', string: 2 },
+  { fret: 8, label: 'G', string: 2 },
+  { fret: 0, label: 'G', string: 3 },
+  { fret: 4, label: 'B', string: 3 },
+  { fret: 7, label: 'D', string: 3 },
+  { fret: 0, label: 'D', string: 4 },
+  { fret: 5, label: 'G', string: 4 },
+  { fret: 9, label: 'B', string: 4 },
+  { fret: 2, label: 'B', string: 5 },
+  { fret: 5, label: 'D', string: 5 },
+  { fret: 10, label: 'G', string: 5 },
+  { fret: 3, label: 'G', string: 6 },
+  { fret: 7, label: 'B', string: 6 },
+  { fret: 10, label: 'D', string: 6 },
+  { fret: 12, label: 'B', string: 2 },
+  { fret: 12, label: 'G', string: 3 },
+  { fret: 12, label: 'D', string: 4 },
+];
+
+const gSeventhNotes = [
+  { fret: 2, label: 'F#', string: 1, tone: 'special' as const },
+  { fret: 3, label: 'G', string: 1 },
+  { fret: 7, label: 'B', string: 1 },
+  { fret: 10, label: 'D', string: 1 },
+  { fret: 0, label: 'B', string: 2 },
+  { fret: 3, label: 'D', string: 2 },
+  { fret: 7, label: 'F#', string: 2, tone: 'special' as const },
+  { fret: 8, label: 'G', string: 2 },
+  { fret: 0, label: 'G', string: 3 },
+  { fret: 4, label: 'B', string: 3 },
+  { fret: 7, label: 'D', string: 3 },
+  { fret: 11, label: 'F#', string: 3, tone: 'special' as const },
+  { fret: 0, label: 'D', string: 4 },
+  { fret: 4, label: 'F#', string: 4, tone: 'special' as const },
+  { fret: 5, label: 'G', string: 4 },
+  { fret: 9, label: 'B', string: 4 },
+  { fret: 2, label: 'B', string: 5 },
+  { fret: 5, label: 'D', string: 5 },
+  { fret: 9, label: 'F#', string: 5, tone: 'special' as const },
+  { fret: 10, label: 'G', string: 5 },
+  { fret: 2, label: 'F#', string: 6, tone: 'special' as const },
+  { fret: 3, label: 'G', string: 6 },
+  { fret: 7, label: 'B', string: 6 },
+  { fret: 10, label: 'D', string: 6 },
+  { fret: 12, label: 'B', string: 2 },
+  { fret: 12, label: 'G', string: 3 },
+  { fret: 12, label: 'D', string: 4 },
+];
 
 export default function AmpliacionArpegiosPage({ previous, next }: LessonPageProps) {
   return (
@@ -32,13 +86,14 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
               Acorde de <span>Sol mayor: G, B y D.</span>
             </p>
           </header>
-          <Image
-            className="fretboard-image"
-            src="/images/arpegios/arpegios-g-mastil.png"
-            alt="Mástil del arpegio de Sol mayor"
-            width={614}
-            height={111}
-          />
+          <div className="fretboard-map-wrap">
+            <ReducedFretboardDiagram
+              ariaLabel="Mapa del arpegio de Sol Mayor: G, B y D"
+              startFret={0}
+              endFret={12}
+              notes={gTriadNotes}
+            />
+          </div>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/arpegios-g.gp" title="Arpegios G" />
           </div>
@@ -52,13 +107,14 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
               Acorde de <span>Sol mayor séptima: G, B, D y F#.</span>
             </p>
           </header>
-          <Image
-            className="fretboard-image"
-            src="/images/arpegios/arpegios-g7-mastil.png"
-            alt="Mástil del arpegio de Sol mayor séptima"
-            width={614}
-            height={111}
-          />
+          <div className="fretboard-map-wrap">
+            <ReducedFretboardDiagram
+              ariaLabel="Mapa del arpegio de Sol Mayor Séptima: G, B, D y F#"
+              startFret={0}
+              endFret={12}
+              notes={gSeventhNotes}
+            />
+          </div>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/arpegios-g7.gp" title="Arpegios G7" />
           </div>
@@ -76,6 +132,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         <TemarioPager previous={previous} next={next} />
       </div>
 
+      <ReducedFretboardStyles />
       <style>{`
         .arpeggio-extension-page {
           background: #ffffff;
@@ -217,12 +274,11 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           text-underline-offset: 5px;
         }
 
-        .fretboard-image {
-          display: block;
-          height: auto;
+        .fretboard-map-wrap {
           margin: clamp(8px, 1vw, 12px) auto 0;
-          max-width: 100%;
-          width: min(100%, 1040px);
+          max-width: min(100%, 980px);
+          min-width: 0;
+          width: 100%;
         }
 
         .compact-player-frame {
