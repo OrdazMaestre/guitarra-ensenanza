@@ -1,6 +1,6 @@
 import Link from 'next/link';
-import FourierWave from './FourierWave';
-import StringHarmonics from './StringHarmonics';
+import AcousticsCarousel from './AcousticsCarousel';
+import HarmonicsCarousel from './HarmonicsCarousel';
 
 export default function SoundInMusicPage() {
   return (
@@ -31,28 +31,11 @@ export default function SoundInMusicPage() {
           </div>
 
           <figure className="sound-figure complex-wave">
-            <figcaption>Construcción de una onda cuadrada</figcaption>
-            <FourierWave />
+            <AcousticsCarousel />
           </figure>
         </section>
 
-        <section className="sound-block sound-block-reverse">
-          <div className="sound-copy">
-            <p className="sound-kicker">Idea 2</p>
-            <h2>La serie armónica ordena esas ondas</h2>
-            <p>
-              Si una nota tiene una frecuencia fundamental, también aparecen vibraciones relacionadas: el doble, el triple, el cuádruple...
-            </p>
-            <p>
-              No todas suenan igual de fuertes y eso hace que cada instrumento suene como suene, porque combinan sus armónicos de formas distintas.
-            </p>
-          </div>
-
-          <figure className="sound-figure harmonics">
-            <figcaption>Serie armónica de una cuerda vibrante</figcaption>
-            <StringHarmonics />
-          </figure>
-        </section>
+        <HarmonicsCarousel />
 
         <section className="sound-summary">
           <h2>¿Y la guitarra?</h2>

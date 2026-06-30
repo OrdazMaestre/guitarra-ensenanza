@@ -24,13 +24,18 @@ function getIsDark() {
   return document.documentElement.getAttribute('data-theme') === 'dark';
 }
 
-export default function FourierWave() {
+// Acepta prop isDark opcional desde el carrusel padre.
+// Si no se pasa, cae al comportamiento autónomo (lee data-theme del DOM).
+export default function FourierWave({ isDark: isDarkProp }: { isDark?: boolean } = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [h, setH] = useState(3);
   const hRef = useRef(3);
-  const [isDarkState, setIsDarkState] = useState(false);
+  const [isDarkState, setIsDarkState] = useState(isDarkProp ?? false);
 
-  // Read theme from DOM at call time — no stale state
+  // Ref que siempre tiene el valor efectivo actual de isDark.
+  // Se actualiza desde la prop o desde el DOM.
+  const isDarkRuntime = useRef(isDarkProp ?? false);
+
   const drawNow = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -38,14 +43,14 @@ export default function FourierWave() {
     if (!ctx) return;
 
     const harmonics = hRef.current;
-    const isDark = getIsDark();
+    const isDark = isDarkRuntime.current;
 
     const palette    = isDark ? DARK_COLORS : COLORS;
     const sumColor   = isDark ? '#FF5722' : '#E8410A';
     const bg         = isDark ? '#0d0d0d' : '#f6f6f6';
     const gridCenter = isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)';
     const gridMinor  = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
-    const alpha      = isDark ? 0.82 : 0.75;
+    const alpha      = 0.5;
 
     const W = 800, H = 280;
     const pL = 8, pR = 8, pT = 16, pB = 16;
@@ -99,26 +104,42 @@ export default function FourierWave() {
     ctx.stroke();
   }, []);
 
-  // Redraw when slider changes
+  // Redraw cuando cambia el slider
   useEffect(() => {
     hRef.current = h;
     drawNow();
   }, [h, drawNow]);
 
-  // Initial draw via rAF (after theme-init script runs) + watch theme changes
+  // Dibujo inicial + observer del DOM (solo si se usa sin prop de carrusel)
   useEffect(() => {
-    const onTheme = () => { setIsDarkState(getIsDark()); drawNow(); };
-    const raf = requestAnimationFrame(() => { setIsDarkState(getIsDark()); drawNow(); });
-    const obs = new MutationObserver(onTheme);
-    obs.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
+    const syncAndDraw = () => {
+      const dark = isDarkProp !== undefined ? isDarkProp : getIsDark();
+      isDarkRuntime.current = dark;
+      setIsDarkState(dark);
+      drawNow();
+    };
+    const raf = requestAnimationFrame(syncAndDraw);
+    let obs: MutationObserver | null = null;
+    if (isDarkProp === undefined) {
+      obs = new MutationObserver(syncAndDraw);
+      obs.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme'],
+      });
+    }
     return () => {
       cancelAnimationFrame(raf);
-      obs.disconnect();
+      obs?.disconnect();
     };
-  }, [drawNow]);
+  }, [drawNow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sincroniza cuando el carrusel cambia isDark
+  useEffect(() => {
+    if (isDarkProp === undefined) return;
+    isDarkRuntime.current = isDarkProp;
+    setIsDarkState(isDarkProp);
+    drawNow();
+  }, [isDarkProp, drawNow]);
 
   const legendPalette = isDarkState ? DARK_COLORS : COLORS;
   const legendSum     = isDarkState ? '#FF5722' : '#E8410A';
@@ -155,14 +176,11 @@ export default function FourierWave() {
         .fw { display: grid; gap: 10px; }
         .fw-canvas { border-radius: 4px; display: block; height: auto; width: 100%; }
         .fw-ctrl { align-items: center; display: flex; gap: 12px; padding: 0 2px; }
-        .fw-ctrl-lbl { color: #71717a; font-size: 13px; font-weight: 700; white-space: nowrap; }
-        .fw-ctrl-lbl strong { color: #18181b; }
-        [data-theme="dark"] .fw-ctrl-lbl { color: #a1a1aa; }
-        [data-theme="dark"] .fw-ctrl-lbl strong { color: #e4e4e7; }
+        .fw-ctrl-lbl { color: var(--subtext, #71717a); font-size: 13px; font-weight: 700; white-space: nowrap; }
+        .fw-ctrl-lbl strong { color: var(--text, #18181b); }
         .fw-range { accent-color: #E8410A; cursor: pointer; flex: 1; }
         .fw-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 0 2px; }
-        .fw-leg { align-items: center; color: #71717a; display: flex; font-size: 12px; font-weight: 800; gap: 5px; }
-        [data-theme="dark"] .fw-leg { color: #a1a1aa; }
+        .fw-leg { align-items: center; color: var(--subtext, #71717a); display: flex; font-size: 12px; font-weight: 800; gap: 5px; }
         .fw-sw { border-radius: 2px; display: inline-block; height: 8px; width: 20px; }
       `}</style>
     </div>

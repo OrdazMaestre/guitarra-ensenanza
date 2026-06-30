@@ -68,7 +68,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
             <div className="overview-notes">
               <p>
                 La guitarra es un instrumento de cuerda: </p>
-              <p>el sonido nace en las cuerdas y el cuerpo lo amplifica.
+              <p>su sonido lo generan las cuerdas.
               </p>
               <p>
                 Con las clavijas afinamos las cuerdas, los trastes ordenan las notas y la caja amplifica el sonido.
@@ -84,11 +84,13 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                 Aquí colocamos la mano izquierda. </p>
               <p>Aquí están los trastes: </p>
               <p>los trastes son además los números que escribimos en las tablaturas </p>
-              <p>indican qué traste hay que pisar con los dedos y en qué cuerda.
+              <p>indican qué celda/traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>
-                La distancia entre los trastes 1-2 es medio tono. </p>
-              <p>La distancia entre los trastes 1-3 es un tono entero.
+                OJO PARA LOS PEQUES: los trastes son las lineas metálicas, pero ponemos el dedo en el centro de la celda de va antes, no en el propio traste. </p>
+              <p>
+                La distancia entre los trastes 1 y 2 es medio tono. </p>
+              <p>La distancia entre los trastes 1 y 3 es un tono entero.
               </p>
             </div>
 

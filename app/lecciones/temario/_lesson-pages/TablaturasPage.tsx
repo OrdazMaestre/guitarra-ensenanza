@@ -23,6 +23,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
               El <strong>0</strong> significa cuerda al aire: tocamos sin pisar ningún traste. El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demás números nos mandan avanzar por el mástil.
             </p>
             
+              <p>Intentamos memorizar este mapa de notas para aprender más fácil la canción.</p>
           </div>
 
           <div className="fretboard-diagram">
@@ -49,13 +50,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
           <div className="exercise-heading">
             <p className="lesson-kicker">Ejercicio 1</p>
             <h2 id="birthday-title">Cumpleaños feliz</h2>
-            <div className="practice-note">
-              <strong>Importante para este ejercicio</strong>
-              <span>
-                Puedes hacerlo en la cuerda que quieras.
-                
-              </span>
-            </div>
+            
           </div>
 
           <div className="player-frame">
