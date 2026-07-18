@@ -1,6 +1,10 @@
+'use client';
+
 import Link from 'next/link';
+import React, { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
+import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
 import type { LessonPageProps } from './types';
 
 const fretNotes = [
@@ -28,18 +32,129 @@ const fretNotes = [
 ];
 
 
+const OPEN_STRING_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
+
 function GChordFretboard() {
   const fretWidth = 74;
   const boardX = 34;
   const boardY = 36;
   const boardWidth = fretWidth * 12;
   const boardHeight = 154;
-  const stringY = (string: number) => boardY + (string - 1) * (boardHeight / 5);
+  const stringGap = boardHeight / 5;
+  const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 18 : boardX + (fret - 0.5) * fretWidth);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => preloadSamples());
+    } else {
+      setTimeout(() => preloadSamples(), 200);
+    }
+  }, []);
+
+  function svgCoords(e: React.PointerEvent<SVGSVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const m = svg.getScreenCTM();
+    if (!m) return null;
+    return pt.matrixTransform(m.inverse());
+  }
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const coords = svgCoords(e);
+    if (!coords) return null;
+    const { x, y } = coords;
+    const halfGap = stringGap / 2;
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    let fret: number;
+    if (x < boardX && x >= boardX - 34) {
+      fret = 0;
+    } else if (x >= boardX) {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      if (colIndex < 0 || colIndex >= 12) return null;
+      fret = colIndex + 1;
+    } else {
+      return null;
+    }
+    return { string, fret };
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const pos = getPos(e);
+    if (!pos) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isHeldRef.current = true;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!isHeldRef.current) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    if (pos.string === curPosRef.current?.string && pos.fret === curPosRef.current?.fret) return;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const oldId = voiceIdRef.current;
+    const id = await switchNote(oldId, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+  }
+
+  function onPointerUp() {
+    isHeldRef.current = false;
+    curPosRef.current = null;
+    setPressedPos(null);
+    if (voiceIdRef.current !== -1) {
+      releaseNote(voiceIdRef.current);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretX(fret);
+    const markerY = stringY(string);
+    const noteIsMarked = fretNotes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g pointerEvents="none" style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}>
+        <line
+          x1={markerX} x2={boardX + boardWidth} y1={markerY} y2={markerY}
+          stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
+        />
+        <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="16" />
+      </g>
+    );
+  }
 
   return (
     <figure className="fretboard-figure">
-      <svg className="g-fretboard" viewBox="0 0 980 232" role="img" aria-label="Mapa del acorde de Sol Mayor con las notas G, B y D">
+      <svg
+        ref={svgRef}
+        className="g-fretboard"
+        viewBox="0 0 980 232"
+        role="img"
+        aria-label="Mapa del acorde de Sol Mayor con las notas G, B y D"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ touchAction: 'none', cursor: 'crosshair' }}
+      >
         <rect x={boardX} y={boardY} width={boardWidth} height={boardHeight} fill="#27313d" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
           <line className="g-string" key={string} x1={boardX} x2={boardX + boardWidth} y1={stringY(string)} y2={stringY(string)} />
@@ -72,6 +187,7 @@ function GChordFretboard() {
             </text>
           </g>
         ))}
+        {interactionOverlay()}
       </svg>
     </figure>
   );

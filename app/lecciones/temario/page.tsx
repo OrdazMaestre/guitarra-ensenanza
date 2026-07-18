@@ -24,7 +24,7 @@ export default function TemarioPage() {
               </span>
             </h1>
             <p className="cover-author">por: Enrique Ordaz</p>
-            <p className="cover-intro">Recorrido visual y practico pensado para los más pequeños.</p>
+            <p className="cover-intro">Recorrido visual y práctico pensado para los más pequeños.</p>
               <p className="cover-intro">Frases cortas, ejercicios cortos y videos chulos.</p>
               <p className="cover-intro">Cada uno aprende a su <strong>ritmo</strong> y cada uno tiene sus <strong>objetivos</strong>.</p>
               <p className="cover-intro">Aquí preferimos enseñar <strong>un poco de todo</strong> por si llega el día que queremos estudiar de verdad.</p>

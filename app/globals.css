@@ -249,3 +249,16 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
   }
 }
 
+
+
+@keyframes fretboard-string-vibrate {
+  0%   { transform: translateY(0px); }
+  12%  { transform: translateY(-2px); }
+  24%  { transform: translateY(1px); }
+  36%  { transform: translateY(-3px); }
+  48%  { transform: translateY(2px); }
+  60%  { transform: translateY(-1px); }
+  72%  { transform: translateY(3px); }
+  84%  { transform: translateY(-2px); }
+  100% { transform: translateY(0px); }
+}

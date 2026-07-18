@@ -1,7 +1,27 @@
-import Image from 'next/image';
+'use client';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
+import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+
+const OPEN_STRING_MIDI: Record<number, number> = {
+  1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
+};
+
+function getFullFretSvgCoords(
+  e: React.PointerEvent<SVGSVGElement>,
+  svg: SVGSVGElement,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const r = pt.matrixTransform(ctm.inverse());
+  return { x: r.x, y: r.y };
+}
 
 const chromaticLetters = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -37,13 +57,131 @@ function FullFretboardDiagram() {
   const viewBoxWidth = boardX + boardWidth + 30;
   const viewBoxHeight = boardY + boardHeight + 42;
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(() => preloadSamples());
+      return () => cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => preloadSamples(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const coords = getFullFretSvgCoords(e, svg);
+    if (!coords) return null;
+    const { x, y } = coords;
+    const halfGap = stringGap / 2;
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    let fret: number;
+    if (x < boardX) {
+      if (x < boardX - 42) return null;
+      fret = 0;
+    } else {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      fret = colIndex + 1;
+      if (fret > 12) return null;
+    }
+    return { string, fret };
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const pos = getPos(e);
+    if (!pos) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setPointerCapture(e.pointerId);
+    isHeldRef.current = true;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!isHeldRef.current) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    const cur = curPosRef.current;
+    if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await switchNote(voiceIdRef.current, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function onPointerUp() {
+    if (!isHeldRef.current) return;
+    isHeldRef.current = false;
+    curPosRef.current = null;
+    setPressedPos(null);
+    if (voiceIdRef.current >= 0) {
+      releaseNote(voiceIdRef.current);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretX(fret);
+    const sy = stringY(string);
+    const noteIsMarked = fretboardNotes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g
+        pointerEvents="none"
+        style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
+      >
+        <line
+          x1={markerX}
+          x2={boardX + boardWidth}
+          y1={sy}
+          y2={sy}
+          stroke="#fbbf24"
+          strokeLinecap="round"
+          strokeWidth="3"
+          opacity="0.85"
+        />
+        <circle
+          cx={markerX}
+          cy={sy}
+          fill="#fbbf24"
+          opacity={noteIsMarked ? 0.5 : 0.9}
+          r="16"
+        />
+      </g>
+    );
+  }
+
   return (
     <figure className="fretboard-wrap">
       <svg
+        ref={svgRef}
         className="fretboard-board"
         viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
         role="img"
         aria-label="Las doce notas en el mastil, con todas las notas de las cuerdas Mi agudo, Si y Mi grave, y las notas de la cuerda Si del traste 1 al 12 marcadas en rojo"
+        style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
       >
         {Array.from({ length: 12 }, (_, fret) => (
           <text className="fretboard-fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y="26">
@@ -94,6 +232,7 @@ function FullFretboardDiagram() {
             </text>
           </g>
         ))}
+        {interactionOverlay()}
       </svg>
     </figure>
   );
@@ -165,20 +304,14 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
               </div>
             ))}
           </div>
-
-          <Image
-            className="keyboard-image"
-            src="/images/figuras-acordes/doce-notas-teclado.svg"
-            alt="Las doce notas en forma de teclado, con los sostenidos arriba y los bemoles abajo"
-            width={700}
-            height={160}
-          />
+        <h3>Prueba a tocar los instrumentos de abajo ;D</h3>
+          <MiniKeyboard className="keyboard-image" />
         </section>
 
         <section className="note-section fretboard-section" aria-labelledby="fretboard-title">
           <header className="note-section-header">
           </header>
-
+          
           <div className="fretboard-copy">
             
           </div>

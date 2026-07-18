@@ -1,3 +1,12 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+
+// Standard tuning: MIDI for each open string (string 1 = high E)
+const OPEN_STRING_MIDI: Record<number, number> = {
+  1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
+};
+
 type FretboardNote = {
   fret: number;
   label: string;
@@ -56,11 +65,25 @@ function noteToneClass(note: FretboardNote) {
   return '';
 }
 
+function getSvgCoords(
+  e: React.PointerEvent<SVGSVGElement>,
+  svg: SVGSVGElement,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const r = pt.matrixTransform(ctm.inverse());
+  return { x: r.x, y: r.y };
+}
+
 export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   const boardX = 42;
   const fretWidth = 58;
   const boardHeight = 158;
+  const stringGap = boardHeight / 5;
   const allRomanFrets = Object.keys(romanFretLabels)
     .map(Number)
     .filter((fret) => fret >= startFret && fret <= endFret);
@@ -71,7 +94,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   const hasBottomLabels = !!fretLabels || (allRomanFrets.length > 0 && !romansGoAbove);
   const viewBoxWidth = boardX + boardWidth + 42;
   const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + 20;
-  const stringY = (string: number) => boardY + (string - 1) * (boardHeight / 5);
+  const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const passedFrets = new Set(guideDots.map((d) => d.fret));
   const mergedGuideDots = [
     ...guideDots,
@@ -80,8 +103,135 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       .map((f) => ({ fret: f })),
   ];
 
+  // Audio interaction
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(() => preloadSamples());
+      return () => cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => preloadSamples(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const coords = getSvgCoords(e, svg);
+    if (!coords) return null;
+    const { x, y } = coords;
+
+    const halfGap = stringGap / 2;
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+
+    let fret: number;
+    if (x < boardX) {
+      if (startFret !== 0 || x < boardX - 40) return null;
+      fret = 0;
+    } else {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      fret = startFret === 0 ? colIndex + 1 : startFret + colIndex;
+      if (fret > endFret) return null;
+    }
+
+    return { string, fret };
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const pos = getPos(e);
+    if (!pos) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setPointerCapture(e.pointerId);
+    isHeldRef.current = true;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!isHeldRef.current) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    const cur = curPosRef.current;
+    if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await switchNote(voiceIdRef.current, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function onPointerUp() {
+    if (!isHeldRef.current) return;
+    isHeldRef.current = false;
+    curPosRef.current = null;
+    setPressedPos(null);
+    if (voiceIdRef.current >= 0) {
+      releaseNote(voiceIdRef.current);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretMarkerX(boardX, fretWidth, startFret, fret);
+    const sy = stringY(string);
+    const noteIsMarked = notes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g
+        pointerEvents="none"
+        style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
+      >
+        <line
+          x1={markerX}
+          x2={boardX + boardWidth}
+          y1={sy}
+          y2={sy}
+          stroke="#fbbf24"
+          strokeLinecap="round"
+          strokeWidth="3"
+          opacity="0.85"
+        />
+        <circle
+          cx={markerX}
+          cy={sy}
+          fill="#fbbf24"
+          opacity={noteIsMarked ? 0.5 : 0.9}
+          r="16"
+        />
+      </g>
+    );
+  }
+
   return (
-    <svg className="reduced-fretboard" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img" aria-label={ariaLabel}>
+    <svg
+      ref={svgRef}
+      className="reduced-fretboard"
+      viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+      role="img"
+      aria-label={ariaLabel}
+      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
       <rect className="reduced-board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
       {Array.from({ length: 6 }, (_, index) => (
         <line className="reduced-string" key={`string-${index + 1}`} x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
@@ -154,6 +304,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
           );
         }
       )}
+      {interactionOverlay()}
     </svg>
   );
 }

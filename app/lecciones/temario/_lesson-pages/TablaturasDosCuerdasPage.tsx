@@ -62,6 +62,18 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
             </Link>
           </div>
         </section>
+
+        <section className="davie-section" aria-label="Video de bajo">
+          <p className="davie-message">Aquí va una canción para Halloween.</p>
+          <div className="video-wrap">
+            <iframe
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              src="https://www.youtube.com/embed/VMycOhwjhQg"
+              title="Bajo - Davie504"
+            />
+          </div>
+        </section>
       </article>
 
       <div className="lesson-pager-wrap">
@@ -279,6 +291,46 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
           .two-strings-content,
           .lesson-pager-wrap {
             max-width: 320px;
+          }
+        }
+
+        .davie-section {
+          display: grid;
+          gap: clamp(16px, 2.5vw, 24px);
+          margin: clamp(24px, 4vw, 48px) auto 0;
+          max-width: 720px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .davie-message {
+          color: #303030;
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 650;
+          line-height: 1.42;
+          margin: 0;
+          overflow-wrap: anywhere;
+          text-align: center;
+        }
+
+        .video-wrap {
+          aspect-ratio: 16 / 9;
+          border-radius: 10px;
+          min-width: 0;
+          overflow: hidden;
+          width: 100%;
+        }
+
+        .video-wrap iframe {
+          border: 0;
+          display: block;
+          height: 100%;
+          width: 100%;
+        }
+
+        @media (max-width: 860px) {
+          .davie-message {
+            text-align: left;
           }
         }
       `}</style>

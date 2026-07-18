@@ -1,6 +1,26 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+
+const OPEN_STRING_MIDI: Record<number, number> = {
+  1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
+};
+
+function getSeptimaSvgCoords(
+  e: React.PointerEvent<SVGSVGElement>,
+  svg: SVGSVGElement,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const r = pt.matrixTransform(ctm.inverse());
+  return { x: r.x, y: r.y };
+}
 
 const gMajorNotes = ['G', 'A', 'B', 'C', 'D', 'E', 'F#'];
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -34,6 +54,8 @@ type SeventhChord = {
     string: number;
   }>;
 };
+
+type CropPos = { chordName: string; fret: number; row: 'e4' | 'e2'; string: number };
 
 const seventhChords: SeventhChord[] = [
   {
@@ -251,6 +273,204 @@ function ScaleWithChordPositions() {
   const viewBoxHeight = e2Row.top + 26 + miniHeight + 34;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+  const cropVoiceIdRef = useRef(-1);
+  const curCropRef = useRef<CropPos | null>(null);
+  const isCropHeldRef = useRef(false);
+  const [pressedCrop, setPressedCrop] = useState<CropPos | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(() => preloadSamples());
+      return () => cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => preloadSamples(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const coords = getSeptimaSvgCoords(e, svg);
+    if (!coords) return null;
+    const { x, y } = coords;
+    const halfGap = stringGap / 2;
+    // Only main board zone — mini crops are at y≈44-180 and y≈470+, safely outside
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    let fret: number;
+    if (x < boardX) {
+      if (x < boardX - 44) return null;
+      fret = 0;
+    } else {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      fret = colIndex + 1;
+      if (fret > 12) return null;
+    }
+    return { string, fret };
+  }
+
+  function getCropPos(e: React.PointerEvent<SVGSVGElement>): CropPos | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const coords = getSeptimaSvgCoords(e, svg);
+    if (!coords) return null;
+    const { x, y } = coords;
+    let rowKey: 'e4' | 'e2';
+    let top: number;
+    if (y >= e4Row.top + 26 && y <= e4Row.top + 26 + miniHeight) {
+      rowKey = 'e4';
+      top = e4Row.top;
+    } else if (y >= e2Row.top + 26 && y <= e2Row.top + 26 + miniHeight) {
+      rowKey = 'e2';
+      top = e2Row.top;
+    } else {
+      return null;
+    }
+    for (const chord of positionedChords) {
+      const range = chordCropRanges[chord.name];
+      const fretCount = range.end - range.start + 1;
+      const cropWidth = fretCount * miniFretWidth;
+      const cropX = range.labelX - cropWidth / 2;
+      const openLeft = range.start === 0 ? cropX - 34 : cropX;
+      if (x < openLeft || x > cropX + cropWidth) continue;
+      const string = Math.max(1, Math.min(6, Math.round((y - (top + 26)) / miniStringGap) + 1));
+      let fret: number;
+      if (x < cropX) {
+        fret = 0;
+      } else {
+        const colIndex = Math.floor((x - cropX) / miniFretWidth);
+        fret = range.start + colIndex;
+        if (fret > range.end) continue;
+      }
+      return { chordName: chord.name, fret, row: rowKey, string };
+    }
+    return null;
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const pos = getPos(e);
+    if (pos) {
+      svg.setPointerCapture(e.pointerId);
+      isHeldRef.current = true;
+      curPosRef.current = pos;
+      setPressedPos(pos);
+      const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+      voiceIdRef.current = id;
+      if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+      return;
+    }
+    const cropPos = getCropPos(e);
+    if (!cropPos) return;
+    svg.setPointerCapture(e.pointerId);
+    isCropHeldRef.current = true;
+    curCropRef.current = cropPos;
+    setPressedCrop(cropPos);
+    const id = await playNote(OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false);
+    cropVoiceIdRef.current = id;
+    if (!isCropHeldRef.current) { releaseNote(id); cropVoiceIdRef.current = -1; }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (isHeldRef.current) {
+      const pos = getPos(e);
+      if (!pos) return;
+      const cur = curPosRef.current;
+      if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
+      curPosRef.current = pos;
+      setPressedPos(pos);
+      const id = await switchNote(voiceIdRef.current, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+      voiceIdRef.current = id;
+      if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+    } else if (isCropHeldRef.current) {
+      const cropPos = getCropPos(e);
+      if (!cropPos) return;
+      const cur = curCropRef.current;
+      if (cur && cur.chordName === cropPos.chordName && cur.string === cropPos.string && cur.fret === cropPos.fret) return;
+      curCropRef.current = cropPos;
+      setPressedCrop(cropPos);
+      const id = await switchNote(cropVoiceIdRef.current, OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false);
+      cropVoiceIdRef.current = id;
+      if (!isCropHeldRef.current) { releaseNote(id); cropVoiceIdRef.current = -1; }
+    }
+  }
+
+  function onPointerUp() {
+    if (isHeldRef.current) {
+      isHeldRef.current = false;
+      curPosRef.current = null;
+      setPressedPos(null);
+      if (voiceIdRef.current >= 0) { releaseNote(voiceIdRef.current); voiceIdRef.current = -1; }
+    }
+    if (isCropHeldRef.current) {
+      isCropHeldRef.current = false;
+      curCropRef.current = null;
+      setPressedCrop(null);
+      if (cropVoiceIdRef.current >= 0) { releaseNote(cropVoiceIdRef.current); cropVoiceIdRef.current = -1; }
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretX(fret);
+    const sy = stringY(string);
+    const noteIsMarked = scaleNotes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g
+        pointerEvents="none"
+        style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
+      >
+        <line
+          x1={markerX}
+          x2={boardX + boardWidth}
+          y1={sy}
+          y2={sy}
+          stroke="#fbbf24"
+          strokeLinecap="round"
+          strokeWidth="3"
+          opacity="0.85"
+        />
+        <circle
+          cx={markerX}
+          cy={sy}
+          fill="#fbbf24"
+          opacity={noteIsMarked ? 0.5 : 0.9}
+          r="15"
+        />
+      </g>
+    );
+  }
+
+  function cropOverlay() {
+    if (!pressedCrop) return null;
+    const { chordName, fret, row, string } = pressedCrop;
+    const range = chordCropRanges[chordName];
+    const fretCount = range.end - range.start + 1;
+    const cropWidth = fretCount * miniFretWidth;
+    const cropX = range.labelX - cropWidth / 2;
+    const top = row === 'e4' ? e4Row.top : e2Row.top;
+    const markerX = fret === 0 ? cropX - 17 : cropX + (fret - range.start + 0.5) * miniFretWidth;
+    const markerY = top + 26 + (string - 1) * miniStringGap;
+    const noteIsMarked = scaleNotes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g pointerEvents="none" style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}>
+        <line
+          x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
+          stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85"
+        />
+        <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="12" />
+      </g>
+    );
+  }
+
   const scaleNotes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 13 }, (_, fret) => {
       const note = noteNameForFret(string.open, fret);
@@ -333,7 +553,17 @@ function ScaleWithChordPositions() {
 
   return (
     <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
-      <svg className="position-board" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img">
+      <svg
+        ref={svgRef}
+        className="position-board"
+        viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+        role="img"
+        style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
         <MiniRow row={e4Row} />
 
         {Array.from({ length: 12 }, (_, fret) => (
@@ -387,6 +617,8 @@ function ScaleWithChordPositions() {
         })}
 
         <MiniRow row={e2Row} />
+        {interactionOverlay()}
+        {cropOverlay()}
       </svg>
     </figure>
   );

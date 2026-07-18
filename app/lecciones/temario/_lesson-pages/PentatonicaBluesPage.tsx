@@ -1,5 +1,9 @@
+'use client';
+
 import Link from 'next/link';
+import React, { useEffect, useRef, useState } from 'react';
 import TemarioPager from '../TemarioPager';
+import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
 import type { LessonPageProps } from './types';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -24,6 +28,8 @@ function displayNote(note: string) {
   return note === 'A#' ? blueNoteLabel : note;
 }
 
+const OPEN_STRING_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
+
 function FretboardMap({
   ariaLabel,
   blues = false,
@@ -46,20 +52,121 @@ function FretboardMap({
   const fretNotes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 13 }, (_, fret) => {
       const note = noteNameForFret(string.open, fret);
-
-      return notes.includes(note)
-        ? {
-            fret,
-            note,
-            string: stringIndex + 1,
-          }
-        : null;
+      return notes.includes(note) ? { fret, note, string: stringIndex + 1 } : null;
     }).filter((item): item is { fret: number; note: string; string: number } => item !== null),
   );
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => preloadSamples());
+    } else {
+      setTimeout(() => preloadSamples(), 200);
+    }
+  }, []);
+
+  function svgCoords(e: React.PointerEvent<SVGSVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX;
+    pt.y = e.clientY;
+    const m = svg.getScreenCTM();
+    if (!m) return null;
+    return pt.matrixTransform(m.inverse());
+  }
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const coords = svgCoords(e);
+    if (!coords) return null;
+    const { x, y } = coords;
+    const halfGap = stringGap / 2;
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    let fret: number;
+    if (x < boardX && x >= boardX - 44) {
+      fret = 0;
+    } else if (x >= boardX) {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      if (colIndex < 0 || colIndex >= 12) return null;
+      fret = colIndex + 1;
+    } else {
+      return null;
+    }
+    return { string, fret };
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const pos = getPos(e);
+    if (!pos) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isHeldRef.current = true;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!isHeldRef.current) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    if (pos.string === curPosRef.current?.string && pos.fret === curPosRef.current?.fret) return;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const oldId = voiceIdRef.current;
+    const id = await switchNote(oldId, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+  }
+
+  function onPointerUp() {
+    isHeldRef.current = false;
+    curPosRef.current = null;
+    setPressedPos(null);
+    if (voiceIdRef.current !== -1) {
+      releaseNote(voiceIdRef.current);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretX(fret);
+    const markerY = stringY(string);
+    const noteIsMarked = fretNotes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g pointerEvents="none" style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}>
+        <line
+          x1={markerX} x2={boardX + boardWidth} y1={markerY} y2={markerY}
+          stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
+        />
+        <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="17" />
+      </g>
+    );
+  }
+
   return (
     <figure className="blues-map-wrap">
-      <svg className="blues-map" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img" aria-label={ariaLabel}>
+      <svg
+        ref={svgRef}
+        className="blues-map"
+        viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+        role="img"
+        aria-label={ariaLabel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        style={{ touchAction: 'none', cursor: 'crosshair' }}
+      >
         <rect className="map-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
@@ -88,7 +195,6 @@ function FretboardMap({
         ))}
         {fretNotes.map((item) => {
           const isBlueNote = item.note === 'A#';
-
           return (
             <g key={`${item.string}-${item.fret}-${item.note}`}>
               <circle
@@ -108,6 +214,7 @@ function FretboardMap({
             Bb también puede llamarse A#
           </text>
         ) : null}
+        {interactionOverlay()}
       </svg>
     </figure>
   );
@@ -297,7 +404,54 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           </div>
         </section>
 
-      
+        <section className="band-section" aria-labelledby="band-title">
+          <div className="band-heading">
+            <p className="lesson-kicker">Formación</p>
+            <h2 id="band-title">La banda de blues, rock y metal.</h2>
+            <p>Aqui veremos 3 grandes exponentes actuales.</p><p> Merecen tu respeto, tu like y tu suscripción a su canal.</p>
+          
+          </div>
+          <div className="band-grid">
+            <a
+              className="band-card"
+              href="https://www.youtube.com/watch?v=BQoxYdEpoQQ&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=16"
+              rel="noreferrer"
+              target="_blank"
+            >
+              <strong>Guitarra</strong>
+              <p>La melodía y los acordes.</p>
+              <p>Es el instrumento que estamos aprendiendo.</p>
+              <span className="band-card-watch">Ver video</span>
+            </a>
+            <a
+              className="band-card"
+              href="https://www.youtube.com/watch?v=VMycOhwjhQg&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=17"
+              rel="noreferrer"
+              target="_blank"
+            >
+              <strong>Bajo</strong>
+              <p>Las notas más graves de la banda.</p>
+              <p>Se parece a la guitarra pero suena mucho más bajo.</p>
+              <span className="band-card-watch">Ver video</span>
+            </a>
+            <a
+              className="band-card"
+              href="https://www.youtube.com/watch?v=jKH0Ik5gu5s&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=15"
+              rel="noreferrer"
+              target="_blank"
+            >
+              <strong>Batería</strong>
+              <p>El ritmo de la banda.</p>
+              <p>Sin ella, todo sonaría desorganizado.</p>
+              <span className="band-card-watch">Ver video</span>
+            </a>
+          </div>
+          <div className="band-note">
+            <p>Una banda puede tener muchos más instrumentos.</p>
+            <p>Estos tres los veremos sí o sí.</p>
+          </div>
+        </section>
+
       </article>
 
       <div className="lesson-pager-wrap">
@@ -707,6 +861,126 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           .blues-content,
           .lesson-pager-wrap {
             max-width: 320px;
+          }
+        }
+
+        .band-section {
+          display: grid;
+          gap: clamp(24px, 4vw, 40px);
+          margin: 0 auto;
+          max-width: 1120px;
+          width: 100%;
+        }
+
+        .band-heading {
+          margin: 0 auto;
+          max-width: 920px;
+          text-align: center;
+        }
+
+        .band-heading h2 {
+          font-size: clamp(24px, 3.6vw, 46px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 1;
+          margin: 0;
+          overflow-wrap: break-word;
+          text-transform: uppercase;
+        }
+
+        .band-grid {
+          display: grid;
+          gap: 18px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .band-card {
+          border: 2px solid #080808;
+          border-radius: 10px;
+          color: #080808;
+          display: grid;
+          gap: 10px;
+          min-width: 0;
+          padding: clamp(20px, 3vw, 32px);
+          text-decoration: none;
+          transition: border-color 160ms ease, background 160ms ease;
+        }
+
+        .band-card:hover,
+        .band-card:focus-visible {
+          background: #f0fdf4;
+          border-color: #047857;
+        }
+
+        .band-card:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
+        }
+
+        .band-card strong {
+          color: #080808;
+          font-size: clamp(22px, 2.8vw, 34px);
+          font-weight: 950;
+          line-height: 1.08;
+          overflow-wrap: anywhere;
+          text-transform: uppercase;
+        }
+
+        .band-card p {
+          color: #303030;
+          font-size: clamp(15px, 1.6vw, 19px);
+          font-weight: 650;
+          line-height: 1.38;
+          margin: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .band-card-watch {
+          color: #047857;
+          font-size: 13px;
+          font-weight: 950;
+          letter-spacing: 0.18em;
+          margin-top: 6px;
+          overflow-wrap: anywhere;
+          text-transform: uppercase;
+        }
+
+        .band-note {
+          border: 3px dashed #cbd5e1;
+          border-radius: 10px;
+          display: grid;
+          gap: 8px;
+          margin: 0 auto;
+          max-width: 900px;
+          overflow-wrap: anywhere;
+          padding: clamp(14px, 2vw, 22px);
+          text-align: center;
+          width: 100%;
+        }
+
+        .band-note p {
+          color: #303030;
+          font-size: clamp(16px, 1.8vw, 20px);
+          font-weight: 650;
+          line-height: 1.5;
+          margin: 0;
+          overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 900px) {
+          .band-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 560px) {
+          .band-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .band-heading,
+          .band-note {
+            text-align: left;
           }
         }
       `}</style>

@@ -1,7 +1,28 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+
+// Standard tuning: MIDI for each open string (string 1 = high E)
+const OPEN_STRING_MIDI: Record<number, number> = {
+  1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
+};
+
+function getChordSvgCoords(
+  e: React.PointerEvent<SVGSVGElement>,
+  svg: SVGSVGElement,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const r = pt.matrixTransform(ctm.inverse());
+  return { x: r.x, y: r.y };
+}
 
 const gMajorNotes = ['G', 'A', 'B', 'C', 'D', 'E', 'F#'];
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -130,10 +151,11 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
   const boardY = 30;
   const fretWidth = 54;
   const boardHeight = 150;
+  const stringGap = boardHeight / 5;
   const boardWidth = fretWidth * 5;
   const viewBoxWidth = boardX + boardWidth + 34;
   const viewBoxHeight = boardY + boardHeight + 36;
-  const stringY = (string: number) => boardY + (string - 1) * (boardHeight / 5);
+  const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const fretX = (fret: number) => (fret === 0 ? boardX - 20 : boardX + (fret - 0.5) * fretWidth);
 
   const notes = stringTunings.flatMap((string, stringIndex) =>
@@ -151,13 +173,136 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
     }).filter((note): note is { fret: number; inChord: boolean; label: string; string: number } => note !== null),
   );
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const voiceIdRef = useRef(-1);
+  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
+  const isHeldRef = useRef(false);
+  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(() => preloadSamples());
+      return () => cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => preloadSamples(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const coords = getChordSvgCoords(e, svg);
+    if (!coords) return null;
+    const { x, y } = coords;
+    const halfGap = stringGap / 2;
+    if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
+    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    let fret: number;
+    if (x < boardX) {
+      if (x < boardX - 40) return null;
+      fret = 0;
+    } else {
+      const colIndex = Math.floor((x - boardX) / fretWidth);
+      fret = colIndex + 1;
+      if (fret > 5) return null;
+    }
+    return { string, fret };
+  }
+
+  async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
+    const pos = getPos(e);
+    if (!pos) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.setPointerCapture(e.pointerId);
+    isHeldRef.current = true;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!isHeldRef.current) return;
+    const pos = getPos(e);
+    if (!pos) return;
+    const cur = curPosRef.current;
+    if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
+    curPosRef.current = pos;
+    setPressedPos(pos);
+    const id = await switchNote(voiceIdRef.current, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
+    voiceIdRef.current = id;
+    if (!isHeldRef.current) {
+      releaseNote(id);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function onPointerUp() {
+    if (!isHeldRef.current) return;
+    isHeldRef.current = false;
+    curPosRef.current = null;
+    setPressedPos(null);
+    if (voiceIdRef.current >= 0) {
+      releaseNote(voiceIdRef.current);
+      voiceIdRef.current = -1;
+    }
+  }
+
+  function interactionOverlay() {
+    if (!pressedPos) return null;
+    const { string, fret } = pressedPos;
+    const markerX = fretX(fret);
+    const sy = stringY(string);
+    const noteIsMarked = notes.some(n => n.string === string && n.fret === fret);
+    return (
+      <g
+        pointerEvents="none"
+        style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
+      >
+        <line
+          x1={markerX}
+          x2={boardX + boardWidth}
+          y1={sy}
+          y2={sy}
+          stroke="#fbbf24"
+          strokeLinecap="round"
+          strokeWidth="3"
+          opacity="0.85"
+        />
+        <circle
+          cx={markerX}
+          cy={sy}
+          fill="#fbbf24"
+          opacity={noteIsMarked ? 0.5 : 0.9}
+          r="16"
+        />
+      </g>
+    );
+  }
+
   return (
     <figure className="chord-map">
       <figcaption>
         <span>{chord.roman}</span>
         {chord.title}
       </figcaption>
-      <svg className="chord-board" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img" aria-label={`${chord.title} dentro de la escala de Sol Mayor en los trastes 0 al 4`}>
+      <svg
+        ref={svgRef}
+        className="chord-board"
+        viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+        role="img"
+        aria-label={`${chord.title} dentro de la escala de Sol Mayor en los trastes 0 al 4`}
+        style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
         <rect className="board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
@@ -192,6 +337,7 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
             </text>
           </g>
         ))}
+        {interactionOverlay()}
       </svg>
     </figure>
   );

@@ -1,5 +1,5 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -25,13 +25,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           <header className="section-header">
             <p className="lesson-kicker">Do Mayor</p>
           </header>
-          <Image
-            className="scale-pattern-image"
-            src="/images/figuras-acordes/patron-tonos-semitonos.svg"
-            alt="Patrón de tonos y semitonos de Do Mayor"
-            width={700}
-            height={220}
-          />
+          <MiniKeyboard className="scale-pattern-image" showEnharmonics showScaleArrows />
           <div className="pattern-box">
             <strong>Escala Mayor:</strong>
             <span>
