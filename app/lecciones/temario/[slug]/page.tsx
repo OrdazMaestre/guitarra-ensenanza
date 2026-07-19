@@ -238,6 +238,18 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'funciones-tonales') {
     return (
       <PlaceholderLessonPage title={lesson.title} {...lessonProps}>
+        <p>
+          Hasta tener la página compuesta, podemos ver el{' '}
+          <a
+            className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
+            href="https://www.youtube.com/watch?v=o6aOC3rERF0&t=65s"
+            rel="noreferrer"
+            target="_blank"
+          >
+            video de Jaime Altozano
+          </a>
+          , así como todo su canal, dado que son vídeos muy buenos a pesar de que toca piano y no guitarra.
+        </p>
         <section className="grid gap-3 rounded-lg border-4 border-red-600 bg-red-50 p-5 text-center text-zinc-950">
           <p className="font-black uppercase">Última unidad del camino principal.</p>
           <p>Probablemente te dejaste atrás ampliaciones de muchas unidades anteriores.</p>
@@ -251,18 +263,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
           <p>Pero luego hay que practicar mucho en casa.</p>
         </section>
 
-        <p>
-          Hasta tener la página compuesta, podemos ver el{' '}
-          <a
-            className="font-black text-emerald-300 underline decoration-emerald-500 decoration-2 underline-offset-4 hover:text-emerald-200"
-            href="https://www.youtube.com/watch?v=o6aOC3rERF0&t=65s"
-            rel="noreferrer"
-            target="_blank"
-          >
-            video de Jaime Altozano
-          </a>
-          , así como todo su canal, dado que son vídeos muy buenos a pesar de que toca piano y no guitarra.
-        </p>
+        
       </PlaceholderLessonPage>
     );
   }

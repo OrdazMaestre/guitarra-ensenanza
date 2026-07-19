@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { playNote, preloadSamples, releaseNote, setMasterVolume, switchNote } from '@/app/lib/guitarAudioEngine';
+import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+import { useMetronome } from '@/app/lib/useMetronome';
+import MetronomeControls from './MetronomeControls';
 
 // Key geometry copied exactly from doce-notas-teclado.svg / patron-tonos-semitonos.svg
 const WHITE_KEYS = [
@@ -35,6 +37,16 @@ const SCALE_ARROWS = [
 ];
 
 const KEY_Y = 10;
+
+// Physical key codes → MIDI for keyboard input mode.
+// Visible octave: C(60)–C(72). Extra invisible notes: B(59) on the left, C#–E(73-76) on the right.
+const KB_KEYMAP: Record<string, number> = {
+  'IntlBackslash': 59,
+  'KeyZ': 60, 'KeyS': 61, 'KeyX': 62, 'KeyD': 63, 'KeyC': 64,
+  'KeyV': 65, 'KeyG': 66, 'KeyB': 67, 'KeyH': 68, 'KeyN': 69,
+  'KeyJ': 70, 'KeyM': 71, 'Comma': 72,
+  'KeyL': 73, 'Period': 74, 'Semicolon': 75, 'Slash': 76,
+};
 
 interface Props {
   className?: string;
@@ -75,6 +87,11 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   const isHeldRef = useRef(false);
   const [pressedMidi, setPressedMidi] = useState<number>(-1);
   const [volume, setVolume] = useState(1.0);
+  const [kbMode, setKbMode] = useState(false);
+  const kbVoiceMapRef = useRef(new Map<string, number>());
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const metr = useMetronome(volumeRef);
 
   const viewH = showScaleArrows ? 220 : 160;
 
@@ -86,6 +103,37 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
     const id = window.setTimeout(() => preloadSamples(), 300);
     return () => window.clearTimeout(id);
   }, []);
+
+  useEffect(() => {
+    if (!kbMode) return;
+    function down(e: KeyboardEvent) {
+      if (e.repeat || kbVoiceMapRef.current.has(e.code)) return;
+      const midi = KB_KEYMAP[e.code];
+      if (midi === undefined) return;
+      e.preventDefault();
+      kbVoiceMapRef.current.set(e.code, -1);
+      if (midi >= 60 && midi <= 72) setPressedMidi(midi);
+      playNote(midi, true, volumeRef.current).then(id => {
+        if (kbVoiceMapRef.current.has(e.code)) kbVoiceMapRef.current.set(e.code, id);
+        else releaseNote(id);
+      });
+    }
+    function up(e: KeyboardEvent) {
+      const id = kbVoiceMapRef.current.get(e.code) ?? -1;
+      kbVoiceMapRef.current.delete(e.code);
+      if (id >= 0) releaseNote(id);
+      if (kbVoiceMapRef.current.size === 0) setPressedMidi(-1);
+    }
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      kbVoiceMapRef.current.forEach(id => { if (id >= 0) releaseNote(id); });
+      kbVoiceMapRef.current.clear();
+      setPressedMidi(-1);
+    };
+  }, [kbMode]);
 
   async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     const svg = svgRef.current;
@@ -101,7 +149,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
     currentMidiRef.current = key.midi;
     setPressedMidi(key.midi);
 
-    const id = await playNote(key.midi, true);
+    const id = await playNote(key.midi, true, volume);
     voiceIdRef.current = id;
   }
 
@@ -116,7 +164,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
 
     currentMidiRef.current = key.midi;
     setPressedMidi(key.midi);
-    const id = await switchNote(voiceIdRef.current, key.midi, true);
+    const id = await switchNote(voiceIdRef.current, key.midi, true, volume);
     voiceIdRef.current = id;
   }
 
@@ -132,14 +180,18 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   }
 
   function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = Number(e.target.value);
-    setVolume(v);
-    setMasterVolume(v);
+    setVolume(Number(e.target.value));
   }
 
   return (
     <div className={className} style={{ display: 'block' }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', paddingBottom: '8px' }}>
+        <button
+          onClick={() => setKbMode(m => !m)}
+          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+        >
+          {kbMode ? 'KB: ON' : 'KB'}
+        </button>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '46px', textAlign: 'right' }}>
             Vol {Math.round(volume * 100)}
@@ -155,6 +207,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             onChange={handleVolumeChange}
           />
         </label>
+        <MetronomeControls {...metr} />
       </div>
       <svg
         ref={svgRef}

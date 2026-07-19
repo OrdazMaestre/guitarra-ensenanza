@@ -1,5 +1,5 @@
 const SAMPLE_BASE = '/samples/seagull-acoustic/';
-const MAX_VOICES = 2;
+const MAX_VOICES = 3;
 const RELEASE_TIME = 0.18;
 const DRAG_RELEASE_TIME = 0.08;
 
@@ -118,7 +118,7 @@ function enforcePolyphony(context: AudioContext): void {
 // Keyboard path: oscillator with true indefinite sustain.
 // Triangle wave filtered to mids + slight highs — sustain holds while key is down,
 // tail happens only on releaseNote().
-function startOscillatorVoice(midi: number, context: AudioContext): number {
+function startOscillatorVoice(midi: number, context: AudioContext, volume = 1.0): number {
   enforcePolyphony(context);
 
   const now = context.currentTime;
@@ -141,7 +141,7 @@ function startOscillatorVoice(midi: number, context: AudioContext): number {
 
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.44, now + 0.005); // fast attack
+  gain.gain.linearRampToValueAtTime(0.308 * volume, now + 0.005); // fast attack
 
   osc.connect(hp);
   hp.connect(lp);
@@ -157,7 +157,7 @@ function startOscillatorVoice(midi: number, context: AudioContext): number {
 }
 
 // Fretboard path: guitar sample with pitch correction and natural decay + loop tail.
-function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSample): number {
+function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSample, volume = 1.0): number {
   enforcePolyphony(context);
 
   const now = context.currentTime;
@@ -174,7 +174,7 @@ function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSam
 
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.52, now + 0.005);
+  gain.gain.linearRampToValueAtTime(0.52 * volume, now + 0.005);
 
   source.connect(gain);
   gain.connect(getMaster(context));
@@ -185,20 +185,63 @@ function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSam
   return id;
 }
 
+export function touchAudioContext(): void {
+  const context = getCtx();
+  if (context.state === 'suspended') context.resume().catch(() => {});
+}
+
+export function getAudioCurrentTime(): number {
+  return ctx ? ctx.currentTime : 0;
+}
+
+export function playMetronomeClick(scheduledAt: number, volume: number): void {
+  const context = getCtx();
+  const sr = context.sampleRate;
+
+  const noiseLen = Math.floor(sr * 0.045);
+  const noiseBuf = context.createBuffer(1, noiseLen, sr);
+  const nd = noiseBuf.getChannelData(0);
+  for (let i = 0; i < noiseLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen) ** 2.4;
+  const ns = context.createBufferSource();
+  ns.buffer = noiseBuf;
+  const bp = context.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1850; bp.Q.value = 0.75;
+  const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420; hp.Q.value = 0.7;
+  const ng = context.createGain();
+  ng.gain.setValueAtTime(0.0001, scheduledAt);
+  ng.gain.linearRampToValueAtTime(volume * 0.18, scheduledAt + 0.002);
+  ng.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.045);
+  ns.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(getMaster(context));
+  ns.start(scheduledAt);
+
+  const bodyLen = Math.floor(sr * 0.055);
+  const bodyBuf = context.createBuffer(1, bodyLen, sr);
+  const bd = bodyBuf.getChannelData(0);
+  for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.8;
+  const bs = context.createBufferSource();
+  bs.buffer = bodyBuf;
+  const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 0.6;
+  const bg = context.createGain();
+  bg.gain.setValueAtTime(0.0001, scheduledAt);
+  bg.gain.linearRampToValueAtTime(volume * 0.075, scheduledAt + 0.003);
+  bg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.055);
+  bs.connect(lp); lp.connect(bg); bg.connect(getMaster(context));
+  bs.start(scheduledAt);
+}
+
 // forKeyboard = true  → oscillator (sustain while held, tail on release)
 // forKeyboard = false → guitar sample (for fretboard)
-export async function playNote(midi: number, forKeyboard = false): Promise<number> {
+export async function playNote(midi: number, forKeyboard = false, volume = 1.0): Promise<number> {
   const context = getCtx();
   if (context.state === 'suspended') await context.resume();
 
   if (forKeyboard) {
-    return startOscillatorVoice(midi, context);
+    return startOscillatorVoice(midi, context, volume);
   }
 
   await ensureSamples();
   const sample = chooseSample(midi);
   if (!sample) return -1;
-  return startSampleVoice(midi, context, sample);
+  return startSampleVoice(midi, context, sample, volume);
 }
 
 // Graceful release with short tail (call on pointerUp).
@@ -209,10 +252,10 @@ export function releaseNote(id: number): void {
 }
 
 // Quick crossfade for drag: kill old voice and start new one.
-export async function switchNote(oldId: number, newMidi: number, forKeyboard = false): Promise<number> {
+export async function switchNote(oldId: number, newMidi: number, forKeyboard = false, volume = 1.0): Promise<number> {
   if (ctx && oldId >= 0) {
     const old = voices.find((v) => v.id === oldId);
     if (old) killVoice(old, ctx, DRAG_RELEASE_TIME);
   }
-  return playNote(newMidi, forKeyboard);
+  return playNote(newMidi, forKeyboard, volume);
 }

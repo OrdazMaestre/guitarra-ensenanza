@@ -55,10 +55,10 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
 
         <section className="g-major-box" aria-label="Por qué usamos Sol Mayor">
           <h2>Do Mayor vs Sol Mayor</h2>
-          <p>Do Mayor y La menor son las únicas escalas SIN alteraciones.</p>
-          <p>Pero nuestra guitarra está afinada en Mi estándar y no tenemos Do en las cuerdas al aire.</p>
-          <p>Por eso usaremos mucho más la escala de Sol Mayor y Mi menor.</p>
-          <p>Usan las mismas notas pero una da protagonismo a Sol y la otra a Mi.</p>
+          <p>Si afinamos en Mi estándar, no tenemos Do en las cuerdas al aire.</p>
+          <p>Por eso usaremos mucho más la escala de Sol Mayor</p>
+          <p>y su relativo Mi menor. Ambos usan las 6 cuerdas al aire.</p>
+          <p>Una da protagonismo a Sol y la otra a Mi.</p>
           <p>
             La única alteración de <strong>G Mayor</strong> y <strong>E menor</strong> es <strong>F#</strong>.
           </p>

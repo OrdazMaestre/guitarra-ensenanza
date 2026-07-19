@@ -2,8 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+import { FRETBOARD_KEYMAP } from '@/app/lib/fretboardKeymap';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
+import { useMetronome } from '@/app/lib/useMetronome';
+import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -275,14 +278,16 @@ function ScaleWithChordPositions() {
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const voiceIdRef = useRef(-1);
+  const boardVoiceMapRef = useRef(new Map<number, number>());
+  const activeBoardPointerRef = useRef(-1);
   const curPosRef = useRef<{ string: number; fret: number } | null>(null);
-  const isHeldRef = useRef(false);
   const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
-  const cropVoiceIdRef = useRef(-1);
+  const cropVoiceMapRef = useRef(new Map<number, number>());
+  const activeCropPointerRef = useRef(-1);
   const curCropRef = useRef<CropPos | null>(null);
-  const isCropHeldRef = useRef(false);
   const [pressedCrop, setPressedCrop] = useState<CropPos | null>(null);
+  const [volume, setVolume] = useState(1.0);
+  const [kbMode, setKbMode] = useState(false);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -293,7 +298,89 @@ function ScaleWithChordPositions() {
     return () => window.clearTimeout(id);
   }, []);
 
-  function getPos(e: React.PointerEvent<SVGSVGElement>): { string: number; fret: number } | null {
+  const kbKeysHeldRef = useRef(new Map<string, { string: number; fret: number; midi: number }>());
+  const kbStringVoiceRef = useRef(new Map<number, { code: string; voiceId: number }>());
+  const [kbPositions, setKbPositions] = useState<{ string: number; fret: number }[]>([]);
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const metr = useMetronome(volumeRef);
+  useEffect(() => {
+    if (!kbMode) return;
+    function getHighestOnString(stringNum: number) {
+      let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
+      for (const [code, entry] of kbKeysHeldRef.current) {
+        if (entry.string === stringNum && (!best || entry.fret > best.entry.fret)) best = { code, entry };
+      }
+      return best;
+    }
+    function syncPositions() {
+      const pos: { string: number; fret: number }[] = [];
+      for (const [stringNum, { code }] of kbStringVoiceRef.current) {
+        const entry = kbKeysHeldRef.current.get(code);
+        if (entry) pos.push({ string: stringNum, fret: entry.fret });
+      }
+      setKbPositions([...pos]);
+    }
+    async function down(e: KeyboardEvent) {
+      if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
+      const entry = FRETBOARD_KEYMAP[e.code];
+      if (!entry) return;
+      const cur = kbStringVoiceRef.current.get(entry.string);
+      if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      e.preventDefault();
+      kbKeysHeldRef.current.set(e.code, entry);
+      if (!cur) {
+        kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
+        syncPositions();
+        const id = await playNote(entry.midi, false, volumeRef.current);
+        const sv = kbStringVoiceRef.current.get(entry.string);
+        if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
+        else releaseNote(id);
+      } else {
+        const curEntry = kbKeysHeldRef.current.get(cur.code);
+        if (curEntry && entry.fret > curEntry.fret) {
+          kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
+          syncPositions();
+          const id = await switchNote(cur.voiceId, entry.midi, false, volumeRef.current);
+          const sv = kbStringVoiceRef.current.get(entry.string);
+          if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
+          else releaseNote(id);
+        }
+      }
+    }
+    async function up(e: KeyboardEvent) {
+      const entry = kbKeysHeldRef.current.get(e.code);
+      if (!entry) return;
+      kbKeysHeldRef.current.delete(e.code);
+      const cur = kbStringVoiceRef.current.get(entry.string);
+      if (!cur || cur.code !== e.code) return;
+      const next = getHighestOnString(entry.string);
+      if (next) {
+        kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
+        syncPositions();
+        const id = await switchNote(cur.voiceId, next.entry.midi, false, volumeRef.current);
+        const sv = kbStringVoiceRef.current.get(entry.string);
+        if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
+        else releaseNote(id);
+      } else {
+        kbStringVoiceRef.current.delete(entry.string);
+        syncPositions();
+        if (cur.voiceId >= 0) releaseNote(cur.voiceId);
+      }
+    }
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      kbStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
+      kbStringVoiceRef.current.clear();
+      kbKeysHeldRef.current.clear();
+      setKbPositions([]);
+    };
+  }, [kbMode]);
+
+  function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getSeptimaSvgCoords(e, svg);
@@ -312,7 +399,13 @@ function ScaleWithChordPositions() {
       fret = colIndex + 1;
       if (fret > 12) return null;
     }
-    return { string, fret };
+    if (!held) return { string, fret };
+    const EXP = 0.18;
+    const rawSF = (y - boardY) / stringGap;
+    const rawFF = (x - boardX) / fretWidth;
+    const rStr = Math.abs(rawSF - (held.string - 1)) < 0.5 + EXP ? held.string : string;
+    const rFret = held.fret === 0 ? (rawFF < EXP ? 0 : fret) : (Math.abs(rawFF - (held.fret - 0.5)) < 0.5 + EXP ? held.fret : fret);
+    return { string: rStr, fret: rFret };
   }
 
   function getCropPos(e: React.PointerEvent<SVGSVGElement>): CropPos | null {
@@ -359,93 +452,123 @@ function ScaleWithChordPositions() {
     const pos = getPos(e);
     if (pos) {
       svg.setPointerCapture(e.pointerId);
-      isHeldRef.current = true;
+      boardVoiceMapRef.current.set(e.pointerId, -1);
+      activeBoardPointerRef.current = e.pointerId;
       curPosRef.current = pos;
       setPressedPos(pos);
-      const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false);
-      voiceIdRef.current = id;
-      if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
+      const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false, volume);
+      if (boardVoiceMapRef.current.has(e.pointerId)) {
+        boardVoiceMapRef.current.set(e.pointerId, id);
+      } else {
+        releaseNote(id);
+      }
       return;
     }
     const cropPos = getCropPos(e);
     if (!cropPos) return;
     svg.setPointerCapture(e.pointerId);
-    isCropHeldRef.current = true;
+    cropVoiceMapRef.current.set(e.pointerId, -1);
+    activeCropPointerRef.current = e.pointerId;
     curCropRef.current = cropPos;
     setPressedCrop(cropPos);
-    const id = await playNote(OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false);
-    cropVoiceIdRef.current = id;
-    if (!isCropHeldRef.current) { releaseNote(id); cropVoiceIdRef.current = -1; }
+    const id = await playNote(OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false, volume);
+    if (cropVoiceMapRef.current.has(e.pointerId)) {
+      cropVoiceMapRef.current.set(e.pointerId, id);
+    } else {
+      releaseNote(id);
+    }
   }
 
   async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (isHeldRef.current) {
-      const pos = getPos(e);
+    if (boardVoiceMapRef.current.has(e.pointerId) && e.pointerId === activeBoardPointerRef.current) {
+      const pos = getPos(e, curPosRef.current);
       if (!pos) return;
       const cur = curPosRef.current;
       if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
       curPosRef.current = pos;
       setPressedPos(pos);
-      const id = await switchNote(voiceIdRef.current, OPEN_STRING_MIDI[pos.string] + pos.fret, false);
-      voiceIdRef.current = id;
-      if (!isHeldRef.current) { releaseNote(id); voiceIdRef.current = -1; }
-    } else if (isCropHeldRef.current) {
+      const oldId = boardVoiceMapRef.current.get(e.pointerId) ?? -1;
+      const id = await switchNote(oldId, OPEN_STRING_MIDI[pos.string] + pos.fret, false, volume);
+      if (boardVoiceMapRef.current.has(e.pointerId)) {
+        boardVoiceMapRef.current.set(e.pointerId, id);
+      } else {
+        releaseNote(id);
+      }
+    } else if (cropVoiceMapRef.current.has(e.pointerId) && e.pointerId === activeCropPointerRef.current) {
       const cropPos = getCropPos(e);
       if (!cropPos) return;
       const cur = curCropRef.current;
       if (cur && cur.chordName === cropPos.chordName && cur.string === cropPos.string && cur.fret === cropPos.fret) return;
       curCropRef.current = cropPos;
       setPressedCrop(cropPos);
-      const id = await switchNote(cropVoiceIdRef.current, OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false);
-      cropVoiceIdRef.current = id;
-      if (!isCropHeldRef.current) { releaseNote(id); cropVoiceIdRef.current = -1; }
+      const oldId = cropVoiceMapRef.current.get(e.pointerId) ?? -1;
+      const id = await switchNote(oldId, OPEN_STRING_MIDI[cropPos.string] + cropPos.fret, false, volume);
+      if (cropVoiceMapRef.current.has(e.pointerId)) {
+        cropVoiceMapRef.current.set(e.pointerId, id);
+      } else {
+        releaseNote(id);
+      }
     }
   }
 
-  function onPointerUp() {
-    if (isHeldRef.current) {
-      isHeldRef.current = false;
-      curPosRef.current = null;
-      setPressedPos(null);
-      if (voiceIdRef.current >= 0) { releaseNote(voiceIdRef.current); voiceIdRef.current = -1; }
+  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (boardVoiceMapRef.current.has(e.pointerId)) {
+      const voiceId = boardVoiceMapRef.current.get(e.pointerId) ?? -1;
+      boardVoiceMapRef.current.delete(e.pointerId);
+      if (voiceId >= 0) releaseNote(voiceId);
+      if (e.pointerId === activeBoardPointerRef.current) {
+        activeBoardPointerRef.current = -1;
+        curPosRef.current = null;
+        setPressedPos(null);
+      }
     }
-    if (isCropHeldRef.current) {
-      isCropHeldRef.current = false;
-      curCropRef.current = null;
-      setPressedCrop(null);
-      if (cropVoiceIdRef.current >= 0) { releaseNote(cropVoiceIdRef.current); cropVoiceIdRef.current = -1; }
+    if (cropVoiceMapRef.current.has(e.pointerId)) {
+      const voiceId = cropVoiceMapRef.current.get(e.pointerId) ?? -1;
+      cropVoiceMapRef.current.delete(e.pointerId);
+      if (voiceId >= 0) releaseNote(voiceId);
+      if (e.pointerId === activeCropPointerRef.current) {
+        activeCropPointerRef.current = -1;
+        curCropRef.current = null;
+        setPressedCrop(null);
+      }
     }
   }
 
   function interactionOverlay() {
-    if (!pressedPos) return null;
-    const { string, fret } = pressedPos;
-    const markerX = fretX(fret);
-    const sy = stringY(string);
-    const noteIsMarked = scaleNotes.some(n => n.string === string && n.fret === fret);
+    const posList = kbMode ? kbPositions : (pressedPos ? [pressedPos] : []);
+    if (posList.length === 0) return null;
     return (
-      <g
-        pointerEvents="none"
-        style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
-      >
-        <line
-          x1={markerX}
-          x2={boardX + boardWidth}
-          y1={sy}
-          y2={sy}
-          stroke="#fbbf24"
-          strokeLinecap="round"
-          strokeWidth="3"
-          opacity="0.85"
-        />
-        <circle
-          cx={markerX}
-          cy={sy}
-          fill="#fbbf24"
-          opacity={noteIsMarked ? 0.5 : 0.9}
-          r="15"
-        />
-      </g>
+      <>
+        {posList.map(({ string, fret }) => {
+          const markerX = fretX(fret);
+          const sy = stringY(string);
+          const noteIsMarked = scaleNotes.some(n => n.string === string && n.fret === fret);
+          return (
+            <g key={`ko-${string}-${fret}`}
+              pointerEvents="none"
+              style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
+            >
+              <line
+                x1={markerX}
+                x2={boardX + boardWidth}
+                y1={sy}
+                y2={sy}
+                stroke="#fbbf24"
+                strokeLinecap="round"
+                strokeWidth="3"
+                opacity="0.85"
+              />
+              <circle
+                cx={markerX}
+                cy={sy}
+                fill="#fbbf24"
+                opacity={noteIsMarked ? 0.5 : 0.9}
+                r="15"
+              />
+            </g>
+          );
+        })}
+      </>
     );
   }
 
@@ -620,6 +743,28 @@ function ScaleWithChordPositions() {
         {interactionOverlay()}
         {cropOverlay()}
       </svg>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', paddingTop: '6px' }}>
+        <button
+          onClick={() => setKbMode(m => !m)}
+          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+        >
+          {kbMode ? 'KB: ON' : 'KB'}
+        </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
+            Vol {Math.round(volume * 100)}
+          </span>
+          <input
+            aria-label="Volumen de la guitarra"
+            max="1" min="0" step="0.05"
+            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+            type="range"
+            value={volume}
+            onChange={(e) => setVolume(Number(e.target.value))}
+          />
+        </label>
+        <MetronomeControls {...metr} />
+      </div>
     </figure>
   );
 }
