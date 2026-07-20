@@ -62,3 +62,15 @@ export const FRETBOARD_KEYMAP: Record<string, FretKeyEntry> = {
   'Equal':    { string: 3, fret: 11, midi: 66 },
   'Backspace':{ string: 3, fret: 12, midi: 67 },
 };
+
+// Returns true when two held keys share the same keyboard-matrix column
+// (same fret offset on different strings), meaning a 3rd key may be blocked
+// by hardware ghosting on standard keyboards.
+export function hasKeyboardGhosting(held: Map<string, FretKeyEntry>): boolean {
+  const seen = new Set<number>();
+  for (const entry of held.values()) {
+    if (seen.has(entry.fret)) return true;
+    seen.add(entry.fret);
+  }
+  return false;
+}

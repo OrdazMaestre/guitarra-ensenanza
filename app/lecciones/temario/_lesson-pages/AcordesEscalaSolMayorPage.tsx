@@ -3,13 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 
-// Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
 };
@@ -39,10 +38,7 @@ const stringTunings = [
 ];
 
 type ChordMap = {
-  highlightedNotes: Array<{
-    fret: number;
-    string: number;
-  }>;
+  highlightedNotes: Array<{ fret: number; string: number }>;
   roman: string;
   title: string;
 };
@@ -50,85 +46,52 @@ type ChordMap = {
 const chordMaps: ChordMap[] = [
   {
     highlightedNotes: [
-      { fret: 3, string: 6 },
-      { fret: 2, string: 5 },
-      { fret: 0, string: 4 },
-      { fret: 0, string: 3 },
-      { fret: 0, string: 2 },
-      { fret: 3, string: 1 },
+      { fret: 3, string: 6 }, { fret: 2, string: 5 }, { fret: 0, string: 4 },
+      { fret: 0, string: 3 }, { fret: 0, string: 2 }, { fret: 3, string: 1 },
     ],
-    roman: 'I',
-    title: 'G',
+    roman: 'I', title: 'G',
   },
   {
     highlightedNotes: [
-      { fret: 0, string: 1 },
-      { fret: 1, string: 2 },
-      { fret: 2, string: 3 },
-      { fret: 2, string: 4 },
-      { fret: 0, string: 5 },
-      { fret: 0, string: 6 },
+      { fret: 0, string: 1 }, { fret: 1, string: 2 }, { fret: 2, string: 3 },
+      { fret: 2, string: 4 }, { fret: 0, string: 5 }, { fret: 0, string: 6 },
     ],
-    roman: 'ii',
-    title: 'Am',
+    roman: 'ii', title: 'Am',
   },
   {
     highlightedNotes: [
-      { fret: 2, string: 1 },
-      { fret: 3, string: 2 },
-      { fret: 4, string: 3 },
-      { fret: 4, string: 4 },
-      { fret: 2, string: 5 },
-      { fret: 2, string: 6 },
+      { fret: 2, string: 1 }, { fret: 3, string: 2 }, { fret: 4, string: 3 },
+      { fret: 4, string: 4 }, { fret: 2, string: 5 }, { fret: 2, string: 6 },
     ],
-    roman: 'iii',
-    title: 'Bm',
+    roman: 'iii', title: 'Bm',
   },
   {
     highlightedNotes: [
-      { fret: 0, string: 1 },
-      { fret: 1, string: 2 },
-      { fret: 0, string: 3 },
-      { fret: 2, string: 4 },
-      { fret: 3, string: 5 },
-      { fret: 0, string: 6 },
+      { fret: 0, string: 1 }, { fret: 1, string: 2 }, { fret: 0, string: 3 },
+      { fret: 2, string: 4 }, { fret: 3, string: 5 }, { fret: 0, string: 6 },
     ],
-    roman: 'IV',
-    title: 'C',
+    roman: 'IV', title: 'C',
   },
   {
     highlightedNotes: [
-      { fret: 2, string: 1 },
-      { fret: 3, string: 2 },
-      { fret: 2, string: 3 },
-      { fret: 0, string: 4 },
-      { fret: 0, string: 5 },
-      { fret: 2, string: 6 },
+      { fret: 2, string: 1 }, { fret: 3, string: 2 }, { fret: 2, string: 3 },
+      { fret: 0, string: 4 }, { fret: 0, string: 5 }, { fret: 2, string: 6 },
     ],
-    roman: 'V',
-    title: 'D',
+    roman: 'V', title: 'D',
   },
   {
     highlightedNotes: [
-      { fret: 0, string: 6 },
-      { fret: 2, string: 5 },
-      { fret: 2, string: 4 },
-      { fret: 0, string: 3 },
-      { fret: 0, string: 2 },
-      { fret: 0, string: 1 },
+      { fret: 0, string: 6 }, { fret: 2, string: 5 }, { fret: 2, string: 4 },
+      { fret: 0, string: 3 }, { fret: 0, string: 2 }, { fret: 0, string: 1 },
     ],
-    roman: 'vi',
-    title: 'Em',
+    roman: 'vi', title: 'Em',
   },
   {
     highlightedNotes: [
-      { fret: 2, string: 3 },
-      { fret: 4, string: 4 },
-      { fret: 3, string: 5 },
-      { fret: 2, string: 6 },
+      { fret: 2, string: 3 }, { fret: 4, string: 4 },
+      { fret: 3, string: 5 }, { fret: 2, string: 6 },
     ],
-    roman: 'vii disminuido',
-    title: 'F# disminuido',
+    roman: 'vii disminuido', title: 'F# disminuido',
   },
 ];
 
@@ -149,7 +112,14 @@ function noteNameForFret(open: number, fret: number) {
   return chromaticNotes[(open + fret) % chromaticNotes.length];
 }
 
-function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
+type FretboardProps = {
+  chord: ChordMap;
+  kbMode: boolean;
+  kbPositions: { string: number; fret: number }[];
+  volumeRef: React.RefObject<number>;
+};
+
+function ChordScaleFretboard({ chord, kbMode, kbPositions, volumeRef }: FretboardProps) {
   const boardX = 44;
   const boardY = 30;
   const fretWidth = 54;
@@ -164,116 +134,23 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
   const notes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 6 }, (_, fret) => {
       const label = noteNameForFret(string.open, fret);
-
       return gMajorNotes.includes(label)
         ? {
             fret,
-            inChord: chord.highlightedNotes.some((highlightedNote) => highlightedNote.fret === fret && highlightedNote.string === stringIndex + 1),
+            inChord: chord.highlightedNotes.some(
+              (n) => n.fret === fret && n.string === stringIndex + 1,
+            ),
             label,
             string: stringIndex + 1,
           }
         : null;
-    }).filter((note): note is { fret: number; inChord: boolean; label: string; string: number } => note !== null),
+    }).filter((n): n is { fret: number; inChord: boolean; label: string; string: number } => n !== null),
   );
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const voiceMapRef = useRef(new Map<number, number>());
-  const activePointerRef = useRef(-1);
-  const curPosRef = useRef<{ string: number; fret: number } | null>(null);
-  const [pressedPos, setPressedPos] = useState<{ string: number; fret: number } | null>(null);
-  const [volume, setVolume] = useState(1.0);
-  const [kbMode, setKbMode] = useState(false);
-
-  useEffect(() => {
-    if (typeof requestIdleCallback !== 'undefined') {
-      const id = requestIdleCallback(() => preloadSamples());
-      return () => cancelIdleCallback(id);
-    }
-    const id = window.setTimeout(() => preloadSamples(), 300);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  const kbKeysHeldRef = useRef(new Map<string, { string: number; fret: number; midi: number }>());
-  const kbStringVoiceRef = useRef(new Map<number, { code: string; voiceId: number }>());
-  const [kbPositions, setKbPositions] = useState<{ string: number; fret: number }[]>([]);
-  const volumeRef = useRef(volume);
-  useEffect(() => { volumeRef.current = volume; }, [volume]);
-  const metr = useMetronome(volumeRef);
-  useEffect(() => {
-    if (!kbMode) return;
-    function getHighestOnString(stringNum: number) {
-      let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
-      for (const [code, entry] of kbKeysHeldRef.current) {
-        if (entry.string === stringNum && (!best || entry.fret > best.entry.fret)) best = { code, entry };
-      }
-      return best;
-    }
-    function syncPositions() {
-      const pos: { string: number; fret: number }[] = [];
-      for (const [stringNum, { code }] of kbStringVoiceRef.current) {
-        const entry = kbKeysHeldRef.current.get(code);
-        if (entry) pos.push({ string: stringNum, fret: entry.fret });
-      }
-      setKbPositions([...pos]);
-    }
-    async function down(e: KeyboardEvent) {
-      if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
-      const entry = FRETBOARD_KEYMAP[e.code];
-      if (!entry) return;
-      const cur = kbStringVoiceRef.current.get(entry.string);
-      if (!cur && kbStringVoiceRef.current.size >= 3) return;
-      e.preventDefault();
-      kbKeysHeldRef.current.set(e.code, entry);
-      if (!cur) {
-        kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
-        syncPositions();
-        const id = await playNote(entry.midi, false, volumeRef.current);
-        const sv = kbStringVoiceRef.current.get(entry.string);
-        if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
-        else releaseNote(id);
-      } else {
-        const curEntry = kbKeysHeldRef.current.get(cur.code);
-        if (curEntry && entry.fret > curEntry.fret) {
-          kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
-          syncPositions();
-          const id = await switchNote(cur.voiceId, entry.midi, false, volumeRef.current);
-          const sv = kbStringVoiceRef.current.get(entry.string);
-          if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
-          else releaseNote(id);
-        }
-      }
-    }
-    async function up(e: KeyboardEvent) {
-      const entry = kbKeysHeldRef.current.get(e.code);
-      if (!entry) return;
-      kbKeysHeldRef.current.delete(e.code);
-      const cur = kbStringVoiceRef.current.get(entry.string);
-      if (!cur || cur.code !== e.code) return;
-      const next = getHighestOnString(entry.string);
-      if (next) {
-        kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
-        syncPositions();
-        const id = await switchNote(cur.voiceId, next.entry.midi, false, volumeRef.current);
-        const sv = kbStringVoiceRef.current.get(entry.string);
-        if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
-        else releaseNote(id);
-      } else {
-        kbStringVoiceRef.current.delete(entry.string);
-        syncPositions();
-        if (cur.voiceId >= 0) releaseNote(cur.voiceId);
-      }
-    }
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-      kbStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
-      kbStringVoiceRef.current.clear();
-      kbKeysHeldRef.current.clear();
-      setKbPositions([]);
-    };
-  }, [kbMode]);
+  const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
+  const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
+  const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -302,54 +179,151 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
     return { string: rStr, fret: rFret };
   }
 
+  useEffect(() => () => {
+    ptStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
+    ptStringVoiceRef.current.clear();
+    ptHeldRef.current.clear();
+  }, []);
+  function syncPt() {
+    const pos: { string: number; fret: number }[] = [];
+    for (const [strNum, { pid }] of ptStringVoiceRef.current) {
+      const entry = ptHeldRef.current.get(pid);
+      if (entry) pos.push({ string: strNum, fret: entry.fret });
+    }
+    setPtPositions([...pos]);
+  }
+  function getHighestOnPtString(stringNum: number) {
+    let best: { pid: number; midi: number } | null = null;
+    for (const [pid, entry] of ptHeldRef.current) {
+      if (entry.string === stringNum) {
+        const bestEntry = best ? ptHeldRef.current.get(best.pid) : null;
+        if (!bestEntry || entry.fret > bestEntry.fret) best = { pid, midi: entry.midi };
+      }
+    }
+    return best;
+  }
   async function onPointerDown(e: React.PointerEvent<SVGSVGElement>) {
     const pos = getPos(e);
     if (!pos) return;
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
-    voiceMapRef.current.set(e.pointerId, -1);
-    activePointerRef.current = e.pointerId;
-    curPosRef.current = pos;
-    setPressedPos(pos);
-    const id = await playNote(OPEN_STRING_MIDI[pos.string] + pos.fret, false, volume);
-    if (voiceMapRef.current.has(e.pointerId)) {
-      voiceMapRef.current.set(e.pointerId, id);
+    const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
+    const cur = ptStringVoiceRef.current.get(pos.string);
+    if (!cur) {
+      if (ptStringVoiceRef.current.size >= 3) return;
+      ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
+      ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
+      syncPt();
+      const id = await playNote(midi, false, volumeRef.current);
+      const sv = ptStringVoiceRef.current.get(pos.string);
+      if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+      else releaseNote(id);
     } else {
-      releaseNote(id);
+      ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
+      const curEntry = ptHeldRef.current.get(cur.pid);
+      if (curEntry && pos.fret > curEntry.fret) {
+        ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
+        syncPt();
+        const id = await switchNote(cur.voiceId, midi, false, volumeRef.current);
+        const sv = ptStringVoiceRef.current.get(pos.string);
+        if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+        else releaseNote(id);
+      }
     }
   }
-
   async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (e.pointerId !== activePointerRef.current || !voiceMapRef.current.has(e.pointerId)) return;
-    const pos = getPos(e, curPosRef.current);
+    const curEntry = ptHeldRef.current.get(e.pointerId);
+    if (!curEntry) return;
+    const pos = getPos(e, { string: curEntry.string, fret: curEntry.fret });
     if (!pos) return;
-    const cur = curPosRef.current;
-    if (cur && cur.string === pos.string && cur.fret === pos.fret) return;
-    curPosRef.current = pos;
-    setPressedPos(pos);
-    const oldId = voiceMapRef.current.get(e.pointerId) ?? -1;
-    const id = await switchNote(oldId, OPEN_STRING_MIDI[pos.string] + pos.fret, false, volume);
-    if (voiceMapRef.current.has(e.pointerId)) {
-      voiceMapRef.current.set(e.pointerId, id);
+    if (pos.string === curEntry.string && pos.fret === curEntry.fret) return;
+    const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
+    if (pos.string === curEntry.string) {
+      ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
+      const sv = ptStringVoiceRef.current.get(pos.string);
+      if (sv?.pid === e.pointerId) {
+        syncPt();
+        const id = await switchNote(sv.voiceId, midi, false, volumeRef.current);
+        const sv2 = ptStringVoiceRef.current.get(pos.string);
+        if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+        else releaseNote(id);
+      } else if (sv) {
+        const activeEntry = ptHeldRef.current.get(sv.pid);
+        if (activeEntry && pos.fret > activeEntry.fret) {
+          ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
+          syncPt();
+          const id = await switchNote(sv.voiceId, midi, false, volumeRef.current);
+          const sv2 = ptStringVoiceRef.current.get(pos.string);
+          if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+          else releaseNote(id);
+        }
+      }
     } else {
-      releaseNote(id);
+      const oldStr = curEntry.string;
+      ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
+      const oldVoice = ptStringVoiceRef.current.get(oldStr);
+      if (oldVoice?.pid === e.pointerId) {
+        const next = getHighestOnPtString(oldStr);
+        if (next) {
+          ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: -1 });
+          const id = await switchNote(oldVoice.voiceId, next.midi, false, volumeRef.current);
+          const sv = ptStringVoiceRef.current.get(oldStr);
+          if (sv?.pid === next.pid) ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: id });
+          else releaseNote(id);
+        } else {
+          ptStringVoiceRef.current.delete(oldStr);
+          if (oldVoice.voiceId >= 0) releaseNote(oldVoice.voiceId);
+        }
+      }
+      const newVoice = ptStringVoiceRef.current.get(pos.string);
+      if (!newVoice && ptStringVoiceRef.current.size < 3) {
+        ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
+        syncPt();
+        const id = await playNote(midi, false, volumeRef.current);
+        const sv = ptStringVoiceRef.current.get(pos.string);
+        if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+        else releaseNote(id);
+      } else if (newVoice) {
+        const activeEntry = ptHeldRef.current.get(newVoice.pid);
+        if (activeEntry && pos.fret > activeEntry.fret) {
+          ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
+          syncPt();
+          const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current);
+          const sv = ptStringVoiceRef.current.get(pos.string);
+          if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
+          else releaseNote(id);
+        } else {
+          syncPt();
+        }
+      } else {
+        syncPt();
+      }
     }
   }
-
-  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    const voiceId = voiceMapRef.current.get(e.pointerId) ?? -1;
-    voiceMapRef.current.delete(e.pointerId);
-    if (voiceId >= 0) releaseNote(voiceId);
-    if (e.pointerId === activePointerRef.current) {
-      activePointerRef.current = -1;
-      curPosRef.current = null;
-      setPressedPos(null);
+  async function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    const curEntry = ptHeldRef.current.get(e.pointerId);
+    if (!curEntry) return;
+    ptHeldRef.current.delete(e.pointerId);
+    const cur = ptStringVoiceRef.current.get(curEntry.string);
+    if (!cur || cur.pid !== e.pointerId) { syncPt(); return; }
+    const next = getHighestOnPtString(curEntry.string);
+    if (next) {
+      ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: -1 });
+      syncPt();
+      const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current);
+      const sv = ptStringVoiceRef.current.get(curEntry.string);
+      if (sv?.pid === next.pid) ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: id });
+      else releaseNote(id);
+    } else {
+      ptStringVoiceRef.current.delete(curEntry.string);
+      syncPt();
+      if (cur.voiceId >= 0) releaseNote(cur.voiceId);
     }
   }
 
   function interactionOverlay() {
-    const posList = kbMode ? kbPositions : (pressedPos ? [pressedPos] : []);
+    const posList = kbMode ? kbPositions : ptPositions;
     if (posList.length === 0) return null;
     return (
       <>
@@ -363,21 +337,12 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
               style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
             >
               <line
-                x1={markerX}
-                x2={boardX + boardWidth}
-                y1={sy}
-                y2={sy}
-                stroke="#fbbf24"
-                strokeLinecap="round"
-                strokeWidth="3"
-                opacity="0.85"
+                x1={markerX} x2={boardX + boardWidth} y1={sy} y2={sy}
+                stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
               />
               <circle
-                cx={markerX}
-                cy={sy}
-                fill="#fbbf24"
-                opacity={noteIsMarked ? 0.5 : 0.9}
-                r="16"
+                cx={markerX} cy={sy}
+                fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="16"
               />
             </g>
           );
@@ -407,9 +372,7 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
         <rect className="board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
-            <text className="string-label" x="18" y={stringY(index + 1) + 5}>
-              {string.label}
-            </text>
+            <text className="string-label" x="18" y={stringY(index + 1) + 5}>{string.label}</text>
             <line className="string-line" x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
           </g>
         ))}
@@ -417,10 +380,8 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
           <line
             className={fret === 0 ? 'nut-line' : 'fret-line'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth}
-            x2={boardX + fret * fretWidth}
-            y1={boardY}
-            y2={boardY + boardHeight}
+            x1={boardX + fret * fretWidth} x2={boardX + fret * fretWidth}
+            y1={boardY} y2={boardY + boardHeight}
           />
         ))}
         <circle className="guide-dot" cx={boardX + 2.5 * fretWidth} cy={stringY(3.5)} r="7" />
@@ -429,8 +390,7 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
           <g key={`${note.string}-${note.fret}-${note.label}`}>
             <circle
               className={`note-dot${note.inChord ? ' note-chord' : ''}`}
-              cx={fretX(note.fret)}
-              cy={stringY(note.string)}
+              cx={fretX(note.fret)} cy={stringY(note.string)}
               r={note.inChord ? 16 : 13}
             />
             <text className="note-label" x={fretX(note.fret)} y={stringY(note.string) + 5}>
@@ -440,33 +400,112 @@ function ChordScaleFretboard({ chord }: { chord: ChordMap }) {
         ))}
         {interactionOverlay()}
       </svg>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', paddingTop: '6px' }}>
-        <button
-          onClick={() => setKbMode(m => !m)}
-          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
-        >
-          {kbMode ? 'KB: ON' : 'KB'}
-        </button>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
-            Vol {Math.round(volume * 100)}
-          </span>
-          <input
-            aria-label="Volumen de la guitarra"
-            max="1" min="0" step="0.05"
-            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
-            type="range"
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-          />
-        </label>
-        <MetronomeControls {...metr} />
-      </div>
     </figure>
   );
 }
 
 export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPageProps) {
+  const [volume, setVolume] = useState(1.0);
+  const [kbMode, setKbMode] = useState(false);
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const metr = useMetronome(volumeRef);
+
+  useEffect(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(() => preloadSamples());
+      return () => cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(() => preloadSamples(), 300);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  const kbKeysHeldRef = useRef(new Map<string, { string: number; fret: number; midi: number }>());
+  const kbStringVoiceRef = useRef(new Map<number, { code: string; voiceId: number }>());
+  const [kbPositions, setKbPositions] = useState<{ string: number; fret: number }[]>([]);
+  const [kbGhostWarn, setKbGhostWarn] = useState(false);
+
+  useEffect(() => {
+    if (!kbMode) return;
+    function getHighestOnString(stringNum: number) {
+      let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
+      for (const [code, entry] of kbKeysHeldRef.current) {
+        if (entry.string === stringNum && (!best || entry.fret > best.entry.fret)) best = { code, entry };
+      }
+      return best;
+    }
+    function syncPositions() {
+      const pos: { string: number; fret: number }[] = [];
+      for (const [stringNum, { code }] of kbStringVoiceRef.current) {
+        const entry = kbKeysHeldRef.current.get(code);
+        if (entry) pos.push({ string: stringNum, fret: entry.fret });
+      }
+      setKbPositions([...pos]);
+      if (kbStringVoiceRef.current.size >= 3) setKbGhostWarn(false);
+    }
+    async function down(e: KeyboardEvent) {
+      e.preventDefault();
+      if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
+      const entry = FRETBOARD_KEYMAP[e.code];
+      if (!entry) return;
+      const cur = kbStringVoiceRef.current.get(entry.string);
+      if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      kbKeysHeldRef.current.set(e.code, entry);
+      setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
+      if (!cur) {
+        kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
+        syncPositions();
+        const id = await playNote(entry.midi, false, volumeRef.current);
+        const sv = kbStringVoiceRef.current.get(entry.string);
+        if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
+        else releaseNote(id);
+      } else {
+        const curEntry = kbKeysHeldRef.current.get(cur.code);
+        if (curEntry && entry.fret > curEntry.fret) {
+          kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
+          syncPositions();
+          const id = await switchNote(cur.voiceId, entry.midi, false, volumeRef.current);
+          const sv = kbStringVoiceRef.current.get(entry.string);
+          if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
+          else releaseNote(id);
+        }
+      }
+    }
+    async function up(e: KeyboardEvent) {
+      e.preventDefault();
+      const entry = kbKeysHeldRef.current.get(e.code);
+      if (!entry) return;
+      kbKeysHeldRef.current.delete(e.code);
+      setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
+      const cur = kbStringVoiceRef.current.get(entry.string);
+      if (!cur || cur.code !== e.code) return;
+      const next = getHighestOnString(entry.string);
+      if (next) {
+        kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
+        syncPositions();
+        const id = await switchNote(cur.voiceId, next.entry.midi, false, volumeRef.current);
+        const sv = kbStringVoiceRef.current.get(entry.string);
+        if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
+        else releaseNote(id);
+      } else {
+        kbStringVoiceRef.current.delete(entry.string);
+        syncPositions();
+        if (cur.voiceId >= 0) releaseNote(cur.voiceId);
+      }
+    }
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      kbStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
+      kbStringVoiceRef.current.clear();
+      kbKeysHeldRef.current.clear();
+      setKbPositions([]);
+      setKbGhostWarn(false);
+    };
+  }, [kbMode]);
+
   return (
     <main className="scale-chords-page">
       <article className="scale-chords-content">
@@ -494,9 +533,43 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
 
           <div className="chord-grid">
             {chordMaps.map((chord) => (
-              <ChordScaleFretboard chord={chord} key={chord.title} />
+              <ChordScaleFretboard
+                key={chord.title}
+                chord={chord}
+                kbMode={kbMode}
+                kbPositions={kbPositions}
+                volumeRef={volumeRef}
+              />
             ))}
           </div>
+
+          <div style={{ overflowX: 'auto' }}><div className="shared-controls" style={{ width: 'max-content', marginLeft: 'auto' }}>
+            <button
+              onClick={() => setKbMode(m => !m)}
+              style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+            >
+              {kbMode ? 'KB: ON' : 'KB'}
+            </button>
+            {kbMode && kbGhostWarn && (
+              <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                ⚠ Necesitas teclado gaming para tocar ciertos acordes
+              </span>
+            )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
+                Vol {Math.round(volume * 100)}
+              </span>
+              <input
+                aria-label="Volumen de la guitarra"
+                max="1" min="0" step="0.05"
+                style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+                type="range"
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+              />
+            </label>
+            <MetronomeControls {...metr} />
+          </div></div>
         </section>
 
         <section className="exercise-section" aria-labelledby="exercise-title">
@@ -692,6 +765,12 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
           min-width: 0;
         }
 
+        .shared-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
         .chord-map {
           display: grid;
           gap: 10px;
@@ -730,62 +809,16 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
           width: 100%;
         }
 
-        .board-bg {
-          fill: #27313d;
-        }
-
-        .string-label {
-          fill: #080808;
-          font-size: 15px;
-          font-weight: 950;
-          text-anchor: middle;
-        }
-
-        .string-line {
-          stroke: #9ca3af;
-          stroke-width: 3;
-        }
-
-        .fret-line {
-          stroke: #d1d5db;
-          stroke-width: 4;
-        }
-
-        .nut-line {
-          stroke: #e5e7eb;
-          stroke-width: 8;
-        }
-
-        .guide-dot {
-          fill: #cbd5e1;
-          opacity: 0.82;
-        }
-
-        .roman-fret {
-          fill: #080808;
-          font-size: 15px;
-          font-weight: 950;
-          text-anchor: middle;
-        }
-
-        .note-dot {
-          fill: #f8fafc;
-          stroke: #a1a1aa;
-          stroke-width: 3;
-        }
-
-        .note-chord {
-          fill: #f6c453;
-          stroke: #9a6b00;
-          stroke-width: 4;
-        }
-
-        .note-label {
-          fill: #080808;
-          font-size: 16px;
-          font-weight: 950;
-          text-anchor: middle;
-        }
+        .board-bg { fill: #27313d; }
+        .string-label { fill: #080808; font-size: 15px; font-weight: 950; text-anchor: middle; }
+        .string-line { stroke: #9ca3af; stroke-width: 3; }
+        .fret-line { stroke: #d1d5db; stroke-width: 4; }
+        .nut-line { stroke: #e5e7eb; stroke-width: 8; }
+        .guide-dot { fill: #cbd5e1; opacity: 0.82; }
+        .roman-fret { fill: #080808; font-size: 15px; font-weight: 950; text-anchor: middle; }
+        .note-dot { fill: #f8fafc; stroke: #a1a1aa; stroke-width: 3; }
+        .note-chord { fill: #f6c453; stroke: #9a6b00; stroke-width: 4; }
+        .note-label { fill: #080808; font-size: 16px; font-weight: 950; text-anchor: middle; }
 
         @media (max-width: 760px) {
           .scale-chords-header,

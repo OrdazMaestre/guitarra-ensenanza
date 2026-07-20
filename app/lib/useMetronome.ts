@@ -27,6 +27,7 @@ export function useMetronome(volumeRef: MutableRefObject<number>): MetronomeAPI 
 
   const bpmRef = useRef(bpm);
   const subdivRef = useRef<MetronomeSubdivision>('quarter');
+  const clickIndexRef = useRef(0);
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
 
@@ -34,11 +35,25 @@ export function useMetronome(volumeRef: MutableRefObject<number>): MetronomeAPI 
     if (!on) return;
     const LOOKAHEAD = 0.1;
     let nextClickTime = getAudioCurrentTime() + 0.05;
+    clickIndexRef.current = 0;
     const id = setInterval(() => {
       const now = getAudioCurrentTime();
       const secsPerClick = (60 / bpmRef.current) * SUBDIV_FACTORS[subdivRef.current];
       while (nextClickTime < now + LOOKAHEAD) {
-        if (nextClickTime >= now - 0.01) playMetronomeClick(nextClickTime, volumeRef.current);
+        if (nextClickTime >= now - 0.01) {
+          const idx = clickIndexRef.current;
+          const sub = subdivRef.current;
+          let type: 'snare' | 'kick' | 'cymbal' = 'snare';
+          if (sub === 'eighth') {
+            type = idx % 2 === 0 ? 'snare' : 'kick';
+          } else if (sub === 'sixteenth') {
+            const pos = idx % 4;
+            if (pos === 1 || pos === 3) type = 'cymbal';
+            else if (pos === 2) type = 'kick';
+          }
+          playMetronomeClick(nextClickTime, volumeRef.current, type);
+        }
+        clickIndexRef.current++;
         nextClickTime += secsPerClick;
       }
     }, 25);

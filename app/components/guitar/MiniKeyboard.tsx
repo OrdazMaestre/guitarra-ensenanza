@@ -107,10 +107,10 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   useEffect(() => {
     if (!kbMode) return;
     function down(e: KeyboardEvent) {
+      e.preventDefault();
       if (e.repeat || kbVoiceMapRef.current.has(e.code)) return;
       const midi = KB_KEYMAP[e.code];
       if (midi === undefined) return;
-      e.preventDefault();
       kbVoiceMapRef.current.set(e.code, -1);
       if (midi >= 60 && midi <= 72) setPressedMidi(midi);
       playNote(midi, true, volumeRef.current).then(id => {
@@ -119,6 +119,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       });
     }
     function up(e: KeyboardEvent) {
+      e.preventDefault();
       const id = kbVoiceMapRef.current.get(e.code) ?? -1;
       kbVoiceMapRef.current.delete(e.code);
       if (id >= 0) releaseNote(id);

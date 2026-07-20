@@ -194,38 +194,86 @@ export function getAudioCurrentTime(): number {
   return ctx ? ctx.currentTime : 0;
 }
 
-export function playMetronomeClick(scheduledAt: number, volume: number): void {
+export function playMetronomeClick(scheduledAt: number, volume: number, type: 'snare' | 'kick' | 'cymbal' = 'snare'): void {
   const context = getCtx();
   const sr = context.sampleRate;
 
-  const noiseLen = Math.floor(sr * 0.045);
-  const noiseBuf = context.createBuffer(1, noiseLen, sr);
-  const nd = noiseBuf.getChannelData(0);
-  for (let i = 0; i < noiseLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen) ** 2.4;
-  const ns = context.createBufferSource();
-  ns.buffer = noiseBuf;
-  const bp = context.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1850; bp.Q.value = 0.75;
-  const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420; hp.Q.value = 0.7;
-  const ng = context.createGain();
-  ng.gain.setValueAtTime(0.0001, scheduledAt);
-  ng.gain.linearRampToValueAtTime(volume * 0.18, scheduledAt + 0.002);
-  ng.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.045);
-  ns.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(getMaster(context));
-  ns.start(scheduledAt);
+  if (type === 'snare') {
+    const noiseLen = Math.floor(sr * 0.045);
+    const noiseBuf = context.createBuffer(1, noiseLen, sr);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen) ** 2.4;
+    const ns = context.createBufferSource();
+    ns.buffer = noiseBuf;
+    const bp = context.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1850; bp.Q.value = 0.75;
+    const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420; hp.Q.value = 0.7;
+    const ng = context.createGain();
+    ng.gain.setValueAtTime(0.0001, scheduledAt);
+    ng.gain.linearRampToValueAtTime(volume * 0.18, scheduledAt + 0.002);
+    ng.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.045);
+    ns.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(getMaster(context));
+    ns.start(scheduledAt);
 
-  const bodyLen = Math.floor(sr * 0.055);
-  const bodyBuf = context.createBuffer(1, bodyLen, sr);
-  const bd = bodyBuf.getChannelData(0);
-  for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.8;
-  const bs = context.createBufferSource();
-  bs.buffer = bodyBuf;
-  const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 0.6;
-  const bg = context.createGain();
-  bg.gain.setValueAtTime(0.0001, scheduledAt);
-  bg.gain.linearRampToValueAtTime(volume * 0.075, scheduledAt + 0.003);
-  bg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.055);
-  bs.connect(lp); lp.connect(bg); bg.connect(getMaster(context));
-  bs.start(scheduledAt);
+    const bodyLen = Math.floor(sr * 0.055);
+    const bodyBuf = context.createBuffer(1, bodyLen, sr);
+    const bd = bodyBuf.getChannelData(0);
+    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.8;
+    const bs = context.createBufferSource();
+    bs.buffer = bodyBuf;
+    const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 0.6;
+    const bg = context.createGain();
+    bg.gain.setValueAtTime(0.0001, scheduledAt);
+    bg.gain.linearRampToValueAtTime(volume * 0.075, scheduledAt + 0.003);
+    bg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.055);
+    bs.connect(lp); lp.connect(bg); bg.connect(getMaster(context));
+    bs.start(scheduledAt);
+
+  } else if (type === 'kick') {
+    // Sine pitch-drop (220 → 80 Hz) — midrange thud, no sub-bass
+    const osc = context.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(220, scheduledAt);
+    osc.frequency.exponentialRampToValueAtTime(110, scheduledAt + 0.05);
+    const ohp = context.createBiquadFilter(); ohp.type = 'highpass'; ohp.frequency.value = 75; ohp.Q.value = 0.5;
+    const og = context.createGain();
+    og.gain.setValueAtTime(0.0001, scheduledAt);
+    og.gain.linearRampToValueAtTime(volume * 0.20, scheduledAt + 0.002);
+    og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.06);
+    osc.connect(ohp); ohp.connect(og); og.connect(getMaster(context));
+    osc.start(scheduledAt); osc.stop(scheduledAt + 0.07);
+
+    // Noise body filtered to upper-bass range only (no sub)
+    const bodyLen = Math.floor(sr * 0.04);
+    const bodyBuf = context.createBuffer(1, bodyLen, sr);
+    const bd = bodyBuf.getChannelData(0);
+    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 3.0;
+    const bs = context.createBufferSource();
+    bs.buffer = bodyBuf;
+    const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 450; lp.Q.value = 0.5;
+    const bhp = context.createBiquadFilter(); bhp.type = 'highpass'; bhp.frequency.value = 80; bhp.Q.value = 0.5;
+    const bg = context.createGain();
+    bg.gain.setValueAtTime(0.0001, scheduledAt);
+    bg.gain.linearRampToValueAtTime(volume * 0.06, scheduledAt + 0.002);
+    bg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.04);
+    bs.connect(lp); lp.connect(bhp); bhp.connect(bg); bg.connect(getMaster(context));
+    bs.start(scheduledAt);
+
+  } else {
+    // Light cymbal: short high-frequency noise burst
+    const cymLen = Math.floor(sr * 0.03);
+    const cymBuf = context.createBuffer(1, cymLen, sr);
+    const cd = cymBuf.getChannelData(0);
+    for (let i = 0; i < cymLen; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cymLen) ** 2.0;
+    const cs = context.createBufferSource();
+    cs.buffer = cymBuf;
+    const chp = context.createBiquadFilter(); chp.type = 'highpass'; chp.frequency.value = 5000; chp.Q.value = 0.5;
+    const cg = context.createGain();
+    cg.gain.setValueAtTime(0.0001, scheduledAt);
+    cg.gain.linearRampToValueAtTime(volume * 0.12, scheduledAt + 0.001);
+    cg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.03);
+    cs.connect(chp); chp.connect(cg); cg.connect(getMaster(context));
+    cs.start(scheduledAt);
+  }
 }
 
 // forKeyboard = true  → oscillator (sustain while held, tail on release)
