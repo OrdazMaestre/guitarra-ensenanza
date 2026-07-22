@@ -21,12 +21,18 @@ import PentatonicaPage from '../_lesson-pages/PentatonicaPage';
 import PlaceholderLessonPage from '../_lesson-pages/PlaceholderLessonPage';
 import TablaturasDosCuerdasPage from '../_lesson-pages/TablaturasDosCuerdasPage';
 import TablaturasPage from '../_lesson-pages/TablaturasPage';
-import { getLessonBySlug, getLessonNeighbors } from '../temarioData';
+import { getLessonBySlug, getLessonNeighbors, lessonRouteSlugs } from '../temarioData';
 
 interface LessonBlockPageProps {
   params: Promise<{
     slug: string;
   }>;
+}
+
+export const dynamicParams = false;
+
+export function generateStaticParams() {
+  return lessonRouteSlugs.map((slug) => ({ slug }));
 }
 
 function extensionPrevious(href: string, label: string) {

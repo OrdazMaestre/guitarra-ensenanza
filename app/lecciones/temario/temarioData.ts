@@ -11,6 +11,32 @@ export const lessonBlocks = [
   { number: 10, title: 'Funciones tonales', slug: 'funciones-tonales' },
 ] as const;
 
+export const extensionLessonSlugs = [
+  'ampliacion-arpegios',
+  'afinacion',
+  'modos-griegos',
+  'escala-completa-sol-mayor',
+  'ejercicios-escalas',
+  'acordes-escala-sol-mayor',
+  'acordes-con-septima',
+  'ejercicios-escalas-avanzados',
+  'ejercicios-pentatonica',
+  'ejercicios-pentatonica-avanzados',
+  'pentatonica-blues',
+  'ejercicios-pentatonica-blues',
+  'tablaturas-dos-cuerdas',
+] as const;
+
+export const legacyLessonSlugs = [
+  'patrones-griegos',
+] as const;
+
+export const lessonRouteSlugs = [
+  ...lessonBlocks.map((lesson) => lesson.slug),
+  ...extensionLessonSlugs,
+  ...legacyLessonSlugs,
+] as const;
+
 export function getLessonBySlug(slug: string) {
   return lessonBlocks.find((lesson) => lesson.slug === slug);
 }

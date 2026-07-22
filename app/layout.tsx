@@ -8,9 +8,6 @@ import ThemeToggle from "./components/ThemeToggle";
 export const metadata: Metadata = {
   title: "Primeros Pasos con mi Guitarra",
   description: "Aprende guitarra de forma clara, visual y progresiva",
-  icons: {
-    icon: "/favicon.ico",
-  },
 };
 
 export default function RootLayout({
