@@ -229,33 +229,44 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
     bs.start(scheduledAt);
 
   } else if (type === 'kick') {
-    // Sine pitch-drop (220 → 80 Hz) — midrange thud, no sub-bass
+    // 1. Click transient — 1200 Hz, 8 ms: audible on all speakers including phone/laptop
+    const clkLen = Math.floor(sr * 0.008);
+    const clkBuf = context.createBuffer(1, clkLen, sr);
+    const clkd = clkBuf.getChannelData(0);
+    for (let i = 0; i < clkLen; i++) clkd[i] = (Math.random() * 2 - 1) * (1 - i / clkLen) ** 1.5;
+    const clkSrc = context.createBufferSource(); clkSrc.buffer = clkBuf;
+    const clkBp = context.createBiquadFilter(); clkBp.type = 'bandpass'; clkBp.frequency.value = 1200; clkBp.Q.value = 1.5;
+    const clkG = context.createGain();
+    clkG.gain.setValueAtTime(volume * 0.28, scheduledAt);
+    clkG.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.008);
+    clkSrc.connect(clkBp); clkBp.connect(clkG); clkG.connect(getMaster(context));
+    clkSrc.start(scheduledAt);
+
+    // 2. Sine body — low thump for large speakers / headphones (reduced to avoid boom)
     const osc = context.createOscillator();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(220, scheduledAt);
-    osc.frequency.exponentialRampToValueAtTime(110, scheduledAt + 0.05);
-    const ohp = context.createBiquadFilter(); ohp.type = 'highpass'; ohp.frequency.value = 75; ohp.Q.value = 0.5;
+    osc.frequency.setValueAtTime(180, scheduledAt);
+    osc.frequency.exponentialRampToValueAtTime(80, scheduledAt + 0.06);
+    const ohp = context.createBiquadFilter(); ohp.type = 'highpass'; ohp.frequency.value = 60; ohp.Q.value = 0.5;
     const og = context.createGain();
     og.gain.setValueAtTime(0.0001, scheduledAt);
-    og.gain.linearRampToValueAtTime(volume * 0.20, scheduledAt + 0.002);
-    og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.06);
+    og.gain.linearRampToValueAtTime(volume * 0.20, scheduledAt + 0.003);
+    og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.08);
     osc.connect(ohp); ohp.connect(og); og.connect(getMaster(context));
-    osc.start(scheduledAt); osc.stop(scheduledAt + 0.07);
+    osc.start(scheduledAt); osc.stop(scheduledAt + 0.09);
 
-    // Noise body filtered to upper-bass range only (no sub)
-    const bodyLen = Math.floor(sr * 0.04);
+    // 3. Upper-bass noise — 280 Hz punch bridging click and sine
+    const bodyLen = Math.floor(sr * 0.035);
     const bodyBuf = context.createBuffer(1, bodyLen, sr);
     const bd = bodyBuf.getChannelData(0);
-    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 3.0;
-    const bs = context.createBufferSource();
-    bs.buffer = bodyBuf;
-    const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 450; lp.Q.value = 0.5;
-    const bhp = context.createBiquadFilter(); bhp.type = 'highpass'; bhp.frequency.value = 80; bhp.Q.value = 0.5;
+    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.5;
+    const bs = context.createBufferSource(); bs.buffer = bodyBuf;
+    const bbp = context.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 280; bbp.Q.value = 0.9;
     const bg = context.createGain();
     bg.gain.setValueAtTime(0.0001, scheduledAt);
-    bg.gain.linearRampToValueAtTime(volume * 0.06, scheduledAt + 0.002);
-    bg.gain.linearRampToValueAtTime(0.0001, scheduledAt + 0.04);
-    bs.connect(lp); lp.connect(bhp); bhp.connect(bg); bg.connect(getMaster(context));
+    bg.gain.linearRampToValueAtTime(volume * 0.10, scheduledAt + 0.002);
+    bg.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.035);
+    bs.connect(bbp); bbp.connect(bg); bg.connect(getMaster(context));
     bs.start(scheduledAt);
 
   } else {

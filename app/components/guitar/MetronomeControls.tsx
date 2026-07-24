@@ -70,18 +70,20 @@ export default function MetronomeControls({ bpm, setBpm, on, subdivision, turnOn
         </button>
       ))}
 
-      {/* BPM slider */}
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-        <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '52px', textAlign: 'right' }}>
-          {bpm} bpm
-        </span>
-        <input
-          aria-label="Tempo del metrónomo"
-          type="range" min="30" max="100" step="1" value={bpm}
-          onChange={e => setBpm(Number(e.target.value))}
-          style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
-        />
-      </label>
+      {/* BPM slider — only visible while metronome is on */}
+      {on && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '52px', textAlign: 'right' }}>
+            {bpm} bpm
+          </span>
+          <input
+            aria-label="Tempo del metrónomo"
+            type="range" min="30" max="100" step="1" value={bpm}
+            onChange={e => setBpm(Number(e.target.value))}
+            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+          />
+        </label>
+      )}
     </div>
   );
 }

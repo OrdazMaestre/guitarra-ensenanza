@@ -1,12 +1,12 @@
 'use client';
-import { type MutableRefObject, useEffect, useRef, useState } from 'react';
+import { type Dispatch, type MutableRefObject, type SetStateAction, useEffect, useRef, useState } from 'react';
 import { getAudioCurrentTime, playMetronomeClick, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 
 export type MetronomeSubdivision = 'quarter' | 'eighth' | 'sixteenth';
 
 export interface MetronomeAPI {
   bpm: number;
-  setBpm: (v: number) => void;
+  setBpm: Dispatch<SetStateAction<number>>;
   on: boolean;
   subdivision: MetronomeSubdivision;
   turnOn: (sub?: MetronomeSubdivision) => void;

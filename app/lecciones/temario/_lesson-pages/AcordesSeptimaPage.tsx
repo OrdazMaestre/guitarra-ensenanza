@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -287,6 +287,7 @@ function ScaleWithChordPositions() {
   const [pressedCrop, setPressedCrop] = useState<CropPos | null>(null);
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
+  const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -305,7 +306,20 @@ function ScaleWithChordPositions() {
   useEffect(() => { volumeRef.current = volume; }, [volume]);
   const metr = useMetronome(volumeRef);
   useEffect(() => {
+    if (!kbMode && !metr.on) return;
+    function handleArrow(e: KeyboardEvent) {
+      if (e.code === 'ArrowUp') { e.preventDefault(); setKbRange('upper'); }
+      else if (e.code === 'ArrowDown') { e.preventDefault(); setKbRange('lower'); }
+      else if (e.code === 'ArrowLeft') { e.preventDefault(); metr.setBpm(b => Math.max(30, b - 5)); }
+      else if (e.code === 'ArrowRight') { e.preventDefault(); metr.setBpm(b => Math.min(100, b + 5)); }
+    }
+    window.addEventListener('keydown', handleArrow);
+    return () => window.removeEventListener('keydown', handleArrow);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbMode, metr.on]);
+  useEffect(() => {
     if (!kbMode) return;
+    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -325,7 +339,7 @@ function ScaleWithChordPositions() {
     async function down(e: KeyboardEvent) {
       e.preventDefault();
       if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
-      const entry = FRETBOARD_KEYMAP[e.code];
+      const entry = activeMap[e.code];
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
@@ -383,7 +397,7 @@ function ScaleWithChordPositions() {
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode]);
+  }, [kbMode, kbRange]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -676,25 +690,60 @@ function ScaleWithChordPositions() {
   }
 
   function cropOverlay() {
-    if (!pressedCrop) return null;
-    const { chordName, fret, row, string } = pressedCrop;
-    const range = chordCropRanges[chordName];
-    const fretCount = range.end - range.start + 1;
-    const cropWidth = fretCount * miniFretWidth;
-    const cropX = range.labelX - cropWidth / 2;
-    const top = row === 'e4' ? e4Row.top : e2Row.top;
-    const markerX = fret === 0 ? cropX - 17 : cropX + (fret - range.start + 0.5) * miniFretWidth;
-    const markerY = top + 26 + (string - 1) * miniStringGap;
-    const noteIsMarked = scaleNotes.some(n => n.string === string && n.fret === fret);
-    return (
-      <g pointerEvents="none" style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}>
-        <line
-          x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
-          stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85"
-        />
-        <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="12" />
-      </g>
-    );
+    // Collect all active physical positions (string + fret) from every source
+    const positions: Array<{ string: number; fret: number }> = [
+      ...ptPositions,
+      ...kbPositions,
+      ...(pressedCrop ? [{ string: pressedCrop.string, fret: pressedCrop.fret }] : []),
+    ];
+
+    if (positions.length === 0) return null;
+
+    const rows = [
+      { rowKey: 'e4' as const, top: e4Row.top },
+      { rowKey: 'e2' as const, top: e2Row.top },
+    ];
+
+    const elements: React.ReactNode[] = [];
+    const seen = new Set<string>();
+
+    for (const p of positions) {
+      const posKey = `${p.string}-${p.fret}`;
+      if (seen.has(posKey)) continue;
+      seen.add(posKey);
+
+      // Find the mini-crop column whose fret range covers this fret
+      const chord = positionedChords.find(c => {
+        const r = chordCropRanges[c.name];
+        return p.fret === 0 ? r.start === 0 : (p.fret >= r.start && p.fret <= r.end);
+      });
+      if (!chord) continue;
+
+      const range = chordCropRanges[chord.name];
+      const cropWidth = (range.end - range.start + 1) * miniFretWidth;
+      const cropX = range.labelX - cropWidth / 2;
+      const markerX = p.fret === 0 ? cropX - 17 : cropX + (p.fret - range.start + 0.5) * miniFretWidth;
+
+      for (const { rowKey, top } of rows) {
+        const markerY = top + 26 + (p.string - 1) * miniStringGap;
+        const direct = pressedCrop !== null &&
+          pressedCrop.chordName === chord.name &&
+          pressedCrop.string === p.string &&
+          pressedCrop.fret === p.fret &&
+          pressedCrop.row === rowKey;
+
+        elements.push(
+          <g key={`ol-${rowKey}-${chord.name}-${p.string}-${p.fret}`} pointerEvents="none"
+             style={direct ? { animation: 'fretboard-string-vibrate 80ms linear infinite' } : undefined}>
+            <line x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
+              stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85" />
+            <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity="0.85" r="12" />
+          </g>
+        );
+      }
+    }
+
+    return elements.length === 0 ? null : <>{elements}</>;
   }
 
   const scaleNotes = stringTunings.flatMap((string, stringIndex) =>
@@ -851,13 +900,20 @@ function ScaleWithChordPositions() {
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          {kbMode ? 'KB: ON' : 'KB'}
+          KEYBOARD
         </button>
+        {kbMode && (['lower', 'upper'] as const).map(range => (
+          <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
+            style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
+            {range === 'lower' ? 'Graves' : 'Agudas'}
+          </button>
+        ))}
         {kbMode && kbGhostWarn && (
           <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
             ⚠ Necesitas teclado gaming para tocar ciertos acordes
           </span>
         )}
+        <MetronomeControls {...metr} />
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
             Vol {Math.round(volume * 100)}
@@ -870,8 +926,7 @@ function ScaleWithChordPositions() {
             value={volume}
             onChange={(e) => setVolume(Number(e.target.value))}
           />
-        </label>
-        <MetronomeControls {...metr} /></div>
+        </label></div>
       </div>
     </figure>
   );

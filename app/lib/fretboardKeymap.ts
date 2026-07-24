@@ -63,6 +63,16 @@ export const FRETBOARD_KEYMAP: Record<string, FretKeyEntry> = {
   'Backspace':{ string: 3, fret: 12, midi: 67 },
 };
 
+// Same physical keys remapped to strings 1-4 (treble) instead of 3-6 (bass)
+const UPPER_STRING_MAP: Record<number, number> = { 6: 4, 5: 3, 4: 2, 3: 1 };
+const UPPER_OPEN_MIDI: Record<number, number> = { 6: 50, 5: 55, 4: 59, 3: 64 };
+export const FRETBOARD_KEYMAP_UPPER: Record<string, FretKeyEntry> = Object.fromEntries(
+  Object.entries(FRETBOARD_KEYMAP).map(([code, entry]) => [
+    code,
+    { string: UPPER_STRING_MAP[entry.string], fret: entry.fret, midi: UPPER_OPEN_MIDI[entry.string] + entry.fret },
+  ])
+);
+
 // Returns true when two held keys share the same keyboard-matrix column
 // (same fret offset on different strings), meaning a 3rd key may be blocked
 // by hardware ghosting on standard keyboards.

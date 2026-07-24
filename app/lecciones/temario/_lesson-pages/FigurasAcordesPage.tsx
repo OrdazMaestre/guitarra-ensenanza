@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TemarioPager from '../TemarioPager';
 import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
@@ -53,6 +53,7 @@ function GChordFretboard() {
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
+  const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -70,7 +71,20 @@ function GChordFretboard() {
   useEffect(() => { volumeRef.current = volume; }, [volume]);
   const metr = useMetronome(volumeRef);
   useEffect(() => {
+    if (!kbMode && !metr.on) return;
+    function handleArrow(e: KeyboardEvent) {
+      if (e.code === 'ArrowUp') { e.preventDefault(); setKbRange('upper'); }
+      else if (e.code === 'ArrowDown') { e.preventDefault(); setKbRange('lower'); }
+      else if (e.code === 'ArrowLeft') { e.preventDefault(); metr.setBpm(b => Math.max(30, b - 5)); }
+      else if (e.code === 'ArrowRight') { e.preventDefault(); metr.setBpm(b => Math.min(100, b + 5)); }
+    }
+    window.addEventListener('keydown', handleArrow);
+    return () => window.removeEventListener('keydown', handleArrow);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbMode, metr.on]);
+  useEffect(() => {
     if (!kbMode) return;
+    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -90,7 +104,7 @@ function GChordFretboard() {
     async function down(e: KeyboardEvent) {
       e.preventDefault();
       if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
-      const entry = FRETBOARD_KEYMAP[e.code];
+      const entry = activeMap[e.code];
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
@@ -148,7 +162,7 @@ function GChordFretboard() {
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode]);
+  }, [kbMode, kbRange]);
 
   function svgCoords(e: React.PointerEvent<SVGSVGElement>) {
     const svg = svgRef.current;
@@ -404,13 +418,20 @@ function GChordFretboard() {
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          {kbMode ? 'KB: ON' : 'KB'}
+          KEYBOARD
         </button>
+        {kbMode && (['lower', 'upper'] as const).map(range => (
+          <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
+            style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
+            {range === 'lower' ? 'Graves' : 'Agudas'}
+          </button>
+        ))}
         {kbMode && kbGhostWarn && (
           <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
             ⚠ Necesitas teclado gaming para tocar ciertos acordes
           </span>
         )}
+        <MetronomeControls {...metr} />
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
             Vol {Math.round(volume * 100)}
@@ -423,8 +444,7 @@ function GChordFretboard() {
             value={volume}
             onChange={(e) => setVolume(Number(e.target.value))}
           />
-        </label>
-        <MetronomeControls {...metr} /></div>
+        </label></div>
       </div>
     </figure>
   );

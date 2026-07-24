@@ -105,6 +105,17 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   }, []);
 
   useEffect(() => {
+    if (!kbMode && !metr.on) return;
+    function handleArrow(e: KeyboardEvent) {
+      if (e.code === 'ArrowLeft') { e.preventDefault(); metr.setBpm(b => Math.max(30, b - 5)); }
+      else if (e.code === 'ArrowRight') { e.preventDefault(); metr.setBpm(b => Math.min(100, b + 5)); }
+    }
+    window.addEventListener('keydown', handleArrow);
+    return () => window.removeEventListener('keydown', handleArrow);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbMode, metr.on]);
+
+  useEffect(() => {
     if (!kbMode) return;
     function down(e: KeyboardEvent) {
       e.preventDefault();
@@ -191,8 +202,9 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          {kbMode ? 'KB: ON' : 'KB'}
+          KEYBOARD
         </button>
+        <MetronomeControls {...metr} />
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '46px', textAlign: 'right' }}>
             Vol {Math.round(volume * 100)}
@@ -208,7 +220,6 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             onChange={handleVolumeChange}
           />
         </label>
-        <MetronomeControls {...metr} />
       </div>
       <svg
         ref={svgRef}
