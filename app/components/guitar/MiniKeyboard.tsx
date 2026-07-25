@@ -80,12 +80,12 @@ function keyAtCoords(x: number, y: number): { midi: number } | null {
   );
 }
 
+const MAX_TOUCH_VOICES = 3;
+
 export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const voiceIdRef = useRef<number>(-1);
-  const currentMidiRef = useRef<number>(-1);
-  const isHeldRef = useRef(false);
-  const [pressedMidi, setPressedMidi] = useState<number>(-1);
+  const ptVoicesRef = useRef(new Map<number, { midi: number; voiceId: number }>());
+  const [pressedMidis, setPressedMidis] = useState<Set<number>>(new Set());
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const kbVoiceMapRef = useRef(new Map<string, number>());
@@ -94,6 +94,23 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   const metr = useMetronome(volumeRef);
 
   const viewH = showScaleArrows ? 220 : 160;
+
+  function syncPressedMidis() {
+    const s = new Set<number>();
+    for (const { midi } of ptVoicesRef.current.values()) s.add(midi);
+    for (const code of kbVoiceMapRef.current.keys()) {
+      const midi = KB_KEYMAP[code];
+      if (midi !== undefined) s.add(midi);
+    }
+    setPressedMidis(s);
+  }
+
+  useEffect(() => {
+    return () => {
+      ptVoicesRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
+      ptVoicesRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -123,7 +140,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       const midi = KB_KEYMAP[e.code];
       if (midi === undefined) return;
       kbVoiceMapRef.current.set(e.code, -1);
-      if (midi >= 60 && midi <= 72) setPressedMidi(midi);
+      syncPressedMidis();
       playNote(midi, true, volumeRef.current).then(id => {
         if (kbVoiceMapRef.current.has(e.code)) kbVoiceMapRef.current.set(e.code, id);
         else releaseNote(id);
@@ -134,7 +151,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       const id = kbVoiceMapRef.current.get(e.code) ?? -1;
       kbVoiceMapRef.current.delete(e.code);
       if (id >= 0) releaseNote(id);
-      if (kbVoiceMapRef.current.size === 0) setPressedMidi(-1);
+      syncPressedMidis();
     }
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -143,7 +160,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       window.removeEventListener('keyup', up);
       kbVoiceMapRef.current.forEach(id => { if (id >= 0) releaseNote(id); });
       kbVoiceMapRef.current.clear();
-      setPressedMidi(-1);
+      syncPressedMidis();
     };
   }, [kbMode]);
 
@@ -154,41 +171,50 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
     if (!coords) return;
     const key = keyAtCoords(coords.x, coords.y);
     if (!key) return;
+    if (ptVoicesRef.current.has(e.pointerId)) return;
+    if (ptVoicesRef.current.size >= MAX_TOUCH_VOICES) return;
 
     // Capture synchronously so drag works across key boundaries
     svg.setPointerCapture(e.pointerId);
-    isHeldRef.current = true;
-    currentMidiRef.current = key.midi;
-    setPressedMidi(key.midi);
+    ptVoicesRef.current.set(e.pointerId, { midi: key.midi, voiceId: -1 });
+    syncPressedMidis();
 
-    const id = await playNote(key.midi, true, volume);
-    voiceIdRef.current = id;
+    const id = await playNote(key.midi, true, volumeRef.current);
+    const cur = ptVoicesRef.current.get(e.pointerId);
+    if (cur && cur.voiceId === -1) {
+      ptVoicesRef.current.set(e.pointerId, { midi: cur.midi, voiceId: id });
+    } else {
+      releaseNote(id);
+    }
   }
 
   async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!isHeldRef.current) return;
+    const cur = ptVoicesRef.current.get(e.pointerId);
+    if (!cur) return;
     const svg = svgRef.current;
     if (!svg) return;
     const coords = getSvgCoords(e, svg);
     if (!coords) return;
     const key = keyAtCoords(coords.x, coords.y);
-    if (!key || key.midi === currentMidiRef.current) return;
+    if (!key || key.midi === cur.midi) return;
 
-    currentMidiRef.current = key.midi;
-    setPressedMidi(key.midi);
-    const id = await switchNote(voiceIdRef.current, key.midi, true, volume);
-    voiceIdRef.current = id;
+    ptVoicesRef.current.set(e.pointerId, { midi: key.midi, voiceId: -1 });
+    syncPressedMidis();
+    const id = await switchNote(cur.voiceId, key.midi, true, volumeRef.current);
+    const cur2 = ptVoicesRef.current.get(e.pointerId);
+    if (cur2 && cur2.voiceId === -1 && cur2.midi === key.midi) {
+      ptVoicesRef.current.set(e.pointerId, { midi: key.midi, voiceId: id });
+    } else {
+      releaseNote(id);
+    }
   }
 
-  function onPointerUp() {
-    if (!isHeldRef.current) return;
-    isHeldRef.current = false;
-    setPressedMidi(-1);
-    currentMidiRef.current = -1;
-    if (voiceIdRef.current >= 0) {
-      releaseNote(voiceIdRef.current);
-      voiceIdRef.current = -1;
-    }
+  function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    const cur = ptVoicesRef.current.get(e.pointerId);
+    if (!cur) return;
+    ptVoicesRef.current.delete(e.pointerId);
+    syncPressedMidis();
+    if (cur.voiceId >= 0) releaseNote(cur.voiceId);
   }
 
   function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -248,7 +274,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             width={k.w}
             height={k.h}
             rx="8"
-            fill={pressedMidi === k.midi ? '#b8e8c4' : '#f7f8fb'}
+            fill={pressedMidis.has(k.midi) ? '#b8e8c4' : '#f7f8fb'}
           />
         ))}
       </g>
@@ -263,7 +289,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             width={k.w}
             height={k.h}
             rx="8"
-            fill={pressedMidi === k.midi ? '#5a9e6a' : '#d1d5db'}
+            fill={pressedMidis.has(k.midi) ? '#5a9e6a' : '#d1d5db'}
           />
         ))}
       </g>

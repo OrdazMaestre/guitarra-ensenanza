@@ -76,11 +76,16 @@ export default function MasPunteosCortosPage() {
           ))}
         </section>
 
-        <div className="back-link-wrap">
-          <Link href="/lecciones/temario/tablaturas-dos-cuerdas" className="back-link">
-            Volver a Feliz Navidad
-          </Link>
-        </div>
+        <section className="external-links" aria-label="Más tablaturas en otras webs">
+          <a href="https://www.songsterr.com/" target="_blank" rel="noreferrer">
+            SONGSTERR: aqui están casi todas las tablaturas que querais
+          </a>
+          <a href="https://es.ultimate-guitar.com/" target="_blank" rel="noreferrer">
+            ULTIMATEGUITAR: aqui pueden estar las tablaturas que no encontreis en Songsterr
+          </a>
+        </section>
+
+       
       </article>
 
       <style>{`
@@ -219,6 +224,31 @@ export default function MasPunteosCortosPage() {
         .riff-card > div:not(.riff-copy) {
           max-width: 100%;
           min-width: 0;
+        }
+
+        .external-links {
+          display: grid;
+          gap: 12px;
+          margin: 0 auto;
+          max-width: 760px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .external-links a {
+          color: #303030;
+          font-size: clamp(16px, 1.8vw, 19px);
+          font-weight: 650;
+          line-height: 1.42;
+          overflow-wrap: anywhere;
+          text-decoration-color: #047857;
+          text-decoration-thickness: 3px;
+          text-underline-offset: 4px;
+        }
+
+        .external-links a:hover,
+        .external-links a:focus-visible {
+          color: #047857;
         }
 
         .back-link-wrap {

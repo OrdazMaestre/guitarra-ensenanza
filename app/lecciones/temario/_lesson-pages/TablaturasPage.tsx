@@ -74,6 +74,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
             >
               Hay que tener paciencia al empezar a tocar la guitarra
             </a>
+            
           </div>
         </section>
       </article>
