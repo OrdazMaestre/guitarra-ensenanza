@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import DeploymentNotice from '../../components/DeploymentNotice';
+import { RenderTopNotice, VercelLimitNotice } from '../../components/DeploymentNotice';
 import { lessonBlocks } from './temarioData';
 
 export default function TemarioPage() {
@@ -9,6 +9,7 @@ export default function TemarioPage() {
       <section className="cover-stage">
         <div className="cover-copy">
           <div className="cover-copy-inner">
+            <RenderTopNotice />
             <p className="cover-eyebrow">
               Guitarra desde cero
             </p>
@@ -30,7 +31,7 @@ export default function TemarioPage() {
               <p className="cover-intro">Cada uno aprende a su <strong>ritmo</strong> y cada uno tiene sus <strong>objetivos</strong>.</p>
               <p className="cover-intro">Aquí preferimos enseñar <strong>un poco de todo</strong> por si llega el día que queremos estudiar de verdad.</p>
               <p className="cover-intro">La mejor forma de <strong>aprender</strong> y <strong>mejorar</strong> más rápido es en clase con un profesor, en un grupo de música y practicando en casa.</p>
-              <DeploymentNotice />
+              <VercelLimitNotice />
           </div>
         </div>
 
@@ -150,6 +151,26 @@ export default function TemarioPage() {
           line-height: 1.55;
           margin: 36px 0 0;
           max-width: 720px;
+        }
+
+        .render-top-notice {
+          color: #8a8a8a;
+          font-size: clamp(11px, 0.95vw, 13px);
+          line-height: 1.45;
+          margin: 0 0 20px;
+          max-width: 480px;
+        }
+
+        .render-top-notice-link {
+          color: #047857;
+          font-weight: 700;
+          text-decoration-color: #34d399;
+          text-decoration-thickness: 0.07em;
+          text-underline-offset: 0.09em;
+        }
+
+        .render-top-notice-link:hover {
+          color: #064e3b;
         }
 
         .deployment-notice {

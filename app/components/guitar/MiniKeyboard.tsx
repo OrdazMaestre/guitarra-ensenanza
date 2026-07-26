@@ -88,6 +88,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
   const [pressedMidis, setPressedMidis] = useState<Set<number>>(new Set());
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
+  const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const kbVoiceMapRef = useRef(new Map<string, number>());
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
@@ -141,6 +142,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       if (midi === undefined) return;
       kbVoiceMapRef.current.set(e.code, -1);
       syncPressedMidis();
+      setKbGhostWarn(kbVoiceMapRef.current.size >= 2);
       playNote(midi, true, volumeRef.current).then(id => {
         if (kbVoiceMapRef.current.has(e.code)) kbVoiceMapRef.current.set(e.code, id);
         else releaseNote(id);
@@ -152,6 +154,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       kbVoiceMapRef.current.delete(e.code);
       if (id >= 0) releaseNote(id);
       syncPressedMidis();
+      setKbGhostWarn(kbVoiceMapRef.current.size >= 2);
     }
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -161,6 +164,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
       kbVoiceMapRef.current.forEach(id => { if (id >= 0) releaseNote(id); });
       kbVoiceMapRef.current.clear();
       syncPressedMidis();
+      setKbGhostWarn(false);
     };
   }, [kbMode]);
 
@@ -378,6 +382,13 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
         </>
       )}
     </svg>
+    {kbMode && kbGhostWarn && (
+      <div style={{ paddingTop: '8px', textAlign: 'center' }}>
+        <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px' }}>
+          ⚠ Necesitas teclado gaming para tocar ciertos acordes
+        </span>
+      </div>
+    )}
     </div>
   );
 }
