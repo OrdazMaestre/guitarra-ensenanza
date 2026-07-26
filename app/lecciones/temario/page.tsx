@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import DeploymentNotice from '../../components/DeploymentNotice';
 import { lessonBlocks } from './temarioData';
 
 export default function TemarioPage() {
@@ -29,6 +30,7 @@ export default function TemarioPage() {
               <p className="cover-intro">Cada uno aprende a su <strong>ritmo</strong> y cada uno tiene sus <strong>objetivos</strong>.</p>
               <p className="cover-intro">Aquí preferimos enseñar <strong>un poco de todo</strong> por si llega el día que queremos estudiar de verdad.</p>
               <p className="cover-intro">La mejor forma de <strong>aprender</strong> y <strong>mejorar</strong> más rápido es en clase con un profesor, en un grupo de música y practicando en casa.</p>
+              <DeploymentNotice />
           </div>
         </div>
 
@@ -148,6 +150,29 @@ export default function TemarioPage() {
           line-height: 1.55;
           margin: 36px 0 0;
           max-width: 720px;
+        }
+
+        .deployment-notice {
+          background: #f4f4f4;
+          border-left: 3px solid #047857;
+          color: #4b4b4b;
+          font-size: clamp(13px, 1.1vw, 15px);
+          line-height: 1.5;
+          margin: 24px 0 0;
+          max-width: 620px;
+          padding: 10px 14px;
+        }
+
+        .deployment-notice-link {
+          color: #047857;
+          font-weight: 700;
+          text-decoration-color: #34d399;
+          text-decoration-thickness: 0.07em;
+          text-underline-offset: 0.09em;
+        }
+
+        .deployment-notice-link:hover {
+          color: #064e3b;
         }
 
         .cover-image-wrap {

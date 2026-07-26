@@ -4,10 +4,19 @@ import Script from "next/script";
 import "./globals.css";
 import SiteHomeLink from "./components/SiteHomeLink";
 import ThemeToggle from "./components/ThemeToggle";
+import RenderIdleWarning from "./components/RenderIdleWarning";
 
 export const metadata: Metadata = {
   title: "Primeros Pasos con mi Guitarra",
   description: "Aprende guitarra de forma clara, visual y progresiva",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-48x48.png", sizes: "48x48", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -26,6 +35,7 @@ export default function RootLayout({
           } catch (e) {}`}
         </Script>
         <ThemeToggle />
+        <RenderIdleWarning />
         <div className="site-shell">
           <SiteHomeLink />
           {children}
