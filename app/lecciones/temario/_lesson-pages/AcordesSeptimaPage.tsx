@@ -7,6 +7,7 @@ import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
+import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -304,7 +305,7 @@ function ScaleWithChordPositions() {
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
-  const metr = useMetronome(volumeRef);
+  const metr = useMetronome();
   useEffect(() => {
     if (!kbMode && !metr.on) return;
     function handleArrow(e: KeyboardEvent) {
@@ -827,6 +828,8 @@ function ScaleWithChordPositions() {
   }
 
   return (
+    <div className="midi-instrument-host">
+    <div className="position-scroll">
     <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
       <svg
         ref={svgRef}
@@ -895,40 +898,49 @@ function ScaleWithChordPositions() {
         {interactionOverlay()}
         {cropOverlay()}
       </svg>
-      <div style={{ overflowX: 'auto', paddingTop: '6px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 'max-content', marginLeft: 'auto' }}>
+    </figure>
+    </div>
+    <MidiInstrumentChrome
+      warning={kbMode && kbGhostWarn && (
+        <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+          ⚠ Necesitas teclado gaming para tocar ciertos acordes
+        </span>
+      )}
+    >
+      <div className="midi-anchor">
         <button
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
           KEYBOARD
         </button>
-        {kbMode && (['lower', 'upper'] as const).map(range => (
-          <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
-            style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
-            {range === 'lower' ? 'Graves' : 'Agudas'}
-          </button>
-        ))}
-        {kbMode && kbGhostWarn && (
-          <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
-            ⚠ Necesitas teclado gaming para tocar ciertos acordes
-          </span>
+        {kbMode && (
+          <div className="midi-dropdown">
+            {(['lower', 'upper'] as const).map(range => (
+              <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
+                style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
+                {range === 'lower' ? 'Graves' : 'Agudas'}
+              </button>
+            ))}
+          </div>
         )}
-        <MetronomeControls {...metr} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
-            Vol {Math.round(volume * 100)}
-          </span>
-          <input
-            aria-label="Volumen de la guitarra"
-            max="1" min="0" step="0.05"
-            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
-            type="range"
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-          />
-        </label></div>
       </div>
-    </figure>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+        <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
+          Vol {Math.round(volume * 100)}
+        </span>
+        <input
+          aria-label="Volumen de la guitarra"
+          max="1" min="0" step="0.05"
+          style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+          type="range"
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+        />
+      </label>
+      <MetronomeControls {...metr} />
+    </MidiInstrumentChrome>
+    </div>
   );
 }
 
@@ -951,9 +963,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           <header className="section-header">
             <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
           </header>
-          <div className="position-scroll">
-            <ScaleWithChordPositions />
-          </div>
+          <ScaleWithChordPositions />
         </section>
 
         <section className="rule-box" aria-label="Acordes triada y cuatriada">

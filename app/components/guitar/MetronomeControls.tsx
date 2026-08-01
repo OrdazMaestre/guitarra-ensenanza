@@ -24,9 +24,9 @@ function MetronomeIcon() {
   );
 }
 
-export default function MetronomeControls({ bpm, setBpm, on, subdivision, turnOn, turnOff, selectSubdivision }: MetronomeAPI) {
+export default function MetronomeControls({ bpm, setBpm, on, subdivision, turnOn, turnOff, selectSubdivision, metroVolume, setMetroVolume }: MetronomeAPI) {
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+    <div className="midi-anchor">
       {/* Toggle button */}
       <button
         onClick={on ? turnOff : () => turnOn()}
@@ -47,42 +47,55 @@ export default function MetronomeControls({ bpm, setBpm, on, subdivision, turnOn
         <MetronomeIcon />
       </button>
 
-      {/* Subdivision buttons — visible only while metronome is on */}
-      {on && SUBDIVISIONS.map(sub => (
-        <button
-          key={sub}
-          onClick={() => selectSubdivision(sub)}
-          title={NOTE_LABELS[sub]}
-          aria-label={NOTE_LABELS[sub]}
-          aria-pressed={subdivision === sub}
-          style={{
-            background: subdivision === sub ? '#047857' : 'transparent',
-            border: `1.5px solid ${subdivision === sub ? '#047857' : '#9ca3af'}`,
-            borderRadius: '5px',
-            color: subdivision === sub ? '#fff' : '#6b7280',
-            cursor: 'pointer',
-            fontSize: '16px',
-            lineHeight: 1,
-            padding: '2px 6px',
-          }}
-        >
-          {NOTE_CHARS[sub]}
-        </button>
-      ))}
-
-      {/* BPM slider — only visible while metronome is on */}
+      {/* Subdivision buttons + BPM slider — floating column dropdown, visible only while metronome is on */}
       {on && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '52px', textAlign: 'right' }}>
-            {bpm} bpm
-          </span>
-          <input
-            aria-label="Tempo del metrónomo"
-            type="range" min="30" max="100" step="1" value={bpm}
-            onChange={e => setBpm(Number(e.target.value))}
-            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
-          />
-        </label>
+        <div className="midi-dropdown">
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {SUBDIVISIONS.map(sub => (
+              <button
+                key={sub}
+                onClick={() => selectSubdivision(sub)}
+                title={NOTE_LABELS[sub]}
+                aria-label={NOTE_LABELS[sub]}
+                aria-pressed={subdivision === sub}
+                style={{
+                  background: subdivision === sub ? '#047857' : 'transparent',
+                  border: `1.5px solid ${subdivision === sub ? '#047857' : '#9ca3af'}`,
+                  borderRadius: '5px',
+                  color: subdivision === sub ? '#fff' : '#6b7280',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  padding: '2px 6px',
+                }}
+              >
+                {NOTE_CHARS[sub]}
+              </button>
+            ))}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '52px', textAlign: 'right' }}>
+              {bpm} bpm
+            </span>
+            <input
+              aria-label="Tempo del metrónomo"
+              type="range" min="30" max="100" step="1" value={bpm}
+              onChange={e => setBpm(Number(e.target.value))}
+              style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '52px', textAlign: 'right' }}>
+              Vol {Math.round(metroVolume * 100)}
+            </span>
+            <input
+              aria-label="Volumen del metrónomo"
+              type="range" min="0" max="1" step="0.05" value={metroVolume}
+              onChange={e => setMetroVolume(Number(e.target.value))}
+              style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+            />
+          </label>
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { DEPLOY_TARGET } from '../lib/deployTarget';
+import { RENDER_FALLBACK_URL } from '../lib/renderFallbackUrl';
 
-const RENDER_FALLBACK_URL = 'https://guitarraesperanza.onrender.com/';
 const VERCEL_URL = 'https://guitarraesperanza.vercel.app/';
 
 export function RenderTopNotice() {

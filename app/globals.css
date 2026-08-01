@@ -251,6 +251,81 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
 
 
 
+/* Floating chrome for MIDI instruments (fretboards + keyboards): the ghosting
+   warning sits above the instrument, the button/volume bar sits below — both
+   position:absolute so appearing/disappearing (warning) or opening a dropdown
+   (KB range, metronome) never changes the page's height. The host element
+   (wrapping the <svg>) must be position:relative. */
+.midi-instrument-host {
+  min-width: 0;
+  position: relative;
+}
+
+.midi-float-warning,
+.midi-float-controls {
+  display: flex;
+  justify-content: center;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  z-index: 8;
+}
+
+.midi-float-warning {
+  bottom: 100%;
+  margin-bottom: 6px;
+}
+
+.midi-float-controls {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  top: 100%;
+}
+
+.midi-float-pill {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 5px 9px;
+  pointer-events: auto;
+}
+
+.midi-float-warning > * {
+  pointer-events: auto;
+}
+
+/* Anchors a dropdown (KB range, metronome subdivision/bpm) below its own
+   trigger button as a floating column, instead of expanding the row inline. */
+.midi-anchor {
+  display: inline-flex;
+  position: relative;
+}
+
+.midi-dropdown {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  left: 50%;
+  margin-top: 6px;
+  padding: 8px;
+  position: absolute;
+  top: 100%;
+  transform: translateX(-50%);
+  z-index: 12;
+}
+
 @keyframes fretboard-string-vibrate {
   0%   { transform: translateY(0px); }
   12%  { transform: translateY(-2px); }

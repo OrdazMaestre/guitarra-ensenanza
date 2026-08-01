@@ -4,6 +4,7 @@ import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/gui
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from './MetronomeControls';
+import MidiInstrumentChrome from './MidiInstrumentChrome';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -130,7 +131,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
-  const metr = useMetronome(volumeRef);
+  const metr = useMetronome();
   useEffect(() => {
     if (!kbMode && !metr.on) return;
     function handleArrow(e: KeyboardEvent) {
@@ -438,7 +439,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   }
 
   return (
-    <>
+    <div className="midi-instrument-host">
     <svg
       ref={svgRef}
       className="reduced-fretboard"
@@ -525,25 +526,31 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       )}
       {interactionOverlay()}
     </svg>
-    <div style={{ overflowX: 'auto', paddingTop: '6px' }}><div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: 'max-content', marginLeft: 'auto' }}>
-      <button
-        onClick={() => setKbMode(m => !m)}
-        style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
-      >
-        KEYBOARD
-      </button>
-      {kbMode && (['lower', 'upper'] as const).map(range => (
-        <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
-          style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
-          {range === 'lower' ? 'Graves' : 'Agudas'}
-        </button>
-      ))}
-      {kbMode && kbGhostWarn && (
+    <MidiInstrumentChrome
+      warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
           ⚠ Necesitas teclado gaming para tocar ciertos acordes
         </span>
       )}
-      <MetronomeControls {...metr} />
+    >
+      <div className="midi-anchor">
+        <button
+          onClick={() => setKbMode(m => !m)}
+          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+        >
+          KEYBOARD
+        </button>
+        {kbMode && (
+          <div className="midi-dropdown">
+            {(['lower', 'upper'] as const).map(range => (
+              <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
+                style={{ background: kbRange === range ? '#047857' : 'transparent', border: `1.5px solid ${kbRange === range ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbRange === range ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}>
+                {range === 'lower' ? 'Graves' : 'Agudas'}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
         <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
           Vol {Math.round(volume * 100)}
@@ -556,9 +563,10 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
           value={volume}
           onChange={(e) => setVolume(Number(e.target.value))}
         />
-      </label></div>
+      </label>
+      <MetronomeControls {...metr} />
+    </MidiInstrumentChrome>
     </div>
-    </>
   );
 }
 

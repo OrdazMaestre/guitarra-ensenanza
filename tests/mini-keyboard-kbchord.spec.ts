@@ -22,32 +22,34 @@ test.describe('MiniKeyboard physical-keyboard chords', () => {
     await svg.scrollIntoViewIfNeeded();
     await page.getByRole('button', { name: 'KEYBOARD' }).first().click();
 
-    const whiteKeys = svg.locator('g').nth(0).locator('rect');
-    const cKey = whiteKeys.nth(0); // C = KeyZ
-    const dKey = whiteKeys.nth(1); // D = KeyX
-    const eKey = whiteKeys.nth(2); // E = KeyC
+    // Z/X/C are all octave-4 naturals, so keyboard input highlights their
+    // bottom-half zone (see tests/mini-keyboard-octave-zones.spec.ts) rather
+    // than the plain full-key fill mouse/touch uses.
+    const cZone = page.locator('[data-testid="kb-zones"] rect[x="25"][fill="#b8e8c4"]'); // C = KeyZ
+    const dZone = page.locator('[data-testid="kb-zones"] rect[x="100"][fill="#b8e8c4"]'); // D = KeyX
+    const eZone = page.locator('[data-testid="kb-zones"] rect[x="200"][fill="#b8e8c4"]'); // E = KeyC
 
     await page.keyboard.down('z');
-    await expect(cKey).toHaveAttribute('fill', '#b8e8c4');
+    await expect(cZone).toHaveCount(1);
 
     await page.keyboard.down('x');
-    await expect(dKey).toHaveAttribute('fill', '#b8e8c4');
-    await expect(cKey).toHaveAttribute('fill', '#b8e8c4'); // Z must still be sounding
+    await expect(dZone).toHaveCount(1);
+    await expect(cZone).toHaveCount(1); // Z must still be sounding
 
     await page.keyboard.down('c');
-    await expect(eKey).toHaveAttribute('fill', '#b8e8c4');
-    await expect(cKey).toHaveAttribute('fill', '#b8e8c4');
-    await expect(dKey).toHaveAttribute('fill', '#b8e8c4');
+    await expect(eZone).toHaveCount(1);
+    await expect(cZone).toHaveCount(1);
+    await expect(dZone).toHaveCount(1);
 
     await page.keyboard.up('x'); // release the middle note only
-    await expect(dKey).toHaveAttribute('fill', '#f7f8fb');
-    await expect(cKey).toHaveAttribute('fill', '#b8e8c4');
-    await expect(eKey).toHaveAttribute('fill', '#b8e8c4');
+    await expect(dZone).toHaveCount(0);
+    await expect(cZone).toHaveCount(1);
+    await expect(eZone).toHaveCount(1);
 
     await page.keyboard.up('z');
     await page.keyboard.up('c');
-    await expect(cKey).toHaveAttribute('fill', '#f7f8fb');
-    await expect(eKey).toHaveAttribute('fill', '#f7f8fb');
+    await expect(cZone).toHaveCount(0);
+    await expect(eZone).toHaveCount(0);
   });
 
   test('ghosting warning appears at 2+ held keys and clears on release', async ({ page }) => {

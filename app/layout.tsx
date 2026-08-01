@@ -5,6 +5,8 @@ import "./globals.css";
 import SiteHomeLink from "./components/SiteHomeLink";
 import ThemeToggle from "./components/ThemeToggle";
 import RenderIdleWarning from "./components/RenderIdleWarning";
+import VercelLimitWarning from "./components/VercelLimitWarning";
+import { DEPLOY_TARGET } from "./lib/deployTarget";
 
 export const metadata: Metadata = {
   title: "Primeros Pasos con mi Guitarra",
@@ -35,7 +37,11 @@ export default function RootLayout({
           } catch (e) {}`}
         </Script>
         <ThemeToggle />
-        <RenderIdleWarning />
+        <RenderIdleWarning deployTarget={DEPLOY_TARGET} />
+        <VercelLimitWarning
+          deployTarget={DEPLOY_TARGET}
+          enabled={process.env.SHOW_LIMIT_WARNING === '1'}
+        />
         <div className="site-shell">
           <SiteHomeLink />
           {children}

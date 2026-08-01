@@ -18,11 +18,12 @@ export default function DevPreviewIdleWarning() {
 
   return (
     <IdleWarningPanel
-      onReturnClick={() => {
+      primaryLabel="Intenta volver ahora mismo haciendo clic aquí"
+      onPrimaryClick={() => {
         router.refresh();
         setDismissed(true);
       }}
-      onPortadaClick={() => setDismissed(true)}
+      onSecondaryClick={() => setDismissed(true)}
     />
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from './MetronomeControls';
+import MidiInstrumentChrome from './MidiInstrumentChrome';
 
 // Key geometry copied exactly from doce-notas-teclado.svg / patron-tonos-semitonos.svg
 const WHITE_KEYS = [
@@ -38,14 +39,46 @@ const SCALE_ARROWS = [
 
 const KEY_Y = 10;
 
-// Physical key codes → MIDI for keyboard input mode.
-// Visible octave: C(60)–C(72). Extra invisible notes: B(59) on the left, C#–E(73-76) on the right.
+// Physical key codes → MIDI for keyboard input mode (`kbMode`). Two rows,
+// like two hands on a piano — both playable at once, neither shown on the
+// visible SVG octave (they're an extension of the existing invisible-note
+// pattern below: B(59) and C#-E(73-76) already aren't drawn either).
+//
+// GRAVE (bass) — bottom row (naturals) + home row (sharps), same layout as
+// before. Visible octave: C(60)-C(72). Extended down to B(59) and up through
+// E(76); RightShift/Enter add one more natural+sharp pair (F/F#, 77-78),
+// mirroring how the fretboard's keymap uses ShiftRight/Enter to extend a
+// string by one extra fret (see FRETBOARD_KEYMAP in fretboardKeymap.ts).
+//
+// AGUDO (treble) — Q-row (Q..Backslash/"ç") for naturals, deliberately
+// overlapping grave's top 4 naturals: Q=Comma, W=Period, E=Slash("guión"),
+// R=ShiftRight (all the same MIDI note, just reachable from either row) so
+// the two rows read as one continuous scale instead of jumping an extra
+// octave. From T onward it keeps climbing (T=G, Y=A, U=B, I=C6, ... up to
+// Backslash=A6). Digit row for sharps, physically positioned between the two
+// naturals they sit above/below (Digit2 between Q/W, etc.), skipping
+// Digit1/Digit4/Digit8/Minus (no black key between E-F or B-C) exactly like
+// FRETBOARD_KEYMAP's row-1 digits skip nothing since frets are chromatic —
+// here the skips are what make the row read as a real piano octave-and-a-half
+// instead of a chromatic run. Digit2/Digit3/Digit5 likewise overlap grave's
+// KeyL/Semicolon/Enter sharps for the same reason. Backspace fills the last
+// natural pair's sharp (G#) since there's no digit-row key past Equal to
+// align with Backslash.
 const KB_KEYMAP: Record<string, number> = {
+  // Grave: naturals
   'IntlBackslash': 59,
-  'KeyZ': 60, 'KeyS': 61, 'KeyX': 62, 'KeyD': 63, 'KeyC': 64,
-  'KeyV': 65, 'KeyG': 66, 'KeyB': 67, 'KeyH': 68, 'KeyN': 69,
-  'KeyJ': 70, 'KeyM': 71, 'Comma': 72,
-  'KeyL': 73, 'Period': 74, 'Semicolon': 75, 'Slash': 76,
+  'KeyZ': 60, 'KeyX': 62, 'KeyC': 64, 'KeyV': 65, 'KeyB': 67,
+  'KeyN': 69, 'KeyM': 71, 'Comma': 72, 'KeyL': 73, 'Period': 74, 'Semicolon': 75, 'Slash': 76,
+  'ShiftRight': 77,
+  // Grave: sharps/flats
+  'KeyS': 61, 'KeyD': 63, 'KeyG': 66, 'KeyH': 68, 'KeyJ': 70,
+  'Enter': 78,
+  // Agudo: naturals (C5..A6, first 4 overlap grave's Comma/Period/Slash/ShiftRight)
+  'KeyQ': 72, 'KeyW': 74, 'KeyE': 76, 'KeyR': 77, 'KeyT': 79, 'KeyY': 81, 'KeyU': 83,
+  'KeyI': 84, 'KeyO': 86, 'KeyP': 88, 'BracketLeft': 89, 'BracketRight': 91, 'Backslash': 93,
+  // Agudo: sharps/flats (Digit2/3/5 overlap grave's KeyL/Semicolon/Enter)
+  'Digit2': 73, 'Digit3': 75, 'Digit5': 78, 'Digit6': 80, 'Digit7': 82,
+  'Digit9': 85, 'Digit0': 87, 'Equal': 90, 'Backspace': 92,
 };
 
 interface Props {
@@ -82,28 +115,100 @@ function keyAtCoords(x: number, y: number): { midi: number } | null {
 
 const MAX_TOUCH_VOICES = 3;
 
+// Physical-keyboard note highlighting: a played note's octave rarely matches
+// the single visible SVG key for its note name (that key is always drawn at
+// one specific octave — two, for C, at each end of the octave), so instead
+// of a full-key fill swap we light a slice of the key indicating which
+// octave was actually played, relative to the "home" octave 4-5 span drawn
+// on the keyboard. Mouse/touch input keeps the simple full-key fill
+// (ptPressedMidis) — EXCEPT for the one key drawn twice (C, at both ends of
+// the octave): whichever C is played, by any input method, the *other* C
+// also lights up at its own fixed height (bottom-half for the left/lower
+// one, top-half for the right/higher one) as a sympathetic reminder that
+// both represent the same note name.
+type KbZone = 'bottom-edge' | 'bottom-half' | 'top-half' | 'top-edge';
+
+const C_LEFT_MIDI = 60;
+const C_RIGHT_MIDI = 72;
+
+function noteOctave(midi: number): number {
+  return Math.floor(midi / 12) - 1;
+}
+
+function kbZoneForOctave(oct: number): KbZone {
+  if (oct <= 3) return 'bottom-edge';
+  if (oct === 4) return 'bottom-half';
+  if (oct === 5) return 'top-half';
+  return 'top-edge';
+}
+
+// Finds which drawn key (white or black) represents the same note name as
+// `midi`, picking the nearest one when a note name is drawn twice (only C,
+// at both ends of the octave).
+function nearestRectMidi(midi: number): number | undefined {
+  const pitchClass = ((midi % 12) + 12) % 12;
+  let best: number | undefined;
+  for (const k of [...WHITE_KEYS, ...BLACK_KEYS]) {
+    if (k.midi % 12 !== pitchClass) continue;
+    if (best === undefined || Math.abs(k.midi - midi) < Math.abs(best - midi)) best = k.midi;
+  }
+  return best;
+}
+
+// Given a drawn key's midi, returns the OTHER drawn C key + its fixed zone,
+// only when `rectMidi` is one of the two C keys — undefined otherwise.
+function cSibling(rectMidi: number): { rectMidi: number; zone: KbZone } | undefined {
+  if (rectMidi === C_LEFT_MIDI) return { rectMidi: C_RIGHT_MIDI, zone: 'top-half' };
+  if (rectMidi === C_RIGHT_MIDI) return { rectMidi: C_LEFT_MIDI, zone: 'bottom-half' };
+  return undefined;
+}
+
 export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const ptVoicesRef = useRef(new Map<number, { midi: number; voiceId: number }>());
-  const [pressedMidis, setPressedMidis] = useState<Set<number>>(new Set());
+  const [ptPressedMidis, setPtPressedMidis] = useState<Set<number>>(new Set());
+  const [kbZones, setKbZones] = useState<Map<number, Set<KbZone>>>(new Map());
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const kbVoiceMapRef = useRef(new Map<string, number>());
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
-  const metr = useMetronome(volumeRef);
+  const metr = useMetronome();
 
   const viewH = showScaleArrows ? 220 : 160;
 
   function syncPressedMidis() {
-    const s = new Set<number>();
-    for (const { midi } of ptVoicesRef.current.values()) s.add(midi);
+    const pt = new Set<number>();
+    for (const { midi } of ptVoicesRef.current.values()) pt.add(midi);
+    setPtPressedMidis(pt);
+
+    const zones = new Map<number, Set<KbZone>>();
+    function addZone(rectMidi: number, zone: KbZone) {
+      if (!zones.has(rectMidi)) zones.set(rectMidi, new Set());
+      zones.get(rectMidi)!.add(zone);
+    }
+
+    // Keyboard-driven: full octave-zone system.
     for (const code of kbVoiceMapRef.current.keys()) {
       const midi = KB_KEYMAP[code];
-      if (midi !== undefined) s.add(midi);
+      if (midi === undefined) continue;
+      const rectMidi = nearestRectMidi(midi);
+      if (rectMidi === undefined) continue;
+      addZone(rectMidi, kbZoneForOctave(noteOctave(midi)));
+      const sibling = cSibling(rectMidi);
+      if (sibling) addZone(sibling.rectMidi, sibling.zone);
     }
-    setPressedMidis(s);
+
+    // Pointer/touch-driven: every other note keeps the plain full-key fill
+    // (ptPressedMidis, unchanged) — only C's sympathetic sibling highlight
+    // is added here.
+    for (const midi of pt) {
+      const sibling = cSibling(midi);
+      if (sibling) addZone(sibling.rectMidi, sibling.zone);
+    }
+
+    setKbZones(zones);
   }
 
   useEffect(() => {
@@ -227,30 +332,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
 
   return (
     <div className={className} style={{ display: 'block' }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', paddingBottom: '8px' }}>
-        <button
-          onClick={() => setKbMode(m => !m)}
-          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
-        >
-          KEYBOARD
-        </button>
-        <MetronomeControls {...metr} />
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '46px', textAlign: 'right' }}>
-            Vol {Math.round(volume * 100)}
-          </span>
-          <input
-            aria-label="Volumen del teclado"
-            max="1"
-            min="0"
-            step="0.05"
-            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
-            type="range"
-            value={volume}
-            onChange={handleVolumeChange}
-          />
-        </label>
-      </div>
+    <div className="midi-instrument-host">
       <svg
         ref={svgRef}
         viewBox={`0 0 700 ${viewH}`}
@@ -278,7 +360,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             width={k.w}
             height={k.h}
             rx="8"
-            fill={pressedMidis.has(k.midi) ? '#b8e8c4' : '#f7f8fb'}
+            fill={ptPressedMidis.has(k.midi) ? '#b8e8c4' : '#f7f8fb'}
           />
         ))}
       </g>
@@ -293,9 +375,33 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
             width={k.w}
             height={k.h}
             rx="8"
-            fill={pressedMidis.has(k.midi) ? '#5a9e6a' : '#d1d5db'}
+            fill={ptPressedMidis.has(k.midi) ? '#5a9e6a' : '#d1d5db'}
           />
         ))}
+      </g>
+
+      {/* Keyboard-input octave zones — bottom/top half or edge slice per key, never used for mouse/touch */}
+      <g data-testid="kb-zones" pointerEvents="none">
+        {[...WHITE_KEYS, ...BLACK_KEYS].flatMap((k) => {
+          const zones = kbZones.get(k.midi);
+          if (!zones || zones.size === 0) return [];
+          const halfH = k.h / 2;
+          const edgeH = Math.max(10, k.h * 0.14);
+          const elems: React.ReactNode[] = [];
+          if (zones.has('bottom-half')) {
+            elems.push(<rect key={`${k.midi}-bh`} x={k.x} y={KEY_Y + k.h - halfH} width={k.w} height={halfH} rx="8" fill="#b8e8c4" opacity={0.9} />);
+          }
+          if (zones.has('top-half')) {
+            elems.push(<rect key={`${k.midi}-th`} x={k.x} y={KEY_Y} width={k.w} height={halfH} rx="8" fill="#b8e8c4" opacity={0.9} />);
+          }
+          if (zones.has('bottom-edge')) {
+            elems.push(<rect key={`${k.midi}-be`} x={k.x} y={KEY_Y + k.h - edgeH} width={k.w} height={edgeH} rx="6" fill="#fbbf24" />);
+          }
+          if (zones.has('top-edge')) {
+            elems.push(<rect key={`${k.midi}-te`} x={k.x} y={KEY_Y} width={k.w} height={edgeH} rx="6" fill="#fbbf24" />);
+          }
+          return elems;
+        })}
       </g>
 
       {/* White key labels */}
@@ -382,13 +488,37 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
         </>
       )}
     </svg>
-    {kbMode && kbGhostWarn && (
-      <div style={{ paddingTop: '8px', textAlign: 'center' }}>
-        <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px' }}>
-          ⚠ Necesitas teclado gaming para tocar ciertos acordes
-        </span>
-      </div>
-    )}
+      <MidiInstrumentChrome
+        warning={kbMode && kbGhostWarn && (
+          <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+            ⚠ Necesitas teclado gaming para tocar ciertos acordes
+          </span>
+        )}
+      >
+        <button
+          onClick={() => setKbMode(m => !m)}
+          style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+        >
+          KEYBOARD
+        </button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '46px', textAlign: 'right' }}>
+            Vol {Math.round(volume * 100)}
+          </span>
+          <input
+            aria-label="Volumen del teclado"
+            max="1"
+            min="0"
+            step="0.05"
+            style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
+            type="range"
+            value={volume}
+            onChange={handleVolumeChange}
+          />
+        </label>
+        <MetronomeControls {...metr} />
+      </MidiInstrumentChrome>
+    </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 'use client';
-import { type Dispatch, type MutableRefObject, type SetStateAction, useEffect, useRef, useState } from 'react';
+import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from 'react';
 import { getAudioCurrentTime, playMetronomeClick, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 
 export type MetronomeSubdivision = 'quarter' | 'eighth' | 'sixteenth';
@@ -12,6 +12,8 @@ export interface MetronomeAPI {
   turnOn: (sub?: MetronomeSubdivision) => void;
   turnOff: () => void;
   selectSubdivision: (sub: MetronomeSubdivision) => void;
+  metroVolume: number;
+  setMetroVolume: Dispatch<SetStateAction<number>>;
 }
 
 const SUBDIV_FACTORS: Record<MetronomeSubdivision, number> = {
@@ -20,16 +22,25 @@ const SUBDIV_FACTORS: Record<MetronomeSubdivision, number> = {
   sixteenth: 0.25,
 };
 
-export function useMetronome(volumeRef: MutableRefObject<number>): MetronomeAPI {
+// Independent of the instrument's own volume slider. 0.5 (default) reproduces
+// the click's historical loudness; 1.0 doubles it (see the `* 2` below and
+// the metronome limiter in guitarAudioEngine.ts, which keeps that doubled
+// level from clipping on the "kick" click type).
+const DEFAULT_METRO_VOLUME = 0.5;
+
+export function useMetronome(): MetronomeAPI {
   const [bpm, setBpm] = useState(60);
   const [on, setOn] = useState(false);
   const [subdivision, setSubdivision] = useState<MetronomeSubdivision>('quarter');
+  const [metroVolume, setMetroVolume] = useState(DEFAULT_METRO_VOLUME);
 
   const bpmRef = useRef(bpm);
   const subdivRef = useRef<MetronomeSubdivision>('quarter');
   const clickIndexRef = useRef(0);
+  const metroVolumeRef = useRef(metroVolume);
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { metroVolumeRef.current = metroVolume; }, [metroVolume]);
 
   useEffect(() => {
     if (!on) return;
@@ -51,15 +62,13 @@ export function useMetronome(volumeRef: MutableRefObject<number>): MetronomeAPI 
             if (pos === 1 || pos === 3) type = 'cymbal';
             else if (pos === 2) type = 'kick';
           }
-          playMetronomeClick(nextClickTime, volumeRef.current, type);
+          playMetronomeClick(nextClickTime, metroVolumeRef.current * 2, type);
         }
         clickIndexRef.current++;
         nextClickTime += secsPerClick;
       }
     }, 25);
     return () => clearInterval(id);
-  // volumeRef is a stable ref — intentionally excluded from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [on, subdivision]);
 
   function turnOn(sub: MetronomeSubdivision = 'quarter') {
@@ -78,5 +87,5 @@ export function useMetronome(volumeRef: MutableRefObject<number>): MetronomeAPI 
     setSubdivision(sub);
   }
 
-  return { bpm, setBpm, on, subdivision, turnOn, turnOff, selectSubdivision };
+  return { bpm, setBpm, on, subdivision, turnOn, turnOff, selectSubdivision, metroVolume, setMetroVolume };
 }
