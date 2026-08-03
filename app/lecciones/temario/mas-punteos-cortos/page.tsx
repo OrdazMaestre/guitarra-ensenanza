@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import TemarioPager from '../TemarioPager';
 
 const shortRiffs = [
   {
@@ -85,8 +86,13 @@ export default function MasPunteosCortosPage() {
           </a>
         </section>
 
-       
       </article>
+
+      <div className="lesson-pager-wrap">
+        <TemarioPager
+          previous={{ href: '/lecciones/temario/tablaturas-dos-cuerdas', label: 'Tablaturas con dos cuerdas' }}
+        />
+      </div>
 
       <style>{`
         .short-riffs-page {
@@ -103,6 +109,13 @@ export default function MasPunteosCortosPage() {
           box-sizing: border-box;
           display: grid;
           gap: clamp(28px, 5vw, 58px);
+          margin: 0 auto;
+          max-width: 1120px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .lesson-pager-wrap {
           margin: 0 auto;
           max-width: 1120px;
           min-width: 0;

@@ -102,7 +102,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           <h1>Let It Be</h1>
           <div className="short-copy">
             <p>Una canción a base de acordes puede leerse de las dos maneras que vemos abajo.</p>
-            
+            <p>Puedes usar la flecha atrás de la esquina para consultar los acordes.</p>
             <p> Al final del todo hay enlaces a la canción y a la versión con guitarra.</p>
           </div>
         </header>

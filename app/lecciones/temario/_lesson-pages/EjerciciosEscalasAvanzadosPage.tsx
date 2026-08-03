@@ -77,7 +77,7 @@ const advancedExercises = [
     buildNotes: () => [...upTwoDownOneByPairs(figureOne.notes), ...upTwoDownOneByPairs([...figureOne.notes].reverse())],
     note: 'Ejercicio 4',
     text: ['Vuelve atrás cada tres notas.'],
-    title: 'Subimos 2 y bajamos 1 por bloques',
+    title: 'Subimos 3 y bajamos 1',
   },
   {
     buildNotes: () => [...interleavedTriples(figureOne.notes), ...interleavedTriples([...figureOne.notes].reverse())],

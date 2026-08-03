@@ -4,14 +4,16 @@ import type { MetronomeAPI, MetronomeSubdivision } from '@/app/lib/useMetronome'
 const NOTE_CHARS: Record<MetronomeSubdivision, string> = {
   quarter: '♩',
   eighth: '♪',
+  triplet: '♪³',
   sixteenth: '♬',
 };
 const NOTE_LABELS: Record<MetronomeSubdivision, string> = {
   quarter: 'Negra',
   eighth: 'Corchea',
+  triplet: 'Tresillo',
   sixteenth: 'Semicorchea',
 };
-const SUBDIVISIONS: MetronomeSubdivision[] = ['quarter', 'eighth', 'sixteenth'];
+const SUBDIVISIONS: MetronomeSubdivision[] = ['quarter', 'eighth', 'triplet', 'sixteenth'];
 
 function MetronomeIcon() {
   return (
@@ -79,7 +81,7 @@ export default function MetronomeControls({ bpm, setBpm, on, subdivision, turnOn
             </span>
             <input
               aria-label="Tempo del metrónomo"
-              type="range" min="30" max="100" step="1" value={bpm}
+              type="range" min="30" max="120" step="1" value={bpm}
               onChange={e => setBpm(Number(e.target.value))}
               style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
             />

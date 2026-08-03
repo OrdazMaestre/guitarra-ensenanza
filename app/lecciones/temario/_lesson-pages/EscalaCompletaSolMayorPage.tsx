@@ -47,10 +47,12 @@ function noteNameForFret(open: number, fret: number) {
 
 function ScaleFretboard({
   ariaLabel,
+  highlightFundamentalTriad = false,
   notes,
   showFretNumbers = false,
 }: {
   ariaLabel: string;
+  highlightFundamentalTriad?: boolean;
   notes: string[];
   showFretNumbers?: boolean;
 }) {
@@ -456,14 +458,20 @@ function ScaleFretboard({
             {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
           </text>
         ))}
-        {fretNotes.map((item) => (
-          <g key={`${item.string}-${item.fret}-${item.note}`}>
-            <circle className={item.note === 'G' ? 'note-dot note-g' : item.note === 'E' ? 'note-dot note-e' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="17" />
-            <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
-              {item.note}
-            </text>
-          </g>
-        ))}
+        {fretNotes.map((item) => {
+          const isFundamentalTriadNote = highlightFundamentalTriad && item.fret <= 3 && !(item.fret === 3 && item.string === 2);
+          return (
+            <g key={`${item.string}-${item.fret}-${item.note}`}>
+              <circle className={item.note === 'G' ? 'note-dot note-g' : item.note === 'E' ? 'note-dot note-e' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="17" />
+              <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
+                {item.note}
+              </text>
+              {isFundamentalTriadNote ? (
+                <circle className="note-fundamental-ring" cx={fretX(item.fret)} cy={stringY(item.string)} r="22" />
+              ) : null}
+            </g>
+          );
+        })}
         {interactionOverlay()}
       </svg>
     </figure>
@@ -526,7 +534,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
             <p>Ya vimos el mapa del arpegio de Sol Mayor.</p>
             <p>G, B y D.</p>
           </header>
-          <ScaleFretboard ariaLabel="Notas del arpegio triada de Sol Mayor en los doce primeros trastes" notes={gMajorChord} />
+          <ScaleFretboard ariaLabel="Notas del arpegio triada de Sol Mayor en los doce primeros trastes" highlightFundamentalTriad notes={gMajorChord} />
         </section>
 
         <section className="map-section dashed-section" aria-labelledby="pentatonic-title">
@@ -751,6 +759,12 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         .note-g {
           stroke: #2563eb;
           stroke-width: 6;
+        }
+
+        .note-fundamental-ring {
+          fill: none;
+          stroke: #fbbf24;
+          stroke-width: 5;
         }
 
         .note-label {

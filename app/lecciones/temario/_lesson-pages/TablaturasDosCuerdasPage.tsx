@@ -33,6 +33,10 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
             </span>
           </div>
 
+          <div className="player-frame">
+            <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
+          </div>
+
           <div className="fretboard-diagram">
             <ReducedFretboardDiagram
               ariaLabel="Mástil con las notas de Feliz Navidad, cuerdas 1 y 2, trastes 0 al 5"
@@ -52,10 +56,6 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
             />
           </div>
 
-          <div className="player-frame">
-            <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
-          </div>
-
           <div className="extra-practice-link-wrap">
             <Link href="/lecciones/temario/mas-punteos-cortos" className="extra-practice-link">
               Más punteos cortos con pocas cuerdas
@@ -64,15 +64,15 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
         </section>
 
         <section className="davie-section" aria-label="Video de bajo">
-          <p className="davie-message">Aquí va una canción para Halloween.</p>
-          <div className="video-wrap">
-            <iframe
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              src="https://www.youtube.com/embed/VMycOhwjhQg"
-              title="Bajo - Davie504"
-            />
-          </div>
+          
+          <a
+              className="extra-practice-link"
+              href="https://www.youtube.com/embed/VMycOhwjhQg"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Aquí va una canción para Halloween.
+            </a>
         </section>
       </article>
 

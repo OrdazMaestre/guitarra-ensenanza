@@ -129,6 +129,10 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
         <section className="lesson-close" aria-label="Resumen">
           <p>ESO FUE LO FÁCIL. Abajo verás los arpegios de verdad</p>
           <Link href="/lecciones/temario/ampliacion-arpegios">AMPLIACION ARPEGIOS</Link>
+        <div className="warning-box" role="note">
+            <p>Esta ampliación adelanta un poco de contenido del temario</p>
+            <p>pero todos podemos aprender los ejercicios de las tablaturas sin problemas.</p>
+          </div>
         </section>
       </article>
 

@@ -13,6 +13,7 @@ const OPEN_STRING_MIDI: Record<number, number> = {
 
 type FretboardNote = {
   fret: number;
+  highlight?: boolean;
   label: string;
   string: number;
   tone?: 'minor' | 'root' | 'special';
@@ -495,6 +496,14 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
           <text className="reduced-note-label" x={fretMarkerX(boardX, fretWidth, startFret, note.fret)} y={stringY(note.string) + 5}>
             {note.label}
           </text>
+          {note.highlight ? (
+            <circle
+              className="reduced-note-highlight-ring"
+              cx={fretMarkerX(boardX, fretWidth, startFret, note.fret)}
+              cy={stringY(note.string)}
+              r="21"
+            />
+          ) : null}
         </g>
       ))}
       {fretLabelsAbove && Array.from(
@@ -622,6 +631,12 @@ export function ReducedFretboardStyles() {
 
       .reduced-note-special {
         stroke: #dc2626;
+        stroke-width: 5;
+      }
+
+      .reduced-note-highlight-ring {
+        fill: none;
+        stroke: #fbbf24;
         stroke-width: 5;
       }
 

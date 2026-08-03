@@ -181,7 +181,8 @@ html[data-theme='dark'] .site-shell {
   filter: invert(1) hue-rotate(180deg);
 }
 
-html[data-theme='dark'] .site-shell img {
+html[data-theme='dark'] .site-shell img,
+html[data-theme='dark'] .site-shell iframe {
   filter: invert(1) hue-rotate(180deg);
 }
 

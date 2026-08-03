@@ -2,7 +2,7 @@
 import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from 'react';
 import { getAudioCurrentTime, playMetronomeClick, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 
-export type MetronomeSubdivision = 'quarter' | 'eighth' | 'sixteenth';
+export type MetronomeSubdivision = 'quarter' | 'eighth' | 'triplet' | 'sixteenth';
 
 export interface MetronomeAPI {
   bpm: number;
@@ -19,6 +19,7 @@ export interface MetronomeAPI {
 const SUBDIV_FACTORS: Record<MetronomeSubdivision, number> = {
   quarter: 1,
   eighth: 0.5,
+  triplet: 1 / 3,
   sixteenth: 0.25,
 };
 
@@ -55,14 +56,19 @@ export function useMetronome(): MetronomeAPI {
           const idx = clickIndexRef.current;
           const sub = subdivRef.current;
           let type: 'snare' | 'kick' | 'cymbal' = 'snare';
+          let accent = 1;
           if (sub === 'eighth') {
             type = idx % 2 === 0 ? 'snare' : 'kick';
+          } else if (sub === 'triplet') {
+            type = idx % 3 === 0 ? 'kick' : 'snare';
+            // The two off-beat snares are quieter so the kick keeps lead.
+            if (type === 'snare') accent = 0.6;
           } else if (sub === 'sixteenth') {
             const pos = idx % 4;
-            if (pos === 1 || pos === 3) type = 'cymbal';
+            if (pos === 1 || pos === 3) { type = 'cymbal'; accent = 0.3; }
             else if (pos === 2) type = 'kick';
           }
-          playMetronomeClick(nextClickTime, metroVolumeRef.current * 2, type);
+          playMetronomeClick(nextClickTime, metroVolumeRef.current * 2 * accent, type);
         }
         clickIndexRef.current++;
         nextClickTime += secsPerClick;

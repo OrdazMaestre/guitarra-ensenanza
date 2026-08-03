@@ -44,9 +44,6 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                   </figure>
                 </div>
 
-                <p>
-                  Las demás partes de la guitarra ayudan a mantener, modificar y amplificar esa vibración.
-                </p>
 
                 <Link href="/lecciones/temario/el-sonido-en-la-musica" className="music-more-link">
                   SABER MÁS
@@ -68,10 +65,12 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
             <div className="overview-notes">
               <p>
                 La guitarra es un instrumento de cuerda: </p>
-              <p>su sonido lo generan las cuerdas.
+              <p>El sonido lo generan las cuerdas.
               </p>
               <p>
-                Con las clavijas afinamos las cuerdas, los trastes ordenan las notas y la caja amplifica el sonido.
+                Con las clavijas afinamos las cuerdas.</p>
+              <p>Los trastes ordenan las notas. </p>
+              <p>El cuerpo amplifica el sonido.
               </p>
             </div>
           </section>
@@ -80,18 +79,12 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
             <div className="mastil-copy">
               <p className="lesson-kicker">Lo importante</p>
               <h2>El mástil</h2>
-              <p>
-                Aquí colocamos la mano izquierda. </p>
               <p>Aquí están los trastes: </p>
-              <p>los trastes son además los números que escribimos en las tablaturas </p>
-              <p>indican qué celda/traste hay que pisar con los dedos y en qué cuerda.
+              
+              <p>Son nuestro mapa y también los números que escribimos en las tablaturas </p><p>Indican qué celda/traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>
-                OJO PARA LOS PEQUES: los trastes son las lineas metálicas, pero ponemos el dedo en el centro de la celda de va antes, no en el propio traste. </p>
-              <p>
-                La distancia entre los trastes 1 y 2 es medio tono. </p>
-              <p>La distancia entre los trastes 1 y 3 es un tono entero.
-              </p>
+                OJO PARA LOS PEQUES: ponemos el dedo ENTRE los trastes. Probad haciendo click en el dibujo. </p>
             </div>
 
             <div className="mastil-right">
@@ -112,6 +105,11 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                   notes={[]}
                 />
               </div>
+            </div>
+
+            <div className="interval-box">
+              <p>La distancia entre los trastes 1 y 2 es medio tono.</p>
+              <p>La distancia entre los trastes 1 y 3 es un tono entero.</p>
             </div>
           </section>
         </article>
@@ -349,6 +347,27 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           .mastil-diagram {
             max-width: 100%;
             min-width: 0;
+          }
+
+          .interval-box {
+            border: 3px solid #2f65ad;
+            border-radius: 10px;
+            display: grid;
+            gap: 8px;
+            grid-column: 1 / -1;
+            margin: clamp(56px, 8vw, 72px) auto 0;
+            max-width: 720px;
+            padding: clamp(18px, 3vw, 28px);
+            text-align: center;
+            width: 100%;
+          }
+
+          .interval-box p {
+            color: #080808;
+            font-size: 18px;
+            font-weight: 700;
+            line-height: 1.5;
+            margin: 0;
           }
 
           .lesson-pager-wrap {

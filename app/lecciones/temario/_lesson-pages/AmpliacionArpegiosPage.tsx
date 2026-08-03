@@ -64,10 +64,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
         <header className="extension-header">
           <p className="lesson-kicker">Ampliación</p>
           <h1>Arpegios</h1>
-          <div className="warning-box" role="note">
-            <p>Esta ampliación adelanta un poco de contenido del temario</p>
-            <p>pero todos podemos aprender los ejercicios de las tablaturas sin problemas.</p>
-          </div>
+          
           <div className="short-copy">
             <p>En la página de arpegios practicamos una forma sencilla.</p>
             <p>Ahora vamos a completar el dibujo por el mástil.</p>
@@ -82,9 +79,6 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <header className="exercise-header">
             <p className="lesson-kicker">Ejercicio 1</p>
             <h2 id="triad-title">Arpegios triada completos</h2>
-            <p>
-              Acorde de <span>Sol mayor: G, B y D.</span>
-            </p>
           </header>
           <div className="fretboard-map-wrap">
             <ReducedFretboardDiagram
@@ -94,6 +88,9 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
               notes={gTriadNotes}
             />
           </div>
+          <p className="chord-caption">
+            Acorde de <span>Sol mayor: G, B y D.</span>
+          </p>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/arpegios-g.gp" title="Arpegios G" />
           </div>
@@ -103,9 +100,6 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           <header className="exercise-header">
             <p className="lesson-kicker">Ejercicio 2</p>
             <h2 id="seventh-title">Arpegios cuatriada con séptima completos</h2>
-            <p>
-              Acorde de <span>Sol mayor séptima: G, B, D y F#.</span>
-            </p>
           </header>
           <div className="fretboard-map-wrap">
             <ReducedFretboardDiagram
@@ -115,6 +109,9 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
               notes={gSeventhNotes}
             />
           </div>
+          <p className="chord-caption">
+            Acorde de <span>Sol mayor séptima: G, B, D y F#.</span>
+          </p>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={190} source="/tabs/arpegios-g7.gp" title="Arpegios G7" />
           </div>
@@ -223,6 +220,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
 
         .short-copy p,
         .exercise-header p,
+        .chord-caption,
         .lesson-close p,
         .rule-box p {
           color: #303030;
@@ -265,7 +263,8 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           margin: 0;
         }
 
-        .exercise-header p span {
+        .exercise-header p span,
+        .chord-caption span {
           color: #080808;
           font-weight: 900;
           text-decoration: underline;
@@ -279,6 +278,12 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
           max-width: min(100%, 980px);
           min-width: 0;
           width: 100%;
+        }
+
+        .chord-caption {
+          margin: clamp(44px, 6vw, 60px) auto 0;
+          max-width: 920px;
+          text-align: center;
         }
 
         .compact-player-frame {
@@ -310,7 +315,8 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
 
         @media (max-width: 760px) {
           .extension-header,
-          .exercise-header {
+          .exercise-header,
+          .chord-caption {
             text-align: left;
           }
 

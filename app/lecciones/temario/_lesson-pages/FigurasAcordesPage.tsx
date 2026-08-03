@@ -405,14 +405,20 @@ function GChordFretboard() {
             {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
           </text>
         ))}
-        {fretNotes.map((item) => (
-          <g key={`${item.fret}-${item.string}-${item.note}`}>
-            <circle className={item.note === 'G' ? 'note-dot note-g' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="16" />
-            <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
-              {item.note}
-            </text>
-          </g>
-        ))}
+        {fretNotes.map((item) => {
+          const isFundamentalTriadNote = item.fret <= 3 && !(item.fret === 3 && item.string === 2);
+          return (
+            <g key={`${item.fret}-${item.string}-${item.note}`}>
+              <circle className={item.note === 'G' ? 'note-dot note-g' : 'note-dot'} cx={fretX(item.fret)} cy={stringY(item.string)} r="16" />
+              <text className="note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
+                {item.note}
+              </text>
+              {isFundamentalTriadNote ? (
+                <circle className="note-fundamental-ring" cx={fretX(item.fret)} cy={stringY(item.string)} r="21" />
+              ) : null}
+            </g>
+          );
+        })}
         {interactionOverlay()}
       </svg>
     </figure>
@@ -707,6 +713,12 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
           font-size: 20px;
           font-weight: 950;
           text-anchor: middle;
+        }
+
+        .note-fundamental-ring {
+          fill: none;
+          stroke: #fbbf24;
+          stroke-width: 5;
         }
 
         .theory-link {

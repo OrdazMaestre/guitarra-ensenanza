@@ -1,15 +1,11 @@
-import Link from 'next/link';
 import AcousticsCarousel from './AcousticsCarousel';
 import HarmonicsCarousel from './HarmonicsCarousel';
+import TemarioPager from '../TemarioPager';
 
 export default function SoundInMusicPage() {
   return (
     <main className="sound-page">
       <article className="sound-content">
-        <Link href="/lecciones/temario/conceptos-basicos" className="back-link">
-          Volver a conceptos básicos
-        </Link>
-
         <header className="sound-header">
           <p className="sound-kicker">Saber más</p>
           <h1>El sonido en la música</h1>
@@ -55,6 +51,12 @@ export default function SoundInMusicPage() {
         </section>
       </article>
 
+      <div className="lesson-pager-wrap">
+        <TemarioPager
+          previous={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos básicos' }}
+        />
+      </div>
+
       <style>{`
         .sound-page {
           background: #ffffff;
@@ -72,25 +74,19 @@ export default function SoundInMusicPage() {
           width: 100%;
         }
 
-        .back-link,
+        .lesson-pager-wrap {
+          margin: 0 auto;
+          max-width: 1120px;
+          min-width: 0;
+          width: 100%;
+        }
+
         .sound-kicker {
           color: #047857;
           font-size: 13px;
           font-weight: 950;
           letter-spacing: 0.2em;
           text-transform: uppercase;
-        }
-
-        .back-link {
-          display: inline-flex;
-          margin-bottom: clamp(34px, 6vw, 72px);
-          text-decoration: none;
-        }
-
-        .back-link:hover {
-          color: #064e3b;
-          text-decoration: underline;
-          text-underline-offset: 0.24em;
         }
 
         .sound-header {

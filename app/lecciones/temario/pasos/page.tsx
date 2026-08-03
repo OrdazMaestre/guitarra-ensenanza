@@ -67,6 +67,10 @@ const branchMap: Record<string, BranchItem[]> = {
       href: '/lecciones/temario/ejercicios-escalas',
     },
     {
+      title: 'Ejercicios avanzados de escalas',
+      href: '/lecciones/temario/ejercicios-escalas-avanzados',
+    },
+    {
       title: 'Acordes de la escala de Sol Mayor',
       href: '/lecciones/temario/acordes-escala-sol-mayor',
       secondaryTarget: 'harmony',
@@ -75,10 +79,6 @@ const branchMap: Record<string, BranchItem[]> = {
       title: 'Acordes con séptima',
       href: '/lecciones/temario/acordes-con-septima',
       secondaryTarget: 'sevenths',
-    },
-    {
-      title: 'Ejercicios avanzados de escalas',
-      href: '/lecciones/temario/ejercicios-escalas-avanzados',
     },
     {
       title: 'Modos',

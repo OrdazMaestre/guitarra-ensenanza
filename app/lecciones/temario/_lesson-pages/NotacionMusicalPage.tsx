@@ -530,7 +530,7 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
         <header className="notes-header">
           <h1>Notas musicales</h1>
           <p>
-            Notación internacional: nombrar a las notas musicales con las letras del abecedario.
+            NOTACIÓN INTERNACIONAL: Nombrar a las notas musicales con las letras del abecedario.
           </p>
           <p>A,  B,  C,  D,  E,  F  y  G.</p>
         </header>

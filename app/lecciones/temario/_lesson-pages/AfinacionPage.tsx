@@ -26,7 +26,8 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
           <header className="tuning-header">
             <h1>Aprendiendo a afinar</h1>
             <p>
-              Afinar significa ajustar la tensión de cada cuerda hasta que suene en la nota correcta. Para hacerlo, pulsamos una cuerda, giramos su clavija y volvemos a escuchar.
+              Ajustamos la tensión de las cuerdas hasta que suene en la nota correcta. </p> 
+              <p>Pulsamos una cuerda, escuchamos, giramos su clavija y volvemos a escuchar.
             </p>
           </header>
 
@@ -37,9 +38,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               <p>
                 Decimos que la guitarra está afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
               </p>
-              <p>
-                La afinación más habitual es <strong>E A D G B E</strong>, por eso se llama &quot;afinación estándar&quot;. Aprenderemos por qué más adelante.
-              </p>
+              
             </div>
 
             <figure className="headstock-figure">
@@ -53,6 +52,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               />
               <figcaption>E A D G B E</figcaption>
             </figure>
+            
           </section>
 
           <section className="string-section" aria-labelledby="strings-title">
@@ -67,14 +67,17 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
                 </div>
               ))}
             </div>
+            <p>
+                Es la afinación más habitual, por eso se llama &quot;afinación estándar&quot;. </p><p>Aprenderemos por qué más adelante.
+           </p>
           </section>
 
           <section className="interval-section" aria-labelledby="interval-title">
             <div className="interval-copy">
               <p className="lesson-kicker">Distancias</p>
-              <h2 id="interval-title">Casi todo son saltos de 5 semitonos</h2>
+              <h2 id="interval-title">5 semitonos casi siempre entre una cuerda y la siguiente </h2>
               <p>
-                Entre una cuerda y la siguiente casi siempre hay 5 semitonos. La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
+                </p> <p>La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
               </p>
             </div>
 

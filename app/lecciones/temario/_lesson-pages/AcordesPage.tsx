@@ -251,6 +251,9 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           <p>
             Los acordes que tenéis que ir practicando para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
           </p>
+          Poco a poco. Si es la primera vez que pasas por aquí, puedes ir a la siguiente página sin problema.
+          <p>
+          </p>
           <p>
             Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
           </p>
