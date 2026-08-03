@@ -67,7 +67,7 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
           
           <a
               className="extra-practice-link"
-              href="https://www.youtube.com/embed/VMycOhwjhQg"
+              href="https://www.youtube.com/watch?v=VMycOhwjhQg&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=16"
               rel="noreferrer"
               target="_blank"
             >
