@@ -63,8 +63,7 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
           </div>
         </section>
 
-        <section className="davie-section" aria-label="Video de bajo">
-          
+        <section className="davie-section" aria-label="Canción de Halloween">
           <a
               className="extra-practice-link"
               href="https://www.youtube.com/watch?v=VMycOhwjhQg&list=PLPLmt3H5xszTeOdQyDUlMdWgCoI7lJ3rS&index=16"
@@ -303,36 +302,6 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
           width: 100%;
         }
 
-        .davie-message {
-          color: #303030;
-          font-size: clamp(18px, 2vw, 24px);
-          font-weight: 650;
-          line-height: 1.42;
-          margin: 0;
-          overflow-wrap: anywhere;
-          text-align: center;
-        }
-
-        .video-wrap {
-          aspect-ratio: 16 / 9;
-          border-radius: 10px;
-          min-width: 0;
-          overflow: hidden;
-          width: 100%;
-        }
-
-        .video-wrap iframe {
-          border: 0;
-          display: block;
-          height: 100%;
-          width: 100%;
-        }
-
-        @media (max-width: 860px) {
-          .davie-message {
-            text-align: left;
-          }
-        }
       `}</style>
     </main>
   );
