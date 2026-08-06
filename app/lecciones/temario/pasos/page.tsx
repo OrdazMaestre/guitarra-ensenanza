@@ -110,8 +110,8 @@ export default function PasosPage() {
           <p>
             Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. 
             </p>
-          <p>MÉTODO ORDAZ: Camino principal (temas) + ramas secundarias (apartados). La primera vez tienes que pasar solo por las páginas con número (el camino principal: 1, 2, 3...). Cada vez que llegues a la página 10, vuelve al principio y entra en las demás ramas secundarias / apartados sin número. Si alguno se te atasca demasiado, ve a otro. A medida que aprendemos y practicamos cosas nuevas es más fácil entender los conceptos anteriores también.</p>
-          <p>Los APARTADOS que debemos visitar en el PRIMER RECORRIDO son los de los temas 2 y 3</p>
+          <p>MÉTODO ORDAZ: Temas + apartados. La primera vez tienes que pasar solo por las páginas con número (el camino principal: 1, 2, 3...). En el PRIMER RECORRIDO debemos visitar solo los APARTADOS de los temas 2 y 3. Cada vez que llegues al tema 10 vuelve a empezar pero entrando en los apartados que dejaste. Si alguno se te atasca demasiado, ve a otro. A medida que aprendemos y practicamos cosas nuevas es más fácil entender los conceptos anteriores también.</p>
+          <p>Esta página está pendiente de ser ampliada. Sistema: al superar el tema 5 alcanzas el NIVEL 1, cuando empiezas a entender todos los temas principales alcanzas el NIVEL 2 y al completar todos los apartados llegas al NIVEL 3 (listo para clases avanzadas)</p>
         </div>
 
       </section>

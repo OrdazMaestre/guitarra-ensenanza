@@ -473,28 +473,31 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
         <header className="figures-header">
           <h1>Figuras de acordes</h1>
           <div className="short-copy">
-            <p>Los acordes se pueden tocar de muchas formas.</p>
-            <p>Y en muchos sitios de la guitarra.</p>
+            <p>Cada acorde se puede tocar de varias formas.</p>
+            <p>Y en distintos sitios de la guitarra.</p>
             <p>Lo importante es tocar las notas correctas.</p>
           </div>
         </header>
 
         <section className="rule-box" aria-label="Ejemplo">
-          <p>Usamos de ejemplo el acorde de Sol Mayor.</p>
+          <p>Ponemos de ejemplo el acorde de Sol Mayor.</p>
           <p>Sol Mayor siempre usa las notas G, B y D.</p>
         </section>
 
         <section className="figures-section" aria-labelledby="map-title">
           <header className="section-header">
             <h2 id="map-title">Notas del acorde de sol mayor</h2>
-            <p>G, B y D.</p>
+            <p>todas las notas G, B y D.</p>
           </header>
           <GChordFretboard />
+          
         </section>
 
         <section className="figures-section" aria-labelledby="five-figures-title">
           <header className="section-header">
+            <p>De ahí sacamos</p>
             <h2 id="five-figures-title">5 figuras para el mismo acorde</h2>
+            <p>Su progresión es esta:</p>
           </header>
           <div className="compact-player-frame">
             <AlphaTabPlayer compact layout="horizontal" minHeight={210} source="/tabs/figuras-tri.gp" title="Figuras triada" />
@@ -503,12 +506,12 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
 
         <section className="practice-box" aria-label="Ejercicio">
           <p>
-            <strong>Ejercicio:</strong> practicar la progresion de acordes de arriba.
+            <strong>Ejercicio:</strong> practicar los acordes de arriba en ese orden.
           </p>
-          <p>No hace falta tocar las 6 cuerdas a la vez desde el principio.</p>
-          <p>Podemos usar solo las 3 cuerdas de arriba o solo las 3 cuerdas de abajo.</p></section><section className="practice-box" aria-label="Ejercicio">
-          <p>Si estamos atentos nos damos cuenta de que son las figuras de todos los acordes mayores básicos.</p>
-          <p>Cada acorde básico está en su propia figura para facilitar tocarlos todos entre los trastes 1 y 5.</p>
+          <p>No es necesario tocar las 6 cuerdas a la vez desde el principio.</p>
+          <p>Empezaremos usando solo las 3 cuerdas de arriba y luego las 3 cuerdas de abajo.</p></section><section className="practice-box" aria-label="Ejercicio">
+          <p>Si estamos atentos vemos que son las figuras de todos los acordes mayores básicos.</p>
+          <p>Cada acorde básico está en su propia figura para hacer más fácil tocarlos entre los trastes 0 y 5.</p>
         </section>
 
         <section className="theory-link" aria-label="Enlace a teoría">
@@ -623,11 +626,10 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
         }
 
         .figures-section {
-          border-top: 1px solid #d4d4d8;
           display: grid;
           gap: clamp(18px, 3vw, 30px);
           min-width: 0;
-          padding-top: clamp(24px, 4vw, 42px);
+          padding-top: clamp(8px, 1.5vw, 14px);
         }
 
         .compact-player-frame {

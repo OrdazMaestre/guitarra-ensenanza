@@ -76,35 +76,27 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           </section>
 
           <section className="mastil-section">
-            <div className="mastil-copy">
+            <div className="mastil-heading">
               <p className="lesson-kicker">Lo importante</p>
               <h2>El mástil</h2>
+            </div>
+
+            <div className="mastil-diagram">
+              <ReducedFretboardDiagram
+                ariaLabel="Mástil de guitarra con los números de los trastes del 0 al 12"
+                startFret={0}
+                endFret={12}
+                fretLabels
+                notes={[]}
+              />
+            </div>
+
+            <div className="mastil-copy">
               <p>Aquí están los trastes: </p>
-              
-              <p>Son nuestro mapa y también los números que escribimos en las tablaturas </p><p>Indican qué celda/traste hay que pisar con los dedos y en qué cuerda.
+              <p>Serán nuestro mapa y también los números que escribiremos en las tablaturas </p><p>Indicarán qué celda/traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>
                 OJO PARA LOS PEQUES: ponemos el dedo ENTRE los trastes. Probad haciendo click en el dibujo. </p>
-            </div>
-
-            <div className="mastil-right">
-              <Image
-                src="/images/guitar/fretboard-parts.jpg"
-                alt="Mástil de guitarra con trastes numerados"
-                width={800}
-                height={320}
-                className="fretboard-image"
-              />
-
-              <div className="mastil-diagram">
-                <ReducedFretboardDiagram
-                  ariaLabel="Mástil de guitarra con los números de los trastes del 0 al 12"
-                  startFret={0}
-                  endFret={12}
-                  fretLabels
-                  notes={[]}
-                />
-              </div>
             </div>
 
             <div className="interval-box">
@@ -310,38 +302,30 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
           }
 
           .mastil-section {
-            align-items: start;
             display: grid;
             gap: 28px;
-            grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr);
+            grid-template-columns: minmax(0, 1fr);
             margin-top: clamp(44px, 7vw, 92px);
+            width: 100%;
           }
 
-          .mastil-right {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            min-width: 0;
-          }
-
-          .mastil-copy h2 {
+          .mastil-heading h2 {
             font-size: clamp(40px, 5vw, 72px);
             font-weight: 950;
             letter-spacing: 0;
             line-height: 0.95;
-            margin: 0 0 22px;
+            margin: 0 0 4px;
           }
 
-          .mastil-copy p:not(.lesson-kicker) {
+          .mastil-copy {
+            margin-top: clamp(24px, 4vw, 40px);
+          }
+
+          .mastil-copy p {
             color: #303030;
             font-size: 18px;
             line-height: 1.62;
             margin: 0 0 16px;
-          }
-
-          .fretboard-image {
-            height: auto;
-            width: 100%;
           }
 
           .mastil-diagram {
@@ -355,7 +339,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
             display: grid;
             gap: 8px;
             grid-column: 1 / -1;
-            margin: clamp(56px, 8vw, 72px) auto 0;
+            margin: 0 auto;
             max-width: 720px;
             padding: clamp(18px, 3vw, 28px);
             text-align: center;
@@ -399,8 +383,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
               grid-template-columns: 1fr;
             }
 
-            .guitar-overview,
-            .mastil-section {
+            .guitar-overview {
               grid-template-columns: 1fr;
             }
 

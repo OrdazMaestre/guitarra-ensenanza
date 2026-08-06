@@ -27,27 +27,32 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           </header>
           <MiniKeyboard className="scale-pattern-image" showEnharmonics showScaleArrows />
           <div className="pattern-box">
-            <strong>Escala Mayor:</strong>
-            <span>
-              1T, 1T, <em>T/2</em>, 1T, 1T, 1T, <em>T/2</em>
-            </span>
-          </div>
-          <div className="pattern-box">
-            <strong>Escala menor:</strong>
-            <span>
-              1T, <em>T/2</em>, 1T, 1T, <em>T/2</em>, 1T, 1T
-            </span>
-            <p>Igual que la escala Mayor pero empezando desde DOS NOTAS ANTES.</p>
             <p><strong>Do Mayor: C, D, E, F, G, A, B.</strong></p>
             <p><strong>La Menor: A, B, C, D, E, F, G.</strong></p>
-            <p>Como usan las mismas notas, decimos que La menor es el RELATIVO MENOR de Do Mayor.</p>
+            <div className="pattern-row">
+            
+
+              <strong>Escala Mayor:</strong>
+              <span>
+                1T, 1T, <em>T/2</em>, 1T, 1T, 1T, <em>T/2</em>
+              </span>
+            </div>
+            <div className="pattern-row">
+              <strong>Escala menor:</strong>
+              <span>
+                1T, <em>T/2</em>, 1T, 1T, <em>T/2</em>, 1T, 1T
+              </span>
+            </div>
+            <p>La escala menor empieza DOS NOTAS ANTES o cinco después que la escala mayor.</p>
+
+            <p>LA menor es el RELATIVO MENOR de DO mayor porque usan las mismas notas.</p>
           </div>
         </section>
 
         <section className="question-box" aria-label="Alteraciones">
-          <h2>¿Qué notas hay entre medias?</h2>
+          <h2>¿Qué notas hay entre medias? ¿Qué es # y b?</h2>
           <p>Los cuadrados grises son las alteraciones.</p>
-          <p>En un piano corresponden a la teclas negras.</p>
+          <p>En un piano son las teclas negras.</p>
           <p>Las alteraciones son los bemoles (b) y los sostenidos (#).</p>
           <p>Bemol es la nota anterior - Sostenido es la nota siguiente.</p>
           <p>La nota que hay entre Do y Re es a la vez Do# y Reb.</p>
@@ -72,12 +77,11 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
         </section>
 
         <section className="branch-section" aria-labelledby="branch-title">
-          <p className="lesson-kicker">Ramas</p>
           <h2 id="branch-title">Caminos que salen de aquí</h2>
           <div className="branch-grid">
             <Link href="/lecciones/temario/escala-completa-sol-mayor">
               <span>Escala completa de Sol Mayor</span>
-              <small> Para ver el mapa entero de G Mayor y Mi menor.</small>
+              <small> Para ver el mapa entero de G Mayor y E menor.</small>
             </Link>
             <Link href="/lecciones/temario/modos-griegos">
               <span>Modos</span>
@@ -226,7 +230,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           width: 100%;
         }
 
-        .pattern-box {
+        .pattern-row {
           align-items: baseline;
           display: flex;
           flex-wrap: wrap;
@@ -240,6 +244,20 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
           font-size: clamp(22px, 3vw, 34px);
           font-weight: 950;
           line-height: 1.18;
+        }
+
+        .pattern-box p {
+          color: #303030;
+          font-size: clamp(16px, 1.7vw, 20px);
+          font-weight: 650;
+          line-height: 1.42;
+          margin: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .pattern-box p strong {
+          color: #080808;
+          font-size: 1em;
         }
 
         .pattern-box em {

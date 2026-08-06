@@ -533,8 +533,8 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           <h1>Pentatónica</h1>
           <div className="short-copy">
             <p>Al acorde de Sol Mayor le sumamos dos notas extra.</p>
-            <p>Sol Mayor usa G, B y D.</p>
-            <p>Ahora añadimos E y A.</p>
+            
+            
           </div>
         </header>
 
@@ -542,8 +542,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           <header className="section-header">
             <p className="lesson-kicker">Antes</p>
             <h2 id="reference-map-title">Arpegio de Sol Mayor</h2>
-            <p>Este era nuestro mapa de 3 notas.</p>
-            <p>G, B y D.</p>
+            <p>Los acordes y arpegios de Sol Mayor usan G, B y D.</p>
           </header>
           <div className="arpegio-ref-wrap">
             <ReducedFretboardDiagram
@@ -557,6 +556,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
 
         <section className="map-section" aria-labelledby="map-title">
           <header className="section-header">
+            <p>Ahora añadimos E y A.</p>
             <h2 id="map-title"><strong>pentatónica mayor de Sol</strong></h2>
             <p><strong>G, A, B, D y E</strong></p>
           </header>
@@ -566,10 +566,8 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
         <section className="minor-box" aria-label="Relación con Mi menor">
           <p>Aquí también aparece la escala de Mi menor.</p>
           <p>
-            Las pentatónicas de <strong>Mi menor</strong> y <strong>Sol Mayor</strong> son iguales.
-          </p>
-          <p>Usan las mismas notas.</p>
-          <p>Pero una coloca el centro en Mi y la otra en Sol.</p>
+            Las pentatónicas de <strong>Mi menor</strong> y <strong>Sol Mayor</strong> usan las mismas notas</p>
+          <p>pero una tiene el centro en Mi y la otra en Sol.</p>
         </section>
 
         <section className="memory-section" aria-labelledby="memory-title">
