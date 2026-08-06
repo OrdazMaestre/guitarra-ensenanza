@@ -709,13 +709,19 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           font-weight: 950;
         }
 
-        .reference-map-section,
-        .map-section {
+        .reference-map-section {
           border-top: 1px solid #d4d4d8;
           display: grid;
           gap: clamp(18px, 3vw, 30px);
           min-width: 0;
           padding-top: clamp(24px, 4vw, 42px);
+        }
+
+        .map-section {
+          display: grid;
+          gap: clamp(18px, 3vw, 30px);
+          min-width: 0;
+          padding-top: clamp(8px, 1.5vw, 14px);
         }
 
         .arpegio-ref-wrap {

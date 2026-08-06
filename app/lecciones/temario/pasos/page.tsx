@@ -106,12 +106,12 @@ export default function PasosPage() {
       <section className="steps-hero">
         <div className="steps-hero-copy">
           <p className="steps-kicker">Árbol de contenidos</p>
-          <h1>Primeros PASOS</h1>
+          <h1>EL MÉTODO</h1>
           <p>
-            Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. A medida que aprendemos cosas nuevas es más fácil profundizar en conceptos anteriores.
+            Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. 
             </p>
-          <p>El método que te recomiendo aquí es ir a tu ritmo avanzando por lo que consideres &quot;fácil&quot;, mirar alguna idea con más calma, curiosear lo que había antes, lo que viene después...
-          </p>
+          <p>MÉTODO ORDAZ: Camino principal (temas) + ramas secundarias (apartados). La primera vez tienes que pasar solo por las páginas con número (el camino principal: 1, 2, 3...). Cada vez que llegues a la página 10, vuelve al principio y entra en las demás ramas secundarias / apartados sin número. Si alguno se te atasca demasiado, ve a otro. A medida que aprendemos y practicamos cosas nuevas es más fácil entender los conceptos anteriores también.</p>
+          <p>Los APARTADOS que debemos visitar en el PRIMER RECORRIDO son los de los temas 2 y 3</p>
         </div>
 
       </section>

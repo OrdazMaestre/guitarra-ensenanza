@@ -531,8 +531,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         <section className="map-section" aria-labelledby="chord-title">
           <header className="section-header">
             <h2 id="chord-title">Arpegio de Sol Mayor</h2>
-            <p>Ya vimos el mapa del arpegio de Sol Mayor.</p>
-            <p>G, B y D.</p>
+            <p>Notas/mapa de acordes (y arpegios) de SOL Mayor: G, B y D.</p>
           </header>
           <ScaleFretboard ariaLabel="Notas del arpegio triada de Sol Mayor en los doce primeros trastes" highlightFundamentalTriad notes={gMajorChord} />
         </section>
@@ -540,17 +539,15 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         <section className="map-section dashed-section" aria-labelledby="pentatonic-title">
           <header className="section-header">
             <h2 id="pentatonic-title">Pentatónica de Sol Mayor</h2>
-            <p>Añadimos A y E.</p>
-            <p>Así aparece la pentatónica mayor de Sol.</p>
-            <p>Es igual que la pentatónica menor de Mi.</p>
+            <p>Aparece añadiendo A y E al mapa de antes.</p>
           </header>
           <ScaleFretboard ariaLabel="Pentatónica mayor de Sol y pentatónica menor de Mi en los doce primeros trastes" notes={gMajorPentatonic} />
           <div className="formula-box">
             <p>
-              <strong>Sol Mayor pentatónica:</strong> G, A, B, D, E.
+              <strong>SOL Mayor pentatónica:</strong> G, A, B, D, E.
             </p>
             <p>
-              <strong>Mi menor pentatónica:</strong> E, G, A, B, D.
+              <strong>MI menor pentatónica:</strong> E, G, A, B, D.
             </p>
           </div>
         </section>
@@ -688,7 +685,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         }
 
         .dashed-section {
-          border-top: 2px dashed #8a8f98;
+          padding-top: clamp(8px, 1.5vw, 14px);
         }
 
         .scale-board-wrap {

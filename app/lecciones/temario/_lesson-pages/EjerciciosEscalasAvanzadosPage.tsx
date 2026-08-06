@@ -212,7 +212,7 @@ export default function EjerciciosEscalasAvanzadosPage({ previous, next }: Lesso
         <header className="advanced-scale-header">
           <h1>Ejercicios avanzados de escalas</h1>
           <div className="short-copy">
-            <p>Usamos la figura 0 de Sol Mayor y Mi menor.</p>
+            <p>Usamos los acordes fundamentales de Sol Mayor y Mi menor.</p>
           </div>
         </header>
 

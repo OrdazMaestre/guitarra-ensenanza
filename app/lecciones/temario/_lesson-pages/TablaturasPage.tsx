@@ -24,6 +24,8 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
             </p>
             
               <p>Intentamos memorizar este mapa de notas para aprender más fácil la canción.</p>
+              <p>EJERCICIO 1: practicar el siguiente patrón</p>
+              <p> (2 - 4 - 5  -  2 - 4 - 5) - (4 - 5 - 7  -  4 - 5 - 7) - (0 - 2 - 4  -  0 - 2 - 4)</p>
           </div>
 
           <div className="fretboard-diagram">

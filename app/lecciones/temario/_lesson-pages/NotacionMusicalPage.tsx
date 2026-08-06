@@ -581,8 +581,9 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
 
         <section className="branch-link-section" aria-label="Rama de afinación">
           <Link href="/lecciones/temario/afinacion">Afinación</Link>
-          <p>Ajustar las cuerdas con las clavijas hasta</p>
-          <p>tener el patrón de la izquierda en el mástil de arriba</p>
+          <p>Ajustar las cuerdas con las clavijas</p>
+          <p>hasta tener el patrón de la izquierda en el mástil de arriba</p>
+          <p>para que la guitarra suene bien.</p>
         </section>
       </article>
 
