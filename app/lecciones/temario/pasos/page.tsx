@@ -106,12 +106,21 @@ export default function PasosPage() {
       <section className="steps-hero">
         <div className="steps-hero-copy">
           <p className="steps-kicker">Árbol de contenidos</p>
-          <h1>EL MÉTODO</h1>
-          <p>
-            Aquí vemos las cosas desde el principio, pero luego podemos profundizar más en cada cosa al ritmo que queramos. 
-            </p>
-          <p>MÉTODO ORDAZ: Temas + apartados. La primera vez tienes que pasar solo por las páginas con número (el camino principal: 1, 2, 3...). En el PRIMER RECORRIDO debemos visitar solo los APARTADOS de los temas 2 y 3. Cada vez que llegues al tema 10 vuelve a empezar pero entrando en los apartados que dejaste. Si alguno se te atasca demasiado, ve a otro. A medida que aprendemos y practicamos cosas nuevas es más fácil entender los conceptos anteriores también.</p>
-          <p>Esta página está pendiente de ser ampliada. Sistema: al superar el tema 5 alcanzas el NIVEL 1, cuando empiezas a entender todos los temas principales alcanzas el NIVEL 2 y al completar todos los apartados llegas al NIVEL 3 (listo para clases avanzadas)</p>
+          <h1>TEMARIO</h1>
+          <p className="steps-strong">MÉTODO ORDAZ</p>
+          <p>Estructura: Temas principales + apartados.</p>
+          <ul className="steps-list">
+            <li><strong>Soy nuevo:</strong> Céntrate solo en páginas numeradas (temas principales 1, 2, 3...), entrando además en los apartados de los temas 2 y 3.</li>
+            <li><strong>Llegué al final:</strong> tras llegar al tema 10, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
+            <li>Aprender cosas nuevas es necesario para avanzar y también facilita entender lo anterior.</li>
+          </ul>
+          <p className="steps-strong">Niveles:</p>
+          <ul className="steps-list">
+            <li>Nivel 1 → al superar el tema 5</li>
+            <li>Nivel 2 → al entender todos los temas principales</li>
+            <li>Nivel 3 → al completar todos los apartados (listo para clases avanzadas)</li>
+          </ul>
+          <p className="steps-note">(Esta web está pendiente de ser ampliada)</p>
         </div>
 
       </section>

@@ -64,6 +64,10 @@ const stringTunings = [
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+function noteNameForFret(open: number, fret: number) {
+  return chromaticNotes[(open + fret) % chromaticNotes.length];
+}
+
 const fretNotes = stringTunings.flatMap((string, stringIndex) =>
   Array.from({ length: 13 }, (_, fret) => {
     const note = chromaticNotes[(string.open + fret) % chromaticNotes.length];
@@ -407,6 +411,9 @@ function PentatonicFretboard() {
                 opacity={noteIsMarked ? 0.5 : 0.9}
                 r="17"
               />
+              <text x={markerX} y={sy + 4} fill="#b45309" fontSize="13" fontWeight="900" textAnchor="middle">
+                {noteNameForFret(stringTunings[string - 1].open, fret)}
+              </text>
             </g>
           );
         })}

@@ -190,7 +190,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
 
         .song-header {
           margin: 0 auto;
-          max-width: 900px;
+          max-width: 100%;
           text-align: center;
         }
 
@@ -208,7 +208,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           display: grid;
           gap: 10px;
           margin: clamp(22px, 4vw, 34px) auto 0;
-          max-width: 720px;
+          max-width: 100%;
         }
 
         .short-copy p,
@@ -249,7 +249,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           display: grid;
           gap: 8px;
           margin: 16px auto 0;
-          max-width: 760px;
+          max-width: 100%;
         }
 
         .chord-pattern {
@@ -346,8 +346,8 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
           border-left: 5px solid #047857;
           display: grid;
           gap: 10px;
-          margin: 0 auto;
-          max-width: 860px;
+          margin: 0;
+          max-width: 100%;
           padding-left: clamp(16px, 3vw, 24px);
         }
 

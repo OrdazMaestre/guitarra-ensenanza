@@ -399,6 +399,9 @@ function ScaleFretboard({
                 opacity={noteIsMarked ? 0.5 : 0.9}
                 r="17"
               />
+              <text x={markerX} y={sy + 4} fill="#b45309" fontSize="13" fontWeight="900" textAnchor="middle">
+                {noteNameForFret(stringTunings[string - 1].open, fret)}
+              </text>
             </g>
           );
         })}
@@ -531,7 +534,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         <section className="map-section" aria-labelledby="chord-title">
           <header className="section-header">
             <h2 id="chord-title">Arpegio de Sol Mayor</h2>
-            <p>Notas/mapa de acordes (y arpegios) de SOL Mayor: G, B y D.</p>
+            <p>Notas de los acordes y arpegios de SOL Mayor: G, B y D.</p>
           </header>
           <ScaleFretboard ariaLabel="Notas del arpegio triada de Sol Mayor en los doce primeros trastes" highlightFundamentalTriad notes={gMajorChord} />
         </section>
@@ -540,16 +543,10 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
           <header className="section-header">
             <h2 id="pentatonic-title">Pentatónica de Sol Mayor</h2>
             <p>Aparece añadiendo A y E al mapa de antes.</p>
+            <p>Coincide con la pentatónica MENOR de MI (E)</p>
           </header>
           <ScaleFretboard ariaLabel="Pentatónica mayor de Sol y pentatónica menor de Mi en los doce primeros trastes" notes={gMajorPentatonic} />
-          <div className="formula-box">
-            <p>
-              <strong>SOL Mayor pentatónica:</strong> G, A, B, D, E.
-            </p>
-            <p>
-              <strong>MI menor pentatónica:</strong> E, G, A, B, D.
-            </p>
-          </div>
+          
         </section>
 
         <section className="map-section dashed-section" aria-labelledby="seventh-title">
@@ -580,7 +577,8 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
         <section className="memory-box" aria-label="Idea importante">
           <p>Mi menor es igual que Sol Mayor.</p>
           <p>Pero usamos la tónica E en lugar de la tónica G.</p>
-          <p>Este mapa lo aprenderemos igual que el de la pentatónica: con ejercicios en las siguientes 2 páginas.</p>
+          <p>Lo aprenderemos igual que la pentatónica: por partes en las siguientes 2 páginas.</p>
+        
         </section>
 
         <section className="practice-link" aria-label="Ramas de la escala completa">

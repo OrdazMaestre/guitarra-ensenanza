@@ -18,23 +18,21 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
         </header>
 
         <section className="reading-section" aria-labelledby="reading-title">
-          <div className="reading-copy">
-            <p className="lesson-kicker">Ejercicio 2</p>
-            <h2 id="reading-title">Feliz Navidad</h2>
-            <p>
-              En esta tablatura usamos dos cuerdas. Cuando los números cambian de línea, cambiamos de cuerda, pero seguimos leyendo de izquierda a derecha.
-            </p>
-          </div>
+          <div className="reading-text">
+            <div className="reading-copy">
+              <p className="lesson-kicker">Ejercicio 2</p>
+              <h2 id="reading-title">Feliz Navidad</h2>
+              <p>
+                En esta tablatura usamos dos cuerdas. Cuando los números cambian de línea, cambiamos de cuerda, pero seguimos leyendo de izquierda a derecha.
+              </p>
+            </div>
 
-          <div className="practice-note">
-            <strong>Punteo</strong>
-            <span>
-              Esta forma de tocar se llama punteo: una melodía de notas individuales, una detrás de otra.
-            </span>
-          </div>
-
-          <div className="player-frame">
-            <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
+            <div className="practice-note">
+              <strong>Punteo</strong>
+              <span>
+                Esta forma de tocar se llama punteo: una melodía de notas individuales, una detrás de otra.
+              </span>
+            </div>
           </div>
 
           <div className="fretboard-diagram">
@@ -54,6 +52,10 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
                 { fret: 5, string: 2, label: '' },
               ]}
             />
+          </div>
+
+          <div className="player-frame">
+            <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
           </div>
 
           <div className="extra-practice-link-wrap">
@@ -152,14 +154,53 @@ export default function TablaturasDosCuerdasPage({ previous, next }: LessonPageP
         .reading-section {
           display: grid;
           gap: clamp(20px, 3vw, 36px);
+          grid-template-areas: "text" "midi" "tab" "links";
+          grid-template-columns: minmax(0, 1fr);
+          min-width: 0;
+        }
+
+        .reading-text {
+          display: grid;
+          gap: clamp(20px, 3vw, 36px);
+          grid-area: text;
           min-width: 0;
         }
 
         .fretboard-diagram {
+          grid-area: midi;
           margin: 0 auto;
           max-width: 680px;
           min-width: 0;
+          padding-bottom: clamp(44px, 7vw, 60px);
           width: 100%;
+        }
+
+        .player-frame {
+          grid-area: tab;
+        }
+
+        .extra-practice-link-wrap {
+          grid-area: links;
+        }
+
+        @media (min-width: 880px) {
+          .reading-section {
+            align-items: start;
+            grid-template-areas: "text midi" "tab tab" "links links";
+            grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+          }
+
+          .fretboard-diagram {
+            margin: 0;
+            max-width: 100%;
+          }
+
+          .reading-copy,
+          .practice-note {
+            margin: 0;
+            max-width: none;
+            text-align: left;
+          }
         }
 
         .reading-copy {

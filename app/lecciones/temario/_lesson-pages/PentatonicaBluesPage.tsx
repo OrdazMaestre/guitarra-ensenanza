@@ -371,6 +371,9 @@ function FretboardMap({
                 stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
               />
               <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="17" />
+              <text x={markerX} y={markerY + 4} fill="#b45309" fontSize="13" fontWeight="900" textAnchor="middle">
+                {displayNote(noteNameForFret(stringTunings[string - 1].open, fret))}
+              </text>
             </g>
           );
         })}
@@ -645,18 +648,35 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
               Ellos fueron los primeros en proponer una música compleja y distinta a como{' '}
               <span className="underlined">se creía en aquella época que era la única manera de hacer música bien</span>.
             </p>
-            <p>Muy pocos clásicos (como Claude Debussy o Igor Stravinsky) usaban estos recursos “raros”.</p>
+            <p>
+              <strong>Muy pocos clásicos</strong> usaron antes estos recursos “raros” como{' '}
+              <a className="musician-link" href="https://www.youtube.com/watch?v=8ZQAcu6vJ5o" rel="noreferrer" target="_blank">
+                Carlo Gesualdo
+              </a>{' '}
+              o{' '}
+              <a className="musician-link" href="https://www.youtube.com/watch?v=KTi-QXenilQ" rel="noreferrer" target="_blank">
+                Domenico Scarlatti
+              </a>{' '}
+              entre los siglos XVI y XVII.
+            </p>
+            <p>
+              <a className="musician-link" href="https://www.youtube.com/watch?v=hufCZZw58mk" rel="noreferrer" target="_blank">
+                Claude Debussy
+              </a>{' '}
+              e Igor Stravinsky se influenciaron mucho de estos en el siglo XX.
+            </p>
             <p>
               <span className="underlined">Así nace la <strong>música moderna</strong>, diferenciándose</span> de forma fundamental con la{' '}
               <span className="underlined"><strong>música clásica</strong></span>.
             </p>
-            <p>El Jazz fue la cúspide de esa experimentación musical: escalas de 7 a 12 notas, múltiples escalas en la misma canción... etc.</p>
+            <p>Aclaro que con "música clásica" nos referimos al conjunto Barroco, Rococó, Clasicismo y Romanticismo principalmente.</p>
+          <p>El Jazz fue la cúspide de esa experimentación musical: escalas de 7 a 12 notas, múltiples escalas en la misma canción... etc.</p>
           </div>
 
           <div className="timeline-heading">
             <p className="lesson-kicker">Evolución de la música</p>
             <h2 id="history-title">De los clásicos al rock</h2>
-          </div>
+            </div>
 
           <div className="timeline-grid">
             {evolutionItems.map((item, index) => (
@@ -673,9 +693,11 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
 
         <section className="band-section" aria-labelledby="band-title">
           <div className="band-heading">
-            <p className="lesson-kicker">Formación</p>
-            <h2 id="band-title">La banda de blues, rock y metal.</h2>
-            <p>Aqui veremos 3 grandes exponentes actuales.</p><p> Merecen tu respeto, tu like y tu suscripción a su canal.</p>
+            <p className="lesson-kicker">Formación de</p>
+            <h2 id="band-title">La banda de blues y rock.</h2>
+            <p>Principalmente juntan batería, bajo y guitarra.</p>
+            <p>Aqui veremos a 3 grandes exponentes actuales, uno de cada instrumento.</p>
+            <p>Merecen tu respeto, tu like y tu suscripción a su canal si lo tienen.</p>
           
           </div>
           <div className="band-grid">
@@ -713,10 +735,7 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
               <span className="band-card-watch">Ver video</span>
             </a>
           </div>
-          <div className="band-note">
-            <p>Una banda puede tener muchos más instrumentos.</p>
-            <p>Estos tres los veremos sí o sí.</p>
-          </div>
+          
         </section>
 
       </article>

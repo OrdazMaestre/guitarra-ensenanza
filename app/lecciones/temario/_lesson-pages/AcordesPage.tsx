@@ -185,6 +185,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           <div className="short-copy">
             <p>Un acorde junta 3 o más notas al mismo tiempo.</p>
             <p>De momento aprendemos acordes mayores y menores para tocar canciones sencillas.</p>
+            <p>Empezaremos aprendiendo los 4 acordes de la siguiente página.</p>
           </div>
         </header>
 
@@ -250,9 +251,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
         <section className="practice-strip" aria-label="Forma de practicar">
           <p>
             Los acordes que tenéis que ir practicando para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
-          </p>
-          Poco a poco. Si es la primera vez que pasas por aquí, puedes ir a la siguiente página sin problema.
-          <p>
+          
           </p>
           <p>
             Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
@@ -321,7 +320,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
 
         .chords-header {
           margin: 0 auto clamp(40px, 7vw, 80px);
-          max-width: 900px;
+          max-width: 100%;
           text-align: center;
         }
 
@@ -349,7 +348,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           display: grid;
           gap: 10px;
           margin: clamp(24px, 4vw, 36px) auto 0;
-          max-width: 820px;
+          max-width: 100%;
         }
 
         .chords-header .short-copy p {

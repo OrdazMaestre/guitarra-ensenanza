@@ -14,6 +14,12 @@ const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
 };
 
+const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function noteNameForFret(string: number, fret: number) {
+  return chromaticNotes[(OPEN_STRING_MIDI[string] + fret) % chromaticNotes.length];
+}
+
 function getFullFretSvgCoords(
   e: React.PointerEvent<SVGSVGElement>,
   svg: SVGSVGElement,
@@ -380,6 +386,9 @@ function FullFretboardDiagram() {
                 opacity={noteIsMarked ? 0.5 : 0.9}
                 r="16"
               />
+              <text x={markerX} y={sy + 4} fill="#b45309" fontSize="12" fontWeight="900" textAnchor="middle">
+                {noteNameForFret(string, fret)}
+              </text>
             </g>
           );
         })}

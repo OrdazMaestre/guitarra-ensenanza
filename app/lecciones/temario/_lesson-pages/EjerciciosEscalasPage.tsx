@@ -221,15 +221,7 @@ export default function EjerciciosEscalasPage({ previous, next }: LessonPageProp
           </div>
         </header>
 
-        <section className="note-box" aria-label="Tónica mayor y tónica menor">
-          <p>
-            <strong>G</strong> aparece en azul.
-          </p>
-          <p>
-            <strong>E</strong> aparece en verde.
-          </p>
-          <p>El resto de notas son parte normal de la escala.</p>
-        </section>
+        
 
         <section className="figures-list" aria-label="Cinco figuras de la escala de Sol Mayor">
           {figures.map((figure) => (

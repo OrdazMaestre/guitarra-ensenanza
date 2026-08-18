@@ -345,6 +345,9 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, volumeRef }: Fretboar
                 cx={markerX} cy={sy}
                 fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="16"
               />
+              <text x={markerX} y={sy + 4} fill="#b45309" fontSize="12" fontWeight="900" textAnchor="middle">
+                {noteNameForFret(stringTunings[string - 1].open, fret)}
+              </text>
             </g>
           );
         })}

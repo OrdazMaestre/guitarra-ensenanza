@@ -219,6 +219,22 @@ const seventhChords: SeventhChord[] = [
   },
 ];
 
+const triadDegreeChords = ['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F# disminuido', 'G'];
+const seventhDegreeChords = ['GMaj7', 'Am7', 'Bm7', 'CMaj7', 'D7', 'Em7', 'F# semi-disminuido', 'GMaj7'];
+
+function DegreeRow({ chords }: { chords: string[] }) {
+  return (
+    <div className="degree-row">
+      {chords.map((chord, index) => (
+        <span className="degree-cell" key={`${chord}-${index}`}>
+          {chord}
+          {index === chords.length - 1 ? '.' : null}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 const positionedChordNames = ['Em7', 'F#m7b5', 'GMaj7', 'Am7', 'Bm7', 'CMaj7', 'D7'] as const;
 const positionedChords = positionedChordNames.map((name) => seventhChords.find((chord) => chord.name === name)!);
 const chordCropRanges: Record<string, { end: number; labelX: number; start: number }> = {
@@ -683,6 +699,9 @@ function ScaleWithChordPositions() {
                 opacity={noteIsMarked ? 0.5 : 0.9}
                 r="15"
               />
+              <text x={markerX} y={sy + 4} fill="#b45309" fontSize="12" fontWeight="900" textAnchor="middle">
+                {noteNameForFret(stringTunings[string - 1].open, fret)}
+              </text>
             </g>
           );
         })}
@@ -739,6 +758,9 @@ function ScaleWithChordPositions() {
             <line x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
               stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85" />
             <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity="0.85" r="12" />
+            <text x={markerX} y={markerY + 3} fill="#b45309" fontSize="10" fontWeight="900" textAnchor="middle">
+              {noteNameForFret(stringTunings[p.string - 1].open, p.fret)}
+            </text>
           </g>
         );
       }
@@ -956,17 +978,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
             <p>Cada nota y acorde tienen un número: 1, 2, 3, 4, 5, 6 y 7.</p>
             <p>Un acorde triada usa las notas 1, 3 y 5.</p>
             <p>Un acorde con séptima usa las notas 1, 3, 5 y 7.</p>
-          </div>
-        </header>
-
-        <section className="position-section" aria-labelledby="position-title">
-          <header className="section-header">
-            <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
-          </header>
-          <ScaleWithChordPositions />
-        </section>
-
-        <section className="rule-box" aria-label="Acordes triada y cuatriada">
+                <section className="rule-box" aria-label="Acordes triada y cuatriada">
           <p>
             <strong>acorde Sol Mayor triada (G):</strong> G, B y D.
           </p>
@@ -974,18 +986,33 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
             <strong>Sol Mayor cuatriada (GMaj7):</strong> G, B, D y F#.
           </p>
         </section>
-
-        <section className="sequence-box" aria-label="Secuencia de acordes con séptima">
+        
+          </div>
+          
+        </header>
+<section className="sequence-box" aria-label="Secuencia de acordes con séptima">
           <p>
             <strong>Escala de Sol Mayor</strong>
           </p>
-          <p>
-            <strong>Acordes Triada:</strong>{' '}G &rarr; Am &rarr; Bm &rarr; C &rarr; D &rarr; Em &rarr; F# disminuido &rarr; G.
+          <p className="degree-row-label">
+            <strong>Acordes Triada:</strong>
           </p>
-          <p>
-            <strong>Cuatríadas:</strong>{' '}GMaj7 &rarr; Am7 &rarr; Bm7 &rarr; CMaj7 &rarr; D7 &rarr; Em7 &rarr; F# semi-disminuido &rarr; GMaj7.
+          <DegreeRow chords={triadDegreeChords} />
+          <p className="degree-row-label">
+            <strong>Cuatríadas:</strong>
           </p>
+          <DegreeRow chords={seventhDegreeChords} />
         </section>
+        <section className="position-section" aria-labelledby="position-title">
+          <header className="section-header">
+            <h2 id="position-title">Acordes con séptima de la escala de Sol Mayor</h2>
+          </header>
+          <ScaleWithChordPositions />
+        </section>
+
+    
+
+        
 
         <section className="exercise-section" aria-labelledby="exercise-title">
           <header className="section-header">
@@ -1079,6 +1106,38 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           gap: 10px;
         }
 
+        .degree-row-label {
+          margin-top: 6px;
+        }
+
+        .degree-row {
+          display: grid;
+          gap: 6px clamp(10px, 2.4vw, 26px);
+          grid-template-columns: repeat(8, minmax(0, 1fr));
+          margin-top: -4px;
+        }
+
+        .degree-cell {
+          color: #303030;
+          display: inline-block;
+          font-size: clamp(15px, 2vw, 24px);
+          font-weight: 650;
+          line-height: 1.3;
+          overflow-wrap: normal;
+        }
+
+        @media (max-width: 760px) {
+          .degree-row {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 480px) {
+          .degree-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
         .short-copy {
           margin: clamp(20px, 4vw, 32px) auto 0;
           max-width: 720px;
@@ -1109,6 +1168,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
 
         .sequence-box {
           border-color: #047857;
+          max-width: 100%;
         }
 
         .rule-box strong,

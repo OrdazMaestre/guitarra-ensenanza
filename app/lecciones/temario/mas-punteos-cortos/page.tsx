@@ -7,6 +7,7 @@ const shortRiffs = [
     artist: 'Villancico tradicional',
     barWidth: 170,
     href: 'https://www.youtube.com/watch?v=V7nSKqfBk6k',
+    initialSpeed: 1.3,
     minHeight: 250,
     source: '/tabs/carol-of-the-bells.gp',
     title: 'Carol of the Bells',
@@ -68,6 +69,7 @@ export default function MasPunteosCortosPage() {
               <AlphaTabPlayer
                 compact
                 horizontalBarWidth={riff.barWidth}
+                initialSpeed={riff.initialSpeed}
                 layout="horizontal"
                 minHeight={riff.minHeight}
                 source={riff.source}
