@@ -270,7 +270,11 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
   pointer-events: none;
   position: absolute;
   right: 0;
-  z-index: 8;
+  /* Must outrank every other z-index on the site (AlphaTab's own top
+     scrollbar uses z-[95], its settings dropdown z-[130]) so the MIDI
+     instrument's own controls/dropdown never get buried under a nearby
+     AlphaTab player on narrow screens where they end up close together. */
+  z-index: 150;
 }
 
 .midi-float-warning {
