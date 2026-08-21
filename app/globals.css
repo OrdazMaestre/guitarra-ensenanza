@@ -30,6 +30,38 @@ video {
   max-width: 100%;
 }
 
+/* Touch browsers (Android Chrome/WebView) render native scrollbars as a thin
+   overlay that only flashes briefly and is hard to grab, unlike desktop's
+   classic always-reserved-space scrollbar. Styling ::-webkit-scrollbar makes
+   Chromium switch every scrollable element — the wide fretboard/chord-diagram
+   wrappers, AlphaTab's own scroll strip — to that classic rendering on every
+   platform, so the horizontal scrollbar is just as visible and draggable on
+   a phone as it already is on a mouse-driven PC. Only affects elements that
+   already use overflow: auto/scroll; the many overflow-x: clip wrappers
+   elsewhere in this codebase stay exactly as they are (clip never scrolls). */
+* {
+  scrollbar-color: #9ca3af #e5e7eb;
+  scrollbar-width: auto;
+}
+
+*::-webkit-scrollbar {
+  height: 14px;
+  width: 14px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #e5e7eb;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 7px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
 a:not(.temario-pager-link):not(.site-home-link) {
   animation: link-tilt 2.4s ease-in-out infinite !important;
   color: #047857 !important;
@@ -251,6 +283,41 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
 }
 
 
+
+/* Custom drag-to-scroll bar for wide fretboard/chord diagrams. Native touch
+   scrollbars on Android are a thin overlay that only flashes briefly during
+   an active drag and can't be restyled into a persistently visible bar via
+   CSS (::-webkit-scrollbar and scrollbar-color/-width are both ignored for
+   touch overflow containers on Chrome for Android) — and worse, swiping the
+   diagram itself never reaches the native scroller at all, because the
+   fretboard's own <svg> sets touchAction:'none' plus setPointerCapture to
+   support hammer-on/pull-off note input, which swallows every touch gesture
+   over that area. <HorizontalScrollbar> (@/app/components/guitar) sits in
+   normal flow right below the scrollable element (not floating — it needs
+   no positioning wrapper of its own) and drives `el.scrollLeft` directly
+   from real pointer events on its own track, so it never depends on the
+   browser's native scrollbar or scroll-animation queue. */
+.hscrollbar-track {
+  background: #e5e7eb;
+  border-radius: 7px;
+  cursor: grab;
+  height: 14px;
+  margin-top: 8px;
+  position: relative;
+  width: 100%;
+}
+
+.hscrollbar-track:active {
+  cursor: grabbing;
+}
+
+.hscrollbar-thumb {
+  background: #047857;
+  border-radius: 7px;
+  height: 100%;
+  position: absolute;
+  top: 0;
+}
 
 /* Floating chrome for MIDI instruments (fretboards + keyboards): the ghosting
    warning sits above the instrument, the button/volume bar sits below — both

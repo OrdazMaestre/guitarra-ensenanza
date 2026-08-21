@@ -10,6 +10,7 @@ import type { LessonPageProps } from './types';
 import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
+import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
 
 const fretNotes = [
   { fret: 0, string: 2, note: 'B' },
@@ -54,6 +55,7 @@ function GChordFretboard() {
   const fretX = (fret: number) => (fret === 0 ? boardX - 18 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
@@ -376,7 +378,7 @@ function GChordFretboard() {
 
   return (
     <div className="midi-instrument-host">
-    <figure className="fretboard-figure">
+    <figure className="fretboard-figure" ref={scrollRef}>
       <svg
         ref={svgRef}
         className="g-fretboard"
@@ -430,6 +432,7 @@ function GChordFretboard() {
         {interactionOverlay()}
       </svg>
     </figure>
+    <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
@@ -662,7 +665,12 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
           margin: 0;
           min-width: 0;
           overflow-x: auto;
+          scrollbar-width: none;
           width: 100%;
+        }
+
+        .fretboard-figure::-webkit-scrollbar {
+          display: none;
         }
 
         .g-fretboard {

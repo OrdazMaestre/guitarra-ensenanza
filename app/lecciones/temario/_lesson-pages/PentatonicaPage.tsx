@@ -9,6 +9,7 @@ import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
+import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -93,6 +94,7 @@ function PentatonicFretboard() {
   const fretX = (fret: number) => (fret === 0 ? boardX - 24 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
@@ -423,7 +425,7 @@ function PentatonicFretboard() {
 
   return (
     <div className="midi-instrument-host">
-    <figure className="pentatonic-board-wrap">
+    <figure className="pentatonic-board-wrap" ref={scrollRef}>
       <svg
         ref={svgRef}
         className="pentatonic-board"
@@ -488,6 +490,7 @@ function PentatonicFretboard() {
         {interactionOverlay()}
       </svg>
     </figure>
+    <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
@@ -740,7 +743,12 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
           margin: 0;
           min-width: 0;
           overflow-x: auto;
+          scrollbar-width: none;
           width: 100%;
+        }
+
+        .pentatonic-board-wrap::-webkit-scrollbar {
+          display: none;
         }
 
         .pentatonic-board {

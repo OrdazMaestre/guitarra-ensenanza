@@ -9,6 +9,7 @@ import type { LessonPageProps } from './types';
 import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
+import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const stringTunings = [
@@ -61,6 +62,7 @@ function FretboardMap({
   );
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
@@ -383,7 +385,7 @@ function FretboardMap({
 
   return (
     <div className="midi-instrument-host">
-    <figure className="blues-map-wrap">
+    <figure className="blues-map-wrap" ref={scrollRef}>
       <svg
         ref={svgRef}
         className="blues-map"
@@ -427,7 +429,7 @@ function FretboardMap({
           return (
             <g key={`${item.string}-${item.fret}-${item.note}`}>
               <circle
-                className={isBlueNote ? 'map-note map-note-special' : item.note === 'E' ? 'map-note map-note-e' : item.note === 'G' ? 'map-note map-note-g' : 'map-note'}
+                className={isBlueNote ? 'map-note map-note-special' : item.note === 'E' ? 'map-note map-note-e' : 'map-note'}
                 cx={fretX(item.fret)}
                 cy={stringY(item.string)}
                 r={isBlueNote ? 15 : 17}
@@ -446,6 +448,7 @@ function FretboardMap({
         {interactionOverlay()}
       </svg>
     </figure>
+    <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
@@ -847,7 +850,12 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           margin: 0;
           min-width: 0;
           overflow-x: auto;
+          scrollbar-width: none;
           width: 100%;
+        }
+
+        .blues-map-wrap::-webkit-scrollbar {
+          display: none;
         }
 
         .blues-map {
@@ -897,11 +905,6 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
 
         .map-note-e {
           stroke: #059669;
-          stroke-width: 6;
-        }
-
-        .map-note-g {
-          stroke: #2563eb;
           stroke-width: 6;
         }
 

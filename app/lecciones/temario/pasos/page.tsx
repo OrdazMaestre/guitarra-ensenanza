@@ -105,8 +105,8 @@ export default function PasosPage() {
     <main className="steps-page">
       <section className="steps-hero">
         <div className="steps-hero-copy">
-          <p className="steps-kicker">Árbol de contenidos</p>
           <h1>TEMARIO</h1>
+          <p className="steps-note">(Esta web está pendiente de ser ampliada)</p>
           <p className="steps-strong">MÉTODO ORDAZ</p>
           <p>Estructura: Temas principales + apartados.</p>
           <ul className="steps-list">
@@ -120,7 +120,7 @@ export default function PasosPage() {
             <li>Nivel 2 → al entender todos los temas principales</li>
             <li>Nivel 3 → al completar todos los apartados (listo para clases avanzadas)</li>
           </ul>
-          <p className="steps-note">(Esta web está pendiente de ser ampliada)</p>
+          
         </div>
 
       </section>

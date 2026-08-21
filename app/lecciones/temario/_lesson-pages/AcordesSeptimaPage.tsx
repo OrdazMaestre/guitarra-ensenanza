@@ -8,6 +8,7 @@ import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
+import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -235,16 +236,31 @@ function DegreeRow({ chords }: { chords: string[] }) {
   );
 }
 
+type ChordBox = { chord: SeventhChord; id: string; label: string };
+
 const positionedChordNames = ['Em7', 'F#m7b5', 'GMaj7', 'Am7', 'Bm7', 'CMaj7', 'D7'] as const;
 const positionedChords = positionedChordNames.map((name) => seventhChords.find((chord) => chord.name === name)!);
+// The octave-up Em7 shape at fret 12 (same open notes, one octave higher) bookends the sequence
+// on the right, mirroring the open Em7 box at the far left. voicingE2 is shifted +12 frets so the
+// low-shape highlighting (G/D/low-E) lines up with the fret-12 column instead of the open position.
+const openEm7Chord = seventhChords.find((chord) => chord.name === 'Em7')!;
+const octaveEm7Chord: SeventhChord = {
+  ...openEm7Chord,
+  voicingE2: openEm7Chord.voicingE2.map((note) => ({ ...note, fret: note.fret + 12 })),
+};
+const positionedBoxes: ChordBox[] = [
+  ...positionedChords.map((chord) => ({ chord, id: chord.name, label: chord.name })),
+  { chord: octaveEm7Chord, id: 'Em7-12', label: octaveEm7Chord.name },
+];
 const chordCropRanges: Record<string, { end: number; labelX: number; start: number }> = {
   Em7: { end: 0, labelX: 82, start: 0 },
   'F#m7b5': { end: 2, labelX: 202, start: 1 },
-  GMaj7: { end: 4, labelX: 392, start: 3 },
-  Am7: { end: 5, labelX: 548, start: 5 },
-  Bm7: { end: 7, labelX: 724, start: 7 },
-  CMaj7: { end: 9, labelX: 892, start: 8 },
-  D7: { end: 11, labelX: 1070, start: 10 },
+  GMaj7: { end: 4, labelX: 334, start: 3 },
+  Am7: { end: 5, labelX: 472, start: 5 },
+  Bm7: { end: 7, labelX: 656, start: 7 },
+  CMaj7: { end: 9, labelX: 794, start: 8 },
+  D7: { end: 11, labelX: 978, start: 10 },
+  'Em7-12': { end: 12, labelX: 1116, start: 12 },
 };
 
 const seventhProgressionTab = `\\title "Acordes con séptima"
@@ -295,6 +311,7 @@ function ScaleWithChordPositions() {
   const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
@@ -461,8 +478,8 @@ function ScaleWithChordPositions() {
     } else {
       return null;
     }
-    for (const chord of positionedChords) {
-      const range = chordCropRanges[chord.name];
+    for (const box of positionedBoxes) {
+      const range = chordCropRanges[box.id];
       const fretCount = range.end - range.start + 1;
       const cropWidth = fretCount * miniFretWidth;
       const cropX = range.labelX - cropWidth / 2;
@@ -477,7 +494,7 @@ function ScaleWithChordPositions() {
         fret = range.start + colIndex;
         if (fret > range.end) continue;
       }
-      return { chordName: chord.name, fret, row: rowKey, string };
+      return { chordName: box.id, fret, row: rowKey, string };
     }
     return null;
   }
@@ -733,13 +750,13 @@ function ScaleWithChordPositions() {
       seen.add(posKey);
 
       // Find the mini-crop column whose fret range covers this fret
-      const chord = positionedChords.find(c => {
-        const r = chordCropRanges[c.name];
+      const box = positionedBoxes.find(b => {
+        const r = chordCropRanges[b.id];
         return p.fret === 0 ? r.start === 0 : (p.fret >= r.start && p.fret <= r.end);
       });
-      if (!chord) continue;
+      if (!box) continue;
 
-      const range = chordCropRanges[chord.name];
+      const range = chordCropRanges[box.id];
       const cropWidth = (range.end - range.start + 1) * miniFretWidth;
       const cropX = range.labelX - cropWidth / 2;
       const markerX = p.fret === 0 ? cropX - 17 : cropX + (p.fret - range.start + 0.5) * miniFretWidth;
@@ -747,13 +764,13 @@ function ScaleWithChordPositions() {
       for (const { rowKey, top } of rows) {
         const markerY = top + 26 + (p.string - 1) * miniStringGap;
         const direct = pressedCrop !== null &&
-          pressedCrop.chordName === chord.name &&
+          pressedCrop.chordName === box.id &&
           pressedCrop.string === p.string &&
           pressedCrop.fret === p.fret &&
           pressedCrop.row === rowKey;
 
         elements.push(
-          <g key={`ol-${rowKey}-${chord.name}-${p.string}-${p.fret}`} pointerEvents="none"
+          <g key={`ol-${rowKey}-${box.id}-${p.string}-${p.fret}`} pointerEvents="none"
              style={direct ? { animation: 'fretboard-string-vibrate 80ms linear infinite' } : undefined}>
             <line x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
               stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85" />
@@ -783,8 +800,9 @@ function ScaleWithChordPositions() {
     }).filter((item): item is { fret: number; note: string; string: number } => item !== null),
   );
 
-  function MiniCrop({ chord, mode, top }: { chord: SeventhChord; mode: 'chordNotes' | 'lowShape'; top: number }) {
-    const range = chordCropRanges[chord.name];
+  function MiniCrop({ box, mode, top }: { box: ChordBox; mode: 'chordNotes' | 'lowShape'; top: number }) {
+    const { chord, id, label } = box;
+    const range = chordCropRanges[id];
     const fretCount = range.end - range.start + 1;
     const cropWidth = fretCount * miniFretWidth;
     const cropX = range.labelX - cropWidth / 2;
@@ -805,16 +823,16 @@ function ScaleWithChordPositions() {
       <g>
         <text className="mini-title" x={range.labelX} y={top - 12}>
           <tspan className="mini-degree">{chord.degree}</tspan>
-          <tspan> {chord.name}</tspan>
+          <tspan> {label}</tspan>
         </text>
         <rect className="mini-bg" x={cropX} y={top + 26} width={cropWidth} height={miniHeight} />
         {[1, 2, 3, 4, 5, 6].map((string) => (
-          <line className="mini-string" key={`mini-string-${chord.name}-${string}`} x1={cropX} x2={cropX + cropWidth} y1={cropStringY(string)} y2={cropStringY(string)} />
+          <line className="mini-string" key={`mini-string-${id}-${string}`} x1={cropX} x2={cropX + cropWidth} y1={cropStringY(string)} y2={cropStringY(string)} />
         ))}
         {Array.from({ length: fretCount + 1 }, (_, index) => (
           <line
             className={range.start === 0 && index === 0 ? 'mini-nut' : 'mini-fret'}
-            key={`mini-fret-${chord.name}-${index}`}
+            key={`mini-fret-${id}-${index}`}
             x1={cropX + index * miniFretWidth}
             x2={cropX + index * miniFretWidth}
             y1={top + 26}
@@ -822,10 +840,10 @@ function ScaleWithChordPositions() {
           />
         ))}
         {[3, 5, 7, 9, 12].filter((fret) => fret >= range.start && fret <= range.end).map((fret) => (
-          <circle className="mini-guide-dot" cx={cropX + (fret - range.start + 0.5) * miniFretWidth} cy={cropStringY(3.5)} key={`mini-guide-${chord.name}-${fret}`} r="6" />
+          <circle className="mini-guide-dot" cx={cropX + (fret - range.start + 0.5) * miniFretWidth} cy={cropStringY(3.5)} key={`mini-guide-${id}-${fret}`} r="6" />
         ))}
         {cropNotes.map((note) => (
-          <g key={`mini-${chord.name}-${note.string}-${note.fret}`}>
+          <g key={`mini-${id}-${note.string}-${note.fret}`}>
             <circle className={note.inShape ? 'mini-note mini-note-shape' : note.note === 'G' ? 'mini-note mini-note-tonic' : 'mini-note'} cx={cropFretX(note.fret)} cy={cropStringY(note.string)} r="12" />
             <text className={note.note === 'G' ? 'mini-note-label mini-tonic-label' : 'mini-note-label'} x={cropFretX(note.fret)} y={cropStringY(note.string) + 4}>
               {note.note}
@@ -842,8 +860,8 @@ function ScaleWithChordPositions() {
         <text className="mini-row-label" x="8" y={row.top + 88}>
           {row.label}
         </text>
-        {positionedChords.map((chord) => (
-          <MiniCrop chord={chord} key={`${row.label}-${chord.name}`} mode={row.mode} top={row.top} />
+        {positionedBoxes.map((box) => (
+          <MiniCrop box={box} key={`${row.label}-${box.id}`} mode={row.mode} top={row.top} />
         ))}
       </g>
     );
@@ -851,7 +869,7 @@ function ScaleWithChordPositions() {
 
   return (
     <div className="midi-instrument-host">
-    <div className="position-scroll">
+    <div className="position-scroll" ref={scrollRef}>
     <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
       <svg
         ref={svgRef}
@@ -922,6 +940,7 @@ function ScaleWithChordPositions() {
       </svg>
     </figure>
     </div>
+    <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
@@ -1220,7 +1239,12 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           min-width: 0;
           overflow-x: auto;
           overscroll-behavior-x: contain;
+          scrollbar-width: none;
           width: 100%;
+        }
+
+        .position-scroll::-webkit-scrollbar {
+          display: none;
         }
 
         .position-map {
