@@ -36,7 +36,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               <p className="lesson-kicker">Afinación estándar</p>
               <h2>La guitarra empieza y termina en <strong>Mi (E)</strong></h2>
               <p>
-                Decimos que la guitarra está afinada en <strong>Mi (E)</strong> porque la sexta cuerda y la primera cuerda son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
+                Decimos que la guitarra está <strong>afinada en Mi (E)</strong> porque la <strong>primera y última cuerda</strong> son <strong>Mi (E)</strong>. Una suena grave y la otra aguda.
               </p>
               
             </div>
@@ -67,9 +67,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
                 </div>
               ))}
             </div>
-            <p>
-                Es la afinación más habitual, por eso se llama &quot;afinación estándar&quot;. </p><p>Aprenderemos por qué más adelante.
-           </p>
+            
           </section>
 
           <section className="interval-section" aria-labelledby="interval-title">
@@ -79,6 +77,9 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               <p>
                 </p> <p>La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
               </p>
+              <p>
+                Es la afinación más habitual, por eso se llama &quot;afinación estándar&quot;. </p><p>Aprenderemos por qué más adelante.
+           </p>
             </div>
 
             <div className="interval-row" aria-label="Distancias entre cuerdas de la afinación estándar">

@@ -822,7 +822,7 @@ function ScaleWithChordPositions() {
     return (
       <g>
         <text className="mini-title" x={range.labelX} y={top - 12}>
-          <tspan className="mini-degree">{chord.degree}</tspan>
+          <tspan className="mini-degree">{chord.degree}º</tspan>
           <tspan> {label}</tspan>
         </text>
         <rect className="mini-bg" x={cropX} y={top + 26} width={cropWidth} height={miniHeight} />
@@ -994,15 +994,19 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
           <h1>Acordes con séptima: cuatriadas</h1>
           <div className="short-copy">
             <p>La escala tiene 7 notas y 7 acordes.</p>
-            <p>Cada nota y acorde tienen un número: 1, 2, 3, 4, 5, 6 y 7.</p>
-            <p>Un acorde triada usa las notas 1, 3 y 5.</p>
-            <p>Un acorde con séptima usa las notas 1, 3, 5 y 7.</p>
+            <p>Cada nota y acorde tienen un número: 1º, 2º, 3º, 4º, 5º, 6º y 7º.</p>
+            <p>Un acorde triada usa las notas 1, 3 y 5 (tres notas)</p>
+            <p>Un acorde con séptima usa las notas 1, 3, 5 y 7 (cuatro notas)</p>
+            <p>TRUCO: son los números impares.</p>
                 <section className="rule-box" aria-label="Acordes triada y cuatriada">
           <p>
-            <strong>acorde Sol Mayor triada (G):</strong> G, B y D.
+              <strong>Escala</strong> de Sol Mayor: <strong>G</strong>, A, <strong>B</strong>, C, <strong>D</strong>, E, <strong>F#</strong>
           </p>
           <p>
-            <strong>Sol Mayor cuatriada (GMaj7):</strong> G, B, D y F#.
+            <strong>Triada</strong> de Sol Mayor (G): G, B, D
+          </p>
+          <p>
+            <strong>Cuatriada</strong> de Sol Mayor (GMaj7): G, B, D, F#
           </p>
         </section>
         
@@ -1276,6 +1280,7 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
         }
 
         .mini-degree {
+          fill: #9a6b00;
           font-size: 20px;
           font-weight: 950;
         }
@@ -1289,12 +1294,6 @@ export default function AcordesSeptimaPage({ previous, next }: LessonPageProps) 
         .mini-name {
           font-size: 14px;
           font-weight: 950;
-        }
-
-        .mini-title {
-          text-decoration: underline;
-          text-decoration-thickness: 1px;
-          text-underline-offset: 3px;
         }
 
         .mini-bg,
