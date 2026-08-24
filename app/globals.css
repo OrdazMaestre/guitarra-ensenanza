@@ -409,3 +409,32 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
   84%  { transform: translateY(-2px); }
   100% { transform: translateY(0px); }
 }
+
+/* MAIkael tocando guitarra: rasgueo (rotación sobre el codo), golpeteo del
+   pie y balanceo de cabeza — periodos definidos en maikaelBodyAnimation.ts. */
+@keyframes maikael-strum {
+  0%, 100% { transform: rotate(-13deg); }
+  50%      { transform: rotate(13deg); }
+}
+
+@keyframes maikael-foot-tap {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-5px); }
+}
+
+@keyframes maikael-head-bob {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-4px); }
+}
+
+.maikael-strum {
+  animation: maikael-strum 500ms ease-in-out infinite;
+}
+
+.maikael-foot-tap {
+  animation: maikael-foot-tap 500ms ease-in-out infinite;
+}
+
+.maikael-head-bob {
+  animation: maikael-head-bob 1000ms ease-in-out infinite;
+}

@@ -6,6 +6,7 @@ import SiteHomeLink from "./components/SiteHomeLink";
 import ThemeToggle from "./components/ThemeToggle";
 import RenderIdleWarning from "./components/RenderIdleWarning";
 import VercelLimitWarning from "./components/VercelLimitWarning";
+import MaikaelWidget from "./components/maikael/MaikaelWidget";
 import { DEPLOY_TARGET } from "./lib/deployTarget";
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
           <SiteHomeLink />
           {children}
         </div>
+        <MaikaelWidget />
       </body>
     </html>
   );
