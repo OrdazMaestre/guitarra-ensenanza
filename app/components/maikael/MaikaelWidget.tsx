@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { computeMaikaelPose, PIECE_CANVAS, rotatePoint, type PlacedPiece, type Point } from '@/app/lib/maikaelRig';
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { computeMaikaelPose, PIECE_CANVAS, JOINTS, mirrorX, rotatePoint, type PlacedPiece, type Point } from '@/app/lib/maikaelRig';
 import { resolveFace, type MaikaelFace } from '@/app/lib/maikaelExpression';
 import {
   useMaikaelGuitarLoop,
@@ -14,6 +14,13 @@ type OpenStep = 'closed' | 'screen-on' | 'torso-out' | 'full';
 const STEPS: OpenStep[] = ['closed', 'screen-on', 'torso-out', 'full'];
 const STEP_DELAY_MS = 220;
 const GUITAR_SCALE = 1.9; // "casi el doble" que el resto de piezas
+
+// Ancla del propio 09_guitarra.png: el agujero de la caja (soundhole), que
+// se centra en la cadera del personaje.
+const GUITAR_ANCHOR = { xPct: 128 / 256, yPct: 152 / 256 };
+// 60° de giro desde la vertical nativa del dibujo = mástil a 30° sobre la
+// horizontal, mirando a la derecha (90°-30°=60°).
+const GUITAR_ROTATE_DEG = 60;
 
 // Ángulos de brazo mientras bodyState === 'guitar'. Segundo ajuste a petición
 // de Ordaz: la guitarra se centra (agujero de la caja) en la cadera del
@@ -31,26 +38,42 @@ const GUITAR_SCALE = 1.9; // "casi el doble" que el resto de piezas
 // pinta ANTES que la guitarra (queda detrás) y el antebrazo+mano DESPUÉS
 // (queda encima, agarrando el mástil de verdad).
 const RIGHT_SHOULDER_DEG = -30; // fijo — dónde cae el codo, "cerrado" cerca del cuerpo
-const RIGHT_FOREARM_ROTATE_NEAR_DEG = 106.2; // traste cerca del cuerpo (unión mástil-caja)
-const RIGHT_FOREARM_ROTATE_FAR_DEG = 201.8; // traste cerca de la ceja/nut (sin salto al interpolar)
-const RIGHT_FOREARM_SCALE_NEAR = 0.72;
-const RIGHT_FOREARM_SCALE_FAR = 0.87;
-// Muñeca: dedos casi perpendiculares al mástil, "hacia arriba" — varía para
-// mantener ese ángulo absoluto constante en cualquier punto del mástil.
-const RIGHT_WRIST_NEAR_DEG = 42.6;
-const RIGHT_WRIST_FAR_DEG = -53;
+// Muñeca mientras toca (SIN antebrazo, mano colocada directamente sobre el
+// mástil): ángulo ABSOLUTO. Ordaz lo planteó como ejes locales del mástil —
+// el mástil ES el eje X (dirección GUITAR_ROTATE_DEG-90 desde la horizontal
+// nativa) y la mano gira para que sus dedos apunten a lo largo del eje Y
+// perpendicular. En reposo la mano cuelga con los dedos hacia abajo (~90° en
+// convención de pantalla); se rota hasta el eje Y "hacia afuera" del mástil
+// (GUITAR_ROTATE_DEG-180) restando esos 90° de reposo.
+const RIGHT_WRIST_PLAY_DEG = GUITAR_ROTATE_DEG - 180 - 90;
 
 // Brazo izquierdo = rasgueo (mano siempre cerca de la caja), lado contrario.
-const LEFT_SHOULDER_DEG = 15.1;
-const LEFT_ELBOW_DEG = -86.2; // fijo — en la técnica real el codo apenas se mueve al rasguear
+// +20° más "afuera" a petición de Ordaz sobre el valor resuelto por la IK (15.1°).
+const LEFT_SHOULDER_DEG = 15.1 + 20;
+const LEFT_ELBOW_DEG = -86.2 - 30; // -30° más "adentro" a petición de Ordaz (a verificar el sentido)
 // La amplitud del rasgueo (muñeca) vive en la clase .maikael-strum de globals.css.
 
-// Ancla del propio 09_guitarra.png: el agujero de la caja (soundhole), que
-// ahora es el punto que se centra en la cadera del personaje.
-const GUITAR_ANCHOR = { xPct: 128 / 256, yPct: 152 / 256 };
-// 60° de giro desde la vertical nativa del dibujo = mástil a 30° sobre la
-// horizontal, mirando a la derecha (90°-30°=60°).
-const GUITAR_ROTATE_DEG = 60;
+// REGLA (pedida por Ordaz): cualquier cambio de posición de una extremidad
+// se hace ROTANDO su articulación, nunca desplazando la pieza suelta — así
+// cada pieza sigue unida a la anterior en la cadena. (El desplazamiento de
+// antebrazos en reposo y el giro de tobillo para los pies no convencieron y
+// se revirtieron; los brazos en reposo vuelven a su pose original.)
+//
+// Piernas en reposo: sí se mantiene la apertura de cadera — a Ordaz le gustó
+// ese resultado. Cadera rota un ángulo pequeño y la rodilla contra-rota la
+// misma cantidad, así la caña+pie sigue colgando vertical (el pie no se abre
+// más que la rodilla). sin(θ) = 2 / (126 * escala) ≈ 3.27° (126 = longitud
+// cadera→rodilla).
+const LEG_HIP_OPEN_DEG = 3.27;
+
+// Brazos en reposo (sin guitarra): antes colgaban pegados al cuerpo, se ven
+// más naturales con el hombro abriendo un poco hacia afuera y el codo
+// contra-rotando la misma cantidad — mismo truco que la cadera/rodilla de
+// las piernas, así el antebrazo+mano sigue colgando vertical.
+const REST_SHOULDER_OPEN_DEG = 10;
+// +10° extra hacia afuera en el codo derecho de reposo, a petición de Ordaz
+// (negativo = "afuera" del lado derecho, misma convención que el hombro).
+const REST_RIGHT_ELBOW_EXTRA_OPEN_DEG = -10;
 
 const FACE_ASSET: Record<MaikaelFace, string> = {
   normal: '/images/maikael/10_neutra.png',
@@ -62,6 +85,86 @@ const FACE_ASSET: Record<MaikaelFace, string> = {
 };
 
 const HEAD_OFF_ASSET = '/images/maikael/01_cabeza.png';
+// Cabeza apagada + "zzZ" — copia de 01_cabeza.png con el texto compuesto
+// encima de la pantalla negra, en el mismo cian de los iconos de expresión.
+const DORMIDO_ASSET = '/images/maikael/16_dormido.png';
+
+const FINE_POINTER_QUERY = '(pointer: fine)';
+
+function subscribeFinePointer(callback: () => void) {
+  const mq = window.matchMedia(FINE_POINTER_QUERY);
+  mq.addEventListener('change', callback);
+  return () => mq.removeEventListener('change', callback);
+}
+function getFinePointerSnapshot() {
+  return window.matchMedia(FINE_POINTER_QUERY).matches;
+}
+function getFinePointerServerSnapshot() {
+  return false; // por defecto, tamaño de móvil/táctil hasta que el cliente confirme puntero fino
+}
+
+/**
+ * true en ratón/trackpad (PC), false en pantallas táctiles — el 20% extra de
+ * tamaño de MAIkael (para leer "MAIkael" en el pecho) solo aplica en PC, a
+ * petición de Ordaz. `useSyncExternalStore` evita el salto de hidratación:
+ * SSR y el primer render de cliente usan el mismo valor (false/móvil), y
+ * React actualiza al valor real justo después de montar.
+ */
+function useIsFinePointer() {
+  return useSyncExternalStore(subscribeFinePointer, getFinePointerSnapshot, getFinePointerServerSnapshot);
+}
+
+/**
+ * Sustituye al pósit original para el límite diario (1.500 mensajes): en vez
+ * de tapar el chat con una nota, MAIkael simplemente no "despliega el
+ * cuerpo" al intentar abrirlo — se queda dormido (cabeza apagada + "zzZ").
+ * El límite de sesión (50 mensajes) NO usa esto — se avisa desde el propio
+ * chat en su último mensaje permitido (Fase 5), no desde el widget.
+ *
+ * `reached` empieza en `null` (aún no lo sabemos) y se rellena al montar —
+ * así la cabeza ya puede aparecer dormida desde el primer render si el cupo
+ * ya estaba agotado por otros alumnos. `checkNow` vuelve a consultar el
+ * estado real justo en el momento del clic (más fiable que el valor cacheado
+ * del montaje, por si el cupo se agotó mientras la pestaña estaba abierta).
+ */
+function useMaikaelDailyLimit() {
+  const [reached, setReached] = useState<boolean | null>(null);
+
+  // Chequeo del montaje: independiente de checkNow (más abajo) para que el
+  // efecto solo dispare el setState desde el .then() de una promesa, nunca
+  // de forma síncrona en su propio cuerpo.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/maikael/status')
+      .then((res) => res.json())
+      .then((data: { dailyRemaining: number }) => {
+        if (!cancelled) setReached(data.dailyRemaining <= 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Chequeo bajo demanda, llamado desde el manejador de clic — vuelve a
+  // consultar el estado real justo en ese instante (más fiable que el valor
+  // cacheado del montaje, por si el cupo se agotó mientras la pestaña
+  // estaba abierta) y devuelve el resultado para decidir al momento.
+  const checkNow = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/maikael/status');
+      const data = (await res.json()) as { dailyRemaining: number };
+      const isReached = data.dailyRemaining <= 0;
+      setReached(isReached);
+      return isReached;
+    } catch {
+      // Si falla la consulta, no bloqueamos a MAIkael por un problema de red.
+      return false;
+    }
+  };
+
+  return { reached, checkNow };
+}
 
 /** Un paso cada vez hacia `target`, en cualquier dirección — abrir y cerrar
  * recorren la misma secuencia de 4 pasos, solo cambia el sentido. */
@@ -159,6 +262,7 @@ function shiftPoint(p: Point, dx: number, dy: number): Point {
 
 export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   const { step, toggle } = useOpenStep();
+  const { reached: dailyLimitReached, checkNow: checkDailyLimit } = useMaikaelDailyLimit();
   const bodyState = useMaikaelGuitarLoop(step === 'full');
   const isPlayingGuitar = bodyState === 'guitar';
   const leftHandFret = useMaikaelLeftHandFret(isPlayingGuitar);
@@ -167,21 +271,70 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   const pose = useMemo(() => computeMaikaelPose(32, 160), []);
   const worldWidth = 320;
   const worldHeight = 620;
-  const displayHeight = 144; // el doble del tamaño inicial (72px), a petición de Ordaz tras ver el primer pase
+  const isFinePointer = useIsFinePointer();
+  const displayHeight = isFinePointer ? 144 * 1.2 : 144; // 20% más grande solo en PC (ratón/trackpad)
   const scale = displayHeight / worldHeight;
+
+  // Pies (forma activa) y cabeza (forma guardada) a 3px del borde inferior de
+  // la pantalla. El lienzo de mundo (worldHeight) no coincide con dónde
+  // terminan de verdad esas piezas — se midió el píxel no transparente más
+  // bajo de cada PNG (01_cabeza.png y 06_pie.png) para calcular el `bottom`
+  // exacto en cada caso; por eso el botón cambia de `bottom` según el paso.
+  const CABEZA_ART_BOTTOM_LOCAL = 211; // dentro de su lienzo 256×256
+  const PIE_ART_BOTTOM_LOCAL = 184;
+  const cabezaWorldBottomClosed = (worldHeight - PIECE_CANVAS) / 2 + CABEZA_ART_BOTTOM_LOCAL;
+  const piesWorldBottom = pose.find((p) => p.key === 'pie-L')!.y + PIE_ART_BOTTOM_LOCAL;
+  const bottomClosed = 3 - (worldHeight - cabezaWorldBottomClosed) * scale;
+  const bottomOpen = 3 - (worldHeight - piesWorldBottom) * scale;
+  const widgetBottom = step === 'closed' ? bottomClosed : bottomOpen;
 
   const showBody = step === 'torso-out' || step === 'full';
   const showLimbs = step === 'full';
   const headAsset =
-    step === 'full' || step === 'torso-out' ? FACE_ASSET[resolvedFace] : step === 'screen-on' ? FACE_ASSET.normal : HEAD_OFF_ASSET;
+    step === 'full' || step === 'torso-out'
+      ? FACE_ASSET[resolvedFace]
+      : step === 'screen-on'
+        ? FACE_ASSET.normal
+        : dailyLimitReached
+          ? DORMIDO_ASSET
+          : HEAD_OFF_ASSET;
+
+  // Al hacer clic para abrir, se confirma el cupo diario justo en ese
+  // instante (más fiable que el valor cacheado del montaje). Si está
+  // agotado, MAIkael se queda dormido: no se llama a toggle(), así que
+  // nunca avanza de 'closed' — solo cambia qué cabeza se muestra.
+  async function handleClick() {
+    if (step === 'closed') {
+      const isReached = await checkDailyLimit();
+      if (isReached) return;
+    }
+    toggle();
+  }
 
   const cuerpo = pose[0];
   const cabeza = pose[1];
   const byKey = (key: string) => pose.find((p) => p.key === key)!;
-  const legLPieces = [byKey('muslo-L'), byKey('cana-L'), byKey('pie-L')];
+  const musloL = byKey('muslo-L');
+  const canaL = byKey('cana-L');
+  const pieL = byKey('pie-L');
   const musloR = byKey('muslo-R');
   const canaR = byKey('cana-R');
   const pieR = byKey('pie-R');
+  const hipL = musloL.pivot!;
+  const kneeL = canaL.pivot!;
+  const hipR = musloR.pivot!;
+  const kneeR = canaR.pivot!;
+  // Los pies simplemente invierten su imagen en el eje X respecto a como los
+  // calcula el rig general (que los pensó para brazos/piernas simétricos,
+  // no para la forma concreta del dibujo del pie) — a petición de Ordaz. Pero
+  // invertir la imagen (scaleX(-1) alrededor del CENTRO del lienzo) desplaza
+  // visualmente el "tobillo" del pie, que no está exactamente centrado en su
+  // propio lienzo (JOINTS.pie.top.x=121, no 128) — separamos cada pie esa
+  // misma distancia para que su tobillo vuelva a coincidir con el de la
+  // caña a la que se une, en vez de dejar un hueco/solape.
+  const PIE_ANKLE_MIRROR_SHIFT = mirrorX(JOINTS.pie.top.x) - JOINTS.pie.top.x; // = 14
+  const pieLFlipped: PlacedPiece = shiftPiece({ ...pieL, flip: !pieL.flip }, -PIE_ANKLE_MIRROR_SHIFT, 0);
+  const pieRFlipped: PlacedPiece = shiftPiece({ ...pieR, flip: !pieR.flip }, PIE_ANKLE_MIRROR_SHIFT, 0);
   const bicepsL = byKey('biceps-L');
   const antebrazoL = byKey('antebrazo-L');
   const manoL = byKey('mano-L');
@@ -196,22 +349,29 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   const wristR = manoR.pivot!;
 
   const fretT = leftHandFret / (LEFT_HAND_FRET_COUNT - 1);
-  const rightForearmRotate = isPlayingGuitar
-    ? RIGHT_FOREARM_ROTATE_NEAR_DEG + fretT * (RIGHT_FOREARM_ROTATE_FAR_DEG - RIGHT_FOREARM_ROTATE_NEAR_DEG)
-    : 0;
-  const rightForearmScale = isPlayingGuitar
-    ? RIGHT_FOREARM_SCALE_NEAR + fretT * (RIGHT_FOREARM_SCALE_FAR - RIGHT_FOREARM_SCALE_NEAR)
-    : 1;
-  const rightWristAngle = isPlayingGuitar
-    ? RIGHT_WRIST_NEAR_DEG + fretT * (RIGHT_WRIST_FAR_DEG - RIGHT_WRIST_NEAR_DEG)
-    : 0;
-  const leftShoulderAngle = isPlayingGuitar ? LEFT_SHOULDER_DEG : 0;
-  const leftElbowAngle = isPlayingGuitar ? LEFT_ELBOW_DEG : 0;
+  // Solo se usa en la cadena de reposo (con antebrazo) — en reposo vale 0.
+  const rightWristAngle = 0;
+  // Izquierdo: positivo abre el hombro hacia afuera (lado izquierdo de la
+  // pantalla); el codo contra-rota para que el antebrazo siga vertical.
+  const leftShoulderAngle = isPlayingGuitar ? LEFT_SHOULDER_DEG : REST_SHOULDER_OPEN_DEG;
+  const leftElbowAngle = isPlayingGuitar ? LEFT_ELBOW_DEG : -REST_SHOULDER_OPEN_DEG;
+  // Derecho: negativo abre el hombro hacia afuera (lado derecho), espejo del
+  // izquierdo — se usa también para reposicionar el codo fijo más abajo.
+  const restShoulderAngleR = -REST_SHOULDER_OPEN_DEG;
 
-  // El codo derecho es un punto FIJO (no sigue al traste) — el antebrazo+mano
-  // se recolocan enteros para que su propio pivote de codo caiga justo ahí,
-  // y luego el antebrazo rota+estira desde ese punto fijo hasta la mano.
-  const elbowRFixed = isPlayingGuitar ? rotatePoint(elbowR, shoulderR, RIGHT_SHOULDER_DEG) : elbowR;
+  // Cadera abre hacia afuera, rodilla contra-rota la misma cantidad (positivo
+  // mueve el extremo de un segmento colgante hacia la izquierda; negativo,
+  // hacia la derecha).
+  const hipAngleL = LEG_HIP_OPEN_DEG;
+  const kneeAngleL = -LEG_HIP_OPEN_DEG;
+  const hipAngleR = -LEG_HIP_OPEN_DEG;
+  const kneeAngleR = LEG_HIP_OPEN_DEG;
+
+  // Solo se usa de verdad para la cadena de REPOSO (antebrazo+mano normales).
+  // Mientras toca, el bíceps ya no usa RIGHT_SHOULDER_DEG (ver
+  // rightShoulderPlayAngle más abajo, que apunta hacia la mano de verdad),
+  // así que este valor con RIGHT_SHOULDER_DEG no se consume en ese caso.
+  const elbowRFixed = rotatePoint(elbowR, shoulderR, isPlayingGuitar ? RIGHT_SHOULDER_DEG : restShoulderAngleR);
   const elbowShiftDx = elbowRFixed.x - elbowR.x;
   const elbowShiftDy = elbowRFixed.y - elbowR.y;
   const antebrazoRShifted = shiftPiece(antebrazoR, elbowShiftDx, elbowShiftDy);
@@ -220,12 +380,70 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
 
   const guitarSize = PIECE_CANVAS * GUITAR_SCALE;
   // El agujero de la caja (GUITAR_ANCHOR) se centra en la cadera del personaje.
-  const guitarTarget = { x: (shoulderL.x + shoulderR.x) / 2, y: cuerpo.y + 219 };
+  // +10px, +20px y +5px de pantalla (derecha, derecha, arriba) a petición de
+  // Ordaz — convertido a unidades de mundo dividiendo por la escala, ya que
+  // este punto vive en el sistema de coordenadas de mundo.
+  const guitarTarget = { x: (shoulderL.x + shoulderR.x) / 2 + 30 / scale, y: cuerpo.y + 219 - 5 / scale };
   const guitarLeft = guitarTarget.x - GUITAR_ANCHOR.xPct * guitarSize;
   const guitarTop = guitarTarget.y - GUITAR_ANCHOR.yPct * guitarSize;
 
+  // Convierte un punto LOCAL del lienzo 256×256 de 09_guitarra.png a
+  // coordenadas de mundo, usando la posición/rotación actuales de la
+  // guitarra — así la mano siempre se encuentra sobre el mástil de verdad,
+  // aunque la guitarra se mueva más adelante (antes se usaban constantes
+  // fijas calculadas para una posición vieja de la guitarra, y se
+  // desincronizaron en cuanto la guitarra se desplazó por otra petición).
+  function guitarLocalToWorld(local: Point): Point {
+    const scaled = { x: local.x * GUITAR_SCALE, y: local.y * GUITAR_SCALE };
+    const anchorScaled = { x: GUITAR_ANCHOR.xPct * guitarSize, y: GUITAR_ANCHOR.yPct * guitarSize };
+    const unrotated = { x: guitarTarget.x + (scaled.x - anchorScaled.x), y: guitarTarget.y + (scaled.y - anchorScaled.y) };
+    return rotatePoint(unrotated, guitarTarget, GUITAR_ROTATE_DEG);
+  }
+
+  // El "eje X" del mástil (pedido por Ordaz): un punto cerca del cuerpo de la
+  // guitarra (unión mástil-caja) y otro cerca de la ceja/nut, medidos a mano
+  // sobre el PNG nativo. La mano se mueve a lo largo de esa línea según el
+  // traste aleatorio (fretT), nunca fuera de ella.
+  // Ordaz midió el recorrido real en pantalla como "0 a 2" cuando debía ser
+  // "-1 a 1": mismo ancho, recentrado medio recorrido hacia el cuerpo (nunca
+  // llegaba a los trastes agudos, y a veces se pasaba del clavijero) — se
+  // corrige desplazando los dos puntos esa misma mitad hacia el cuerpo.
+  const NECK_BODY_LOCAL: Point = { x: 128, y: 145.5 };
+  const NECK_NUT_LOCAL: Point = { x: 128, y: 84.5 };
+  const neckBodyWorld = guitarLocalToWorld(NECK_BODY_LOCAL);
+  const neckNutWorld = guitarLocalToWorld(NECK_NUT_LOCAL);
+  // "Eje Y" del mástil (perpendicular): la mano baja 10px de pantalla hacia
+  // el lado del cuerpo (opuesto al que apuntan los dedos), a petición de Ordaz.
+  const NECK_Y_AXIS_DOWN_DEG = GUITAR_ROTATE_DEG; // opuesto a RIGHT_WRIST_PLAY_DEG's eje "hacia afuera"
+  const manoRPlayYOffsetPx = 20 / scale; // 10 + 10px más, a petición de Ordaz
+  const manoRPlayTarget: Point = {
+    x:
+      neckBodyWorld.x +
+      fretT * (neckNutWorld.x - neckBodyWorld.x) +
+      manoRPlayYOffsetPx * Math.cos((NECK_Y_AXIS_DOWN_DEG * Math.PI) / 180),
+    y:
+      neckBodyWorld.y +
+      fretT * (neckNutWorld.y - neckBodyWorld.y) +
+      manoRPlayYOffsetPx * Math.sin((NECK_Y_AXIS_DOWN_DEG * Math.PI) / 180),
+  };
+  const manoRPlayShifted = shiftPiece(manoR, manoRPlayTarget.x - wristR.x, manoRPlayTarget.y - wristR.y);
+
+  // Coherencia del brazo derecho mientras toca (pedido por Ordaz): sin
+  // antebrazo dibujado, el bíceps debe APUNTAR hacia la mano (que se mueve
+  // sola a lo largo del mástil) para que su bola del codo quede tocando o
+  // muy cerca de la bola de la muñeca — no falta que coincidan siempre, solo
+  // que lo intenten, para que no se sienta "mano flotante". El bíceps mide lo
+  // que mide (no se estira), así que apunta en la MISMA dirección que la
+  // mano aunque no siempre llegue exactamente a tocarla.
+  const rightShoulderPlayAngle = (() => {
+    const targetAngleDeg = (Math.atan2(manoRPlayTarget.y - shoulderR.y, manoRPlayTarget.x - shoulderR.x) * 180) / Math.PI;
+    const restUpperAngleDeg = (Math.atan2(elbowR.y - shoulderR.y, elbowR.x - shoulderR.x) * 180) / Math.PI;
+    return targetAngleDeg - restUpperAngleDeg;
+  })();
+
   const widgetWidth = (worldWidth / worldHeight) * displayHeight;
   const isOn = step !== 'closed';
+  const WIDGET_RIGHT = 31; // 16 original, -5px y ahora -10px más a la izquierda, a petición de Ordaz
 
   return (
     <>
@@ -234,8 +452,8 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           role="status"
           style={{
             position: 'fixed',
-            right: 16 + widgetWidth + 12,
-            bottom: 16 + displayHeight - 40,
+            right: WIDGET_RIGHT + widgetWidth + 12,
+            bottom: widgetBottom + displayHeight - 48,
             maxWidth: 190,
             background: '#fffdf7',
             border: '2px solid #ee9721',
@@ -281,12 +499,14 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
       )}
       <button
         type="button"
-        aria-label={step === 'closed' ? 'Abrir a MAIkael' : 'Cerrar a MAIkael'}
-        onClick={toggle}
+        aria-label={
+          step !== 'closed' ? 'Cerrar a MAIkael' : dailyLimitReached ? 'MAIkael está dormido por hoy' : 'Abrir a MAIkael'
+        }
+        onClick={handleClick}
         style={{
           position: 'fixed',
-          right: 16,
-          bottom: 16,
+          right: WIDGET_RIGHT,
+          bottom: widgetBottom,
           width: widgetWidth,
           height: displayHeight,
           padding: 0,
@@ -294,6 +514,7 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           background: 'transparent',
           cursor: 'pointer',
           zIndex: 40,
+          transition: 'bottom 220ms ease',
         }}
       >
       <div
@@ -327,15 +548,32 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
             transition: 'left 200ms ease, top 200ms ease',
           }}
         />
-        {showLimbs && legLPieces.map((piece) => pieceImg(piece))}
-        {showLimbs && pieceImg(musloR)}
-        {showLimbs && pieceImg(canaR)}
-        {showLimbs && pieceImg(pieR, undefined, isPlayingGuitar ? 'maikael-foot-tap' : undefined)}
+        {/* Pierna izquierda: cadera → rodilla (contra-rotada), pie con la
+            imagen invertida en X respecto al cálculo general del rig. */}
+        {showLimbs && (
+          <RotatingGroup pivot={hipL} angleDeg={hipAngleL}>
+            {pieceImg(musloL)}
+            <RotatingGroup pivot={kneeL} angleDeg={kneeAngleL}>
+              {pieceImg(canaL)}
+              {pieceImg(pieLFlipped)}
+            </RotatingGroup>
+          </RotatingGroup>
+        )}
+        {/* Pierna derecha: misma cadena, ángulos en espejo. */}
+        {showLimbs && (
+          <RotatingGroup pivot={hipR} angleDeg={hipAngleR}>
+            {pieceImg(musloR)}
+            <RotatingGroup pivot={kneeR} angleDeg={kneeAngleR}>
+              {pieceImg(canaR)}
+              {pieceImg(pieRFlipped, undefined, isPlayingGuitar ? 'maikael-foot-tap' : undefined)}
+            </RotatingGroup>
+          </RotatingGroup>
+        )}
         {/* Bíceps derecho SIEMPRE se pinta antes que la guitarra: queda por
             detrás del mástil, como pidió Ordaz. Solo la rotación de hombro —
             el codo es un punto fijo, no sigue al traste. */}
         {showLimbs && (
-          <RotatingGroup pivot={shoulderR} angleDeg={isPlayingGuitar ? RIGHT_SHOULDER_DEG : 0}>
+          <RotatingGroup pivot={shoulderR} angleDeg={isPlayingGuitar ? rightShoulderPlayAngle : restShoulderAngleR}>
             {pieceImg(bicepsR)}
           </RotatingGroup>
         )}
@@ -375,20 +613,22 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
             </RotatingGroup>
           </RotatingGroup>
         )}
-        {/* Antebrazo+mano derechos: pintados DESPUÉS de la guitarra, para que
-            la mano quede agarrando el mástil por encima. El codo queda fijo
-            (elbowRFixed); el antebrazo rota+estira desde ahí hasta la mano,
-            que siempre cae sobre el mástil. */}
-        {showLimbs && (
-          <RotatingGroup
-            pivot={elbowRFixed}
-            angleDeg={isPlayingGuitar ? rightForearmRotate : 0}
-            scaleY={isPlayingGuitar ? rightForearmScale : 1}
-          >
+        {/* Antebrazo+mano derechos, pintados DESPUÉS de la guitarra para que
+            la mano quede agarrando el mástil por encima. En reposo: cadena
+            normal codo fijo→antebrazo→mano. Tocando: prueba de Ordaz — sin
+            antebrazo, la mano va directa al mismo punto del mástil que antes
+            calculaba el antebrazo, sin la restricción de su longitud. */}
+        {showLimbs && !isPlayingGuitar && (
+          <RotatingGroup pivot={elbowRFixed} angleDeg={-restShoulderAngleR + REST_RIGHT_ELBOW_EXTRA_OPEN_DEG}>
             {pieceImg(antebrazoRShifted)}
             <RotatingGroup pivot={wristRShifted} angleDeg={rightWristAngle}>
               {pieceImg(manoRShifted)}
             </RotatingGroup>
+          </RotatingGroup>
+        )}
+        {showLimbs && isPlayingGuitar && (
+          <RotatingGroup pivot={manoRPlayTarget} angleDeg={RIGHT_WRIST_PLAY_DEG}>
+            {pieceImg(manoRPlayShifted)}
           </RotatingGroup>
         )}
       </div>
