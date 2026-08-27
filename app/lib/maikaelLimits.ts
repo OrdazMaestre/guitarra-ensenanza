@@ -1,4 +1,9 @@
-export const MAIKAEL_DAILY_LIMIT = 1500;
+// Bajado de 1500 a 900 al cambiar de Gemini a Groq (2026-08-27): el modelo
+// estable de producción en el free tier de Groq (openai/gpt-oss-20b) tiene
+// un tope real de ~1.000 peticiones/día (console.groq.com/docs/rate-limits)
+// — 900 deja margen de sobra sin arriesgarse a que Groq empiece a devolver
+// 429 antes de que nuestro propio contador bloquee.
+export const MAIKAEL_DAILY_LIMIT = 900;
 export const MAIKAEL_SESSION_LIMIT = 50;
 
 const MADRID_TIME_ZONE = 'Europe/Madrid';

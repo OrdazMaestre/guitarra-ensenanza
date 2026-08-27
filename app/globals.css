@@ -438,3 +438,28 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
 .maikael-head-bob {
   animation: maikael-head-bob 1000ms ease-in-out infinite;
 }
+
+/* Círculo de carga del chat: mientras "sending" — incluye la espera de los
+   reintentos automáticos ante un 429 de Groq, no solo la petición normal. */
+@keyframes maikael-spin {
+  to { transform: rotate(360deg); }
+}
+
+.maikael-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #f3e1bd;
+  border-top-color: #ee9721;
+  border-radius: 50%;
+  animation: maikael-spin 700ms linear infinite;
+}
+
+/* Lista de mensajes del chat: se desplaza con rueda/arrastre pero sin barra
+   vertical visible (a petición de Ordaz). La horizontal de cada burbuja (para
+   una palabra larga sin espacios, tipo URL) se deja visible a propósito. */
+.maikael-chat-scroll {
+  scrollbar-width: none;
+}
+.maikael-chat-scroll::-webkit-scrollbar {
+  display: none;
+}

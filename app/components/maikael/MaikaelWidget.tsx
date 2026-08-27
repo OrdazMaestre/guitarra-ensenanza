@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { computeMaikaelPose, PIECE_CANVAS, JOINTS, mirrorX, rotatePoint, type PlacedPiece, type Point } from '@/app/lib/maikaelRig';
-import { resolveFace, type MaikaelFace } from '@/app/lib/maikaelExpression';
+import {
+  resolveFace,
+  detectFaceFromReply,
+  containsResetKeyword,
+  type MaikaelFace,
+  type MaikaelTransientFace,
+} from '@/app/lib/maikaelExpression';
+import MaikaelChat from './MaikaelChat';
 import {
   useMaikaelGuitarLoop,
   useMaikaelLeftHandFret,
@@ -266,7 +273,30 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   const bodyState = useMaikaelGuitarLoop(step === 'full');
   const isPlayingGuitar = bodyState === 'guitar';
   const leftHandFret = useMaikaelLeftHandFret(isPlayingGuitar);
-  const resolvedFace = face ?? resolveFace(false, null, bodyState);
+
+  // Estado de expresión que depende del chat real (Fase 3: sensitiveSticky
+  // manda sobre todo, transientFace refleja el último turno) — lo alimentan
+  // los callbacks que le pasamos a MaikaelChat más abajo.
+  const [sensitiveSticky, setSensitiveSticky] = useState(false);
+  const [transientFace, setTransientFace] = useState<MaikaelTransientFace>(null);
+  const resolvedFace = face ?? resolveFace(sensitiveSticky, transientFace, bodyState);
+
+  function handleUserMessage(text: string) {
+    if (sensitiveSticky && containsResetKeyword(text)) {
+      setSensitiveSticky(false);
+    }
+    setTransientFace('analizando');
+  }
+
+  function handleReply(text: string) {
+    const detected = detectFaceFromReply(text);
+    if (detected.triggersSensitive) {
+      setSensitiveSticky(true);
+      setTransientFace(null);
+    } else {
+      setTransientFace(detected.transientFace);
+    }
+  }
 
   const pose = useMemo(() => computeMaikaelPose(32, 160), []);
   const worldWidth = 320;
@@ -447,7 +477,19 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
 
   return (
     <>
-      {isOn && (
+      {step === 'full' && (
+        <div
+          style={{
+            position: 'fixed',
+            right: WIDGET_RIGHT + widgetWidth + 12,
+            bottom: 3, // el recuadro de texto queda a 3px del borde inferior, a petición de Ordaz
+            zIndex: 39,
+          }}
+        >
+          <MaikaelChat onUserMessage={handleUserMessage} onReply={handleReply} />
+        </div>
+      )}
+      {isOn && step !== 'full' && (
         <div
           role="status"
           style={{

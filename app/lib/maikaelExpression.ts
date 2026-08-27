@@ -19,7 +19,12 @@ export function normalizeEs(text: string): string {
 // Frases que MAIkael debe decir literalmente en el prompt (Fase 4) para que esta
 // detección por texto sea fiable — si el modelo las parafrasea, no disparan.
 export const SENSITIVE_TRIGGER_PHRASE = normalizeEs('la música es medicina para el alma');
-export const OFF_TOPIC_TRIGGER_PHRASE = normalizeEs('eso no lo tengo en mis circuitos');
+// El prompt le pide a MAIkael la frase completa "eso no lo tengo en mis
+// circuitos", pero en pruebas reales a veces varía el arranque ("ese dato no
+// lo tengo...", "esto no lo tengo..."). Se detecta solo el núcleo invariante
+// —lo bastante específico para no dar falsos positivos en una respuesta
+// normal de música— en vez de exigir la frase completa exacta.
+export const OFF_TOPIC_TRIGGER_PHRASE = normalizeEs('no lo tengo en mis circuitos');
 
 // Lista de la Fase 1.5: palabras/frases que indican que el alumno volvió a un
 // tema normal de música/guitarra, para apagar la expresión sensible.
