@@ -19,9 +19,17 @@ export interface MaikaelChatProps {
   onUserMessage?: (text: string) => void;
   /** Se llama con la respuesta real de MAIkael en cuanto llega. */
   onReply?: (text: string) => void;
+  /**
+   * Px reservados a la derecha del panel (offset `right` del contenedor fijo
+   * + ancho del propio robot) — sin esto, en móvil el panel podía pedir más
+   * ancho del que quedaba libre a la izquierda del robot y se salía por el
+   * borde izquierdo de la pantalla (recortado en silencio por el
+   * `overflow-x: clip` global, sin barra de scroll visible).
+   */
+  reservedRightPx?: number;
 }
 
-export default function MaikaelChat({ onUserMessage, onReply }: MaikaelChatProps) {
+export default function MaikaelChat({ onUserMessage, onReply, reservedRightPx = 0 }: MaikaelChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'model', text: MAIKAEL_INTRO_LINE }]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -96,7 +104,7 @@ export default function MaikaelChat({ onUserMessage, onReply }: MaikaelChatProps
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: 'min(320px, calc(100vw - 40px))',
+        width: `min(280px, calc(100vw - 40px), calc(100vw - ${reservedRightPx + 8}px))`,
         // 100dvh, no soportado en algunos navegadores embebidos (visto en el
         // Simple Browser de VS Code: sin límite real, los mensajes se
         // acumulaban y se pisaban unos con otros en vez de hacer scroll).

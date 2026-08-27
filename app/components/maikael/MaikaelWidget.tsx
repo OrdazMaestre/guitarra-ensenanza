@@ -486,7 +486,11 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
             zIndex: 39,
           }}
         >
-          <MaikaelChat onUserMessage={handleUserMessage} onReply={handleReply} />
+          <MaikaelChat
+            onUserMessage={handleUserMessage}
+            onReply={handleReply}
+            reservedRightPx={WIDGET_RIGHT + widgetWidth + 12}
+          />
         </div>
       )}
       {isOn && step !== 'full' && (
