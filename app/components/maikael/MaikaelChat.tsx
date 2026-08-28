@@ -51,10 +51,18 @@ export default function MaikaelChat({ onUserMessage, onReply, reservedRightPx = 
     if (!text || sending || blocked) return;
 
     onUserMessage?.(text);
+    // Solo se manda el último intercambio (1 turno de alumno + 1 de MAIkael),
+    // no la conversación entera: el historial completo crecía sin tope hasta
+    // los 50 mensajes de sesión, y era el mayor consumidor de tokens contra
+    // el límite compartido de Groq (8.000 tokens/minuto entre TODOS los
+    // alumnos) — una sola sesión larga podía agotarlo ella sola. El servidor
+    // vuelve a recortar a los 2 últimos igualmente (route.ts), así que este
+    // recorte aquí es solo para no mandar de más por la red.
     const history = messages
       .slice(1) // el primer mensaje (índice 0) es el saludo sembrado; el servidor ya lo añade solo
       .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role as 'user' | 'model', text: m.text }));
+      .map((m) => ({ role: m.role as 'user' | 'model', text: m.text }))
+      .slice(-2);
 
     setMessages((prev) => [...prev, { role: 'user', text }]);
     setInput('');

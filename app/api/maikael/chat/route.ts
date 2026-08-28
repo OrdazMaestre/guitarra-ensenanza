@@ -96,7 +96,12 @@ export async function POST(request: NextRequest) {
   if (!message) {
     return Response.json({ error: 'Falta el campo "message"' }, { status: 400 });
   }
-  const history = parseHistory(body?.history);
+  // Recorte autoritativo a los 2 últimos mensajes (1 intercambio), pase lo
+  // que pase con lo que mande el cliente — el historial completo era el
+  // mayor consumidor de tokens de la petición contra el límite compartido
+  // de Groq (8.000 tokens/min entre todos los alumnos), y crecía sin tope
+  // hasta los 50 turnos de una sesión.
+  const history = parseHistory(body?.history).slice(-2);
 
   // Filtro de datos personales — ANTES de tocar el contador diario y sin
   // llamar a Groq en absoluto, igual que el pósit de cuota: gratis para el
