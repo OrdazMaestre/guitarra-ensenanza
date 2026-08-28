@@ -27,9 +27,22 @@ export interface MaikaelChatProps {
    * `overflow-x: clip` global, sin barra de scroll visible).
    */
   reservedRightPx?: number;
+  /**
+   * Px extra sobre el ancho base (280px) — a petición de Ordaz: 60px en PC
+   * (crece hacia la izquierda, ya que el panel ancla su borde derecho) y
+   * 20px en móvil (crece hacia la derecha: MaikaelWidget compensa reduciendo
+   * `reservedRightPx` la misma cantidad, así el borde izquierdo —el que
+   * puede salirse de pantalla— no se mueve, ver comentario de esa prop).
+   */
+  widthBoostPx?: number;
 }
 
-export default function MaikaelChat({ onUserMessage, onReply, reservedRightPx = 0 }: MaikaelChatProps) {
+export default function MaikaelChat({
+  onUserMessage,
+  onReply,
+  reservedRightPx = 0,
+  widthBoostPx = 0,
+}: MaikaelChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'model', text: MAIKAEL_INTRO_LINE }]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -112,7 +125,7 @@ export default function MaikaelChat({ onUserMessage, onReply, reservedRightPx = 
       style={{
         display: 'flex',
         flexDirection: 'column',
-        width: `min(280px, calc(100vw - 40px), calc(100vw - ${reservedRightPx + 8}px))`,
+        width: `min(${280 + widthBoostPx}px, calc(100vw - 40px), calc(100vw - ${reservedRightPx + 8}px))`,
         // 100dvh, no soportado en algunos navegadores embebidos (visto en el
         // Simple Browser de VS Code: sin límite real, los mensajes se
         // acumulaban y se pisaban unos con otros en vez de hacer scroll).
@@ -148,7 +161,15 @@ export default function MaikaelChat({ onUserMessage, onReply, reservedRightPx = 
               // overflow-x propio de la burbuja (mismo motivo que
               // .midi-instrument-host en globals.css).
               minWidth: 0,
-              maxWidth: '88%',
+              // Las burbujas de MAIkael (izquierda) llegan hasta el mismo
+              // borde derecho del panel que ya alcanzan las del alumno
+              // (flex-end, a la derecha): a petición de Ordaz, tras ver que
+              // en el bocadillo largo de MAIkael sobraba ~12% de ancho sin
+              // usar. Solo las del alumno se quedan en 88% — no hacía falta
+              // tocarlas, sus mensajes ya llegan al borde por estar ancladas
+              // a la derecha, y capar su ancho evita que un mensaje largo
+              // toque el borde izquierdo del panel.
+              maxWidth: m.role === 'user' ? '88%' : '100%',
               // Sin flexShrink:0, el algoritmo de flex ENCOGE cada burbuja en
               // el eje principal (vertical, es una columna) para que todas
               // quepan en el contenedor, en vez de mantener su alto natural

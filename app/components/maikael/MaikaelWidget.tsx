@@ -475,13 +475,35 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   const isOn = step !== 'closed';
   const WIDGET_RIGHT = 31; // 16 original, -5px y ahora -10px más a la izquierda, a petición de Ordaz
 
+  // Ancho de los bocadillos del chat, a petición de Ordaz: +100px en PC
+  // (60 + 40 más), crece hacia la izquierda, sin tocar el ancla derecha —
+  // hay sitio de sobra, verificado sin overflow con Playwright a 1440px de
+  // ancho tanto en +60 como en +100.
+  //
+  // En móvil se pidieron +20px creciendo hacia la DERECHA (hacia el robot)
+  // en vez de hacia la izquierda, pero NO es seguro tal cual: a 390px de
+  // ancho (viewport de referencia) el panel ya está encajado al límite por
+  // los dos lados a la vez — 8px de margen de seguridad respecto al borde
+  // real de la pantalla (el que evita el recorte silencioso por
+  // `overflow-x: clip`, ver MaikaelChat) Y 12px de hueco respecto al robot,
+  // ambos a la vez, sin margen sobrante en ninguno de los dos. Comprobado
+  // con capturas reales (Playwright) mandando un mensaje de usuario (burbuja
+  // verde, la que más se acerca al robot): con solo 4px de desplazamiento
+  // hacia la derecha, la burbuja ya toca visualmente la pierna del robot. Por
+  // eso el boost de móvil se deja en 0 por ahora — ver el mensaje a Ordaz
+  // explicando las opciones (encoger el robot al abrir el chat, o comerse el
+  // margen izquierdo de seguridad en vez del hueco del robot).
+  const CHAT_WIDTH_BOOST = isFinePointer ? 100 : 0;
+  const CHAT_RIGHT_SHIFT = 0;
+  const chatRight = WIDGET_RIGHT + widgetWidth + 12 - CHAT_RIGHT_SHIFT;
+
   return (
     <>
       {step === 'full' && (
         <div
           style={{
             position: 'fixed',
-            right: WIDGET_RIGHT + widgetWidth + 12,
+            right: chatRight,
             bottom: 3, // el recuadro de texto queda a 3px del borde inferior, a petición de Ordaz
             zIndex: 39,
           }}
@@ -489,7 +511,8 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           <MaikaelChat
             onUserMessage={handleUserMessage}
             onReply={handleReply}
-            reservedRightPx={WIDGET_RIGHT + widgetWidth + 12}
+            reservedRightPx={chatRight}
+            widthBoostPx={CHAT_WIDTH_BOOST}
           />
         </div>
       )}
