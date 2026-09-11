@@ -27,6 +27,32 @@ export const extensionLessonSlugs = [
   'tablaturas-dos-cuerdas',
 ] as const;
 
+export interface ExtensionPage {
+  slug: string;
+  title: string;
+  parentSlug: string; // debe existir en lessonBlocks
+}
+
+// Antes solo vivían, sin exportar, dentro de branchMap en pasos/page.tsx.
+// El href siempre es /lecciones/temario/<slug>, no hace falta guardarlo aparte.
+export const extensionPages: ExtensionPage[] = [
+  { slug: 'el-sonido-en-la-musica', title: 'El sonido en la música', parentSlug: 'conceptos-basicos' },
+  { slug: 'afinacion', title: 'Afinación', parentSlug: 'notacion-musical' },
+  { slug: 'tablaturas-dos-cuerdas', title: 'Tablaturas con dos cuerdas', parentSlug: 'tablaturas' },
+  { slug: 'mas-punteos-cortos', title: 'Más punteos cortos', parentSlug: 'tablaturas' },
+  { slug: 'ampliacion-arpegios', title: 'Ampliación de arpegios', parentSlug: 'arpegios' },
+  { slug: 'ejercicios-pentatonica', title: 'Ejercicios de pentatónica', parentSlug: 'pentatonica' },
+  { slug: 'ejercicios-pentatonica-avanzados', title: 'Ejercicios avanzados de pentatónica', parentSlug: 'pentatonica' },
+  { slug: 'pentatonica-blues', title: 'Pentatónica de blues', parentSlug: 'pentatonica' },
+  { slug: 'ejercicios-pentatonica-blues', title: 'Ejercicios de pentatónica de blues', parentSlug: 'pentatonica' },
+  { slug: 'escala-completa-sol-mayor', title: 'Escala completa de Sol Mayor', parentSlug: 'escalas' },
+  { slug: 'ejercicios-escalas', title: 'Ejercicios de escalas', parentSlug: 'escalas' },
+  { slug: 'ejercicios-escalas-avanzados', title: 'Ejercicios avanzados de escalas', parentSlug: 'escalas' },
+  { slug: 'acordes-escala-sol-mayor', title: 'Acordes de la escala de Sol Mayor', parentSlug: 'escalas' },
+  { slug: 'acordes-con-septima', title: 'Acordes con séptima', parentSlug: 'escalas' },
+  { slug: 'modos-griegos', title: 'Modos', parentSlug: 'escalas' },
+];
+
 export const legacyLessonSlugs = [
   'patrones-griegos',
 ] as const;

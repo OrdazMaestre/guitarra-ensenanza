@@ -56,5 +56,5 @@ No usar rojo para notas normales de una escala completa. Si una nota roja aparec
 Cada vez que se anada una pagina nueva al temario, una ampliacion, una practica extra o una ruta que salga como rama desde una leccion, tambien hay que actualizar `/lecciones/temario/pasos`.
 
 - Si cambia el camino principal, editar `app/lecciones/temario/temarioData.ts`.
-- Si aparece una rama lateral, editar `branchMap` en `app/lecciones/temario/pasos/page.tsx`.
+- Si aparece una rama lateral, editar `extensionPages` en `app/lecciones/temario/temarioData.ts` (`pasos/page.tsx` deriva su `branchMap` de ahí automáticamente).
 - El arbol de `pasos` debe representar siempre las rutas reales que el alumno puede tomar dentro de la web.

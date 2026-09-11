@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { MAIKAEL_DAILY_LIMIT, incrementDailyCount } from '@/app/lib/maikaelLimits';
+import { buildPageContextMessage, matchPagesForMessage, matchSecrets, matchVideos, resolveCurrentPage } from '@/app/lib/maikaelPageIndex';
 import { MAIKAEL_INTRO_LINE, MAIKAEL_SYSTEM_PROMPT } from '@/app/lib/maikaelPrompt';
 import { detectarDatosPersonales, PERSONAL_DATA_REPLY } from '@/app/lib/maikaelPrivacyFilter';
 
@@ -121,12 +122,31 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'MAIkael no está configurado (falta la clave de Groq)' }, { status: 500 });
   }
 
+  // Recuperación barata de páginas relevantes, SIN llamar a Groq: coincidencia
+  // por palabras clave contra el mensaje + los 2 últimos turnos de historial
+  // (para que una respuesta corta de seguimiento, p. ej. "con séptima", siga
+  // encontrando la página aunque por sí sola no diga casi nada). Si hay
+  // coincidencia, se añade un resumen corto de 1-2 páginas como contexto
+  // extra de ESTA petición — nunca una segunda llamada a Groq (ver
+  // app/lib/maikaelPageIndex.ts: se descartó tool-calling real porque exige
+  // una ronda completa adicional, duplicando el coste fijo del prompt).
+  const matchText = [...history.map((turn) => turn.text), message].join(' ');
+  const matchedPages = matchPagesForMessage(matchText);
+  const secrets = matchSecrets(matchText);
+  const videos = matchVideos(matchText);
+  // Mandada por el cliente en cada mensaje (window.location.pathname, ver
+  // MaikaelChat.tsx) — no depende de coincidencia de palabras clave, es un
+  // hecho, así que se añade siempre que se resuelva a una lección real.
+  const currentPage = resolveCurrentPage(typeof body?.currentPath === 'string' ? body.currentPath : null);
+  const pageContext = buildPageContextMessage(matchedPages, secrets, videos, currentPage);
+
   // Groq usa el mismo formato de mensajes compatible con OpenAI que Mistral:
   // system/user/assistant — no hizo falta tocar esta parte al cambiar de proveedor.
   const messages = [
     { role: 'system', content: MAIKAEL_SYSTEM_PROMPT },
     { role: 'assistant', content: MAIKAEL_INTRO_LINE },
     ...history.map((turn) => ({ role: turn.role === 'model' ? 'assistant' : 'user', content: turn.text })),
+    ...(pageContext ? [{ role: 'system' as const, content: pageContext }] : []),
     { role: 'user', content: message },
   ];
 
@@ -172,6 +192,18 @@ export async function POST(request: NextRequest) {
   }
 
   const data = await groqRes.json().catch(() => null);
+  // Solo para verificar en local el coste real en tokens de la navegación
+  // básica (app/lib/maikaelPageIndex.ts) contra el usage.prompt_tokens real
+  // que devuelve Groq — inerte en producción salvo que se active a mano.
+  if (process.env.MAIKAEL_DEBUG === '1') {
+    console.log('maikael-debug', {
+      matched: matchedPages.map((p) => p.slug),
+      secrets: secrets.length,
+      videos: videos.map((v) => `${v.channel} (${v.slug})`),
+      currentPage: currentPage?.slug ?? null,
+      usage: data?.usage,
+    });
+  }
   const reply: string | undefined = data?.choices?.[0]?.message?.content;
   if (!reply) {
     return Response.json({ error: 'MAIkael no ha sabido qué responder, prueba a reformular.' }, { status: 502 });

@@ -82,10 +82,15 @@ export default function MaikaelChat({
     setSending(true);
 
     try {
+      // Se lee justo aquí, no una vez al montar: MAIkael vive en el layout
+      // raíz y sobrevive a la navegación entre lecciones (Link de Next no
+      // recarga la página), así que la ruta puede cambiar sin que este
+      // componente se vuelva a montar.
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : undefined;
       const res = await fetch('/api/maikael/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({ message: text, history, currentPath }),
       });
       const data = await res.json().catch(() => null);
 

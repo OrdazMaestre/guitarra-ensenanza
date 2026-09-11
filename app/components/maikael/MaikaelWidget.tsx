@@ -445,7 +445,7 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   // "Eje Y" del mástil (perpendicular): la mano baja 10px de pantalla hacia
   // el lado del cuerpo (opuesto al que apuntan los dedos), a petición de Ordaz.
   const NECK_Y_AXIS_DOWN_DEG = GUITAR_ROTATE_DEG; // opuesto a RIGHT_WRIST_PLAY_DEG's eje "hacia afuera"
-  const manoRPlayYOffsetPx = 20 / scale; // 10 + 10px más, a petición de Ordaz
+  const manoRPlayYOffsetPx = 15 / scale; // 10 + 10px, y ahora -5px (sube), a petición de Ordaz
   const manoRPlayTarget: Point = {
     x:
       neckBodyWorld.x +

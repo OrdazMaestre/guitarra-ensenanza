@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
-import { lessonBlocks } from '../temarioData';
+import { extensionPages, lessonBlocks } from '../temarioData';
 import SecondaryPaths from './SecondaryPaths';
 
 type BranchItem = {
@@ -9,83 +9,27 @@ type BranchItem = {
   secondaryTarget?: 'harmony' | 'sevenths';
 };
 
-// Keep this map in sync whenever a temario route branches from a lesson.
-const branchMap: Record<string, BranchItem[]> = {
-  'conceptos-basicos': [
-    {
-      title: 'El sonido en la música',
-      href: '/lecciones/temario/el-sonido-en-la-musica',
-    },
-  ],
-  'notacion-musical': [
-    {
-      title: 'Afinación',
-      href: '/lecciones/temario/afinacion',
-    },
-  ],
-  tablaturas: [
-    {
-      title: 'Tablaturas con dos cuerdas',
-      href: '/lecciones/temario/tablaturas-dos-cuerdas',
-    },
-    {
-      title: 'Más punteos cortos',
-      href: '/lecciones/temario/mas-punteos-cortos',
-    },
-  ],
-  arpegios: [
-    {
-      title: 'Ampliacion de arpegios',
-      href: '/lecciones/temario/ampliacion-arpegios',
-    },
-  ],
-  pentatonica: [
-    {
-      title: 'Ejercicios de pentatónica',
-      href: '/lecciones/temario/ejercicios-pentatonica',
-    },
-    {
-      title: 'Ejercicios avanzados de pentatónica',
-      href: '/lecciones/temario/ejercicios-pentatonica-avanzados',
-    },
-    {
-      title: 'Pentatónica de blues',
-      href: '/lecciones/temario/pentatonica-blues',
-    },
-    {
-      title: 'Ejercicios de pentatónica de blues',
-      href: '/lecciones/temario/ejercicios-pentatonica-blues',
-    },
-  ],
-  escalas: [
-    {
-      title: 'Escala completa de Sol Mayor',
-      href: '/lecciones/temario/escala-completa-sol-mayor',
-    },
-    {
-      title: 'Ejercicios de escalas',
-      href: '/lecciones/temario/ejercicios-escalas',
-    },
-    {
-      title: 'Ejercicios avanzados de escalas',
-      href: '/lecciones/temario/ejercicios-escalas-avanzados',
-    },
-    {
-      title: 'Acordes de la escala de Sol Mayor',
-      href: '/lecciones/temario/acordes-escala-sol-mayor',
-      secondaryTarget: 'harmony',
-    },
-    {
-      title: 'Acordes con séptima',
-      href: '/lecciones/temario/acordes-con-septima',
-      secondaryTarget: 'sevenths',
-    },
-    {
-      title: 'Modos',
-      href: '/lecciones/temario/modos-griegos',
-    },
-  ],
+// secondaryTarget es puramente visual (flechas del mapa de esta página) para
+// las 2 ramas que lo necesitan — no vive en extensionPages porque no aporta
+// nada fuera de aquí.
+const SECONDARY_TARGETS: Partial<Record<string, BranchItem['secondaryTarget']>> = {
+  'acordes-escala-sol-mayor': 'harmony',
+  'acordes-con-septima': 'sevenths',
 };
+
+// Derivado de extensionPages (temarioData.ts), la fuente única de las
+// páginas rama — antes era un literal mantenido a mano aquí mismo.
+const branchMap: Record<string, BranchItem[]> = extensionPages.reduce(
+  (acc, page) => {
+    (acc[page.parentSlug] ??= []).push({
+      title: page.title,
+      href: `/lecciones/temario/${page.slug}`,
+      secondaryTarget: SECONDARY_TARGETS[page.slug],
+    });
+    return acc;
+  },
+  {} as Record<string, BranchItem[]>
+);
 
 const lessonToneClasses = [
   'tone-emerald',

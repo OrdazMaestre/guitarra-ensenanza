@@ -62,7 +62,7 @@ const IRREGULAR_PLURALS: Record<string, string> = {
   compás: 'compases',
 };
 
-function pluralOf(word: string): string {
+export function pluralOf(word: string): string {
   if (IRREGULAR_PLURALS[word]) return IRREGULAR_PLURALS[word];
   const lastChar = word.slice(-1);
   return /[aeiouáéíóú]/i.test(lastChar) ? `${word}s` : `${word}es`;
