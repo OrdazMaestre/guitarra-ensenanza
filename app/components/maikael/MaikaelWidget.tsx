@@ -566,23 +566,21 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           />
         </div>
       )}
-      <button
-        type="button"
-        aria-label={
-          step !== 'closed' ? 'Cerrar a MAIkael' : dailyLimitReached ? 'MAIkael está dormido por hoy' : 'Abrir a MAIkael'
-        }
-        onClick={handleClick}
+      {/* Marco de referencia: mismo tamaño/posición de siempre (todo el
+          lienzo de mundo, world 0-320 x 0-620), pero ya NO es el elemento
+          clicable — solo posiciona el dibujo. pointer-events:none deja pasar
+          los clics en las zonas vacías (antes toda esta caja era un <button>
+          enorme, con mucho hueco transparente alrededor del personaje). El
+          <button> real de abajo se ajusta a la silueta real. */}
+      <div
         style={{
           position: 'fixed',
           right: WIDGET_RIGHT,
           bottom: widgetBottom,
           width: widgetWidth,
           height: displayHeight,
-          padding: 0,
-          border: 'none',
-          background: 'transparent',
-          cursor: 'pointer',
-          zIndex: 40,
+          pointerEvents: 'none',
+          zIndex: 40, // se perdió al dejar de ser el <button> — sin esto, un <nav> de la página lo tapaba
           transition: 'bottom 220ms ease',
         }}
       >
@@ -597,6 +595,25 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           transformOrigin: 'top left',
         }}
       >
+        {/* Hitbox ajustada a la silueta real, medida con capturas reales del
+            render (Playwright + recorte por alpha/color) en vez de a ojo:
+            en reposo (solo la cabeza) es una caja pequeña centrada; en
+            activado (torso, brazos y piernas desplegados) cubre casi todo
+            el ancho porque el brazo tocando la guitarra llega a estirarse
+            hasta el borde. Porcentajes del propio lienzo de mundo, así
+            funcionan igual en cualquier escala (móvil/PC) sin recalcular. */}
+        <button
+          type="button"
+          aria-label={
+            step !== 'closed' ? 'Cerrar a MAIkael' : dailyLimitReached ? 'MAIkael está dormido por hoy' : 'Abrir a MAIkael'
+          }
+          onClick={handleClick}
+          style={
+            showBody
+              ? { position: 'absolute', left: '0%', top: '6%', width: '100%', height: '94%', pointerEvents: 'auto', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }
+              : { position: 'absolute', left: '20%', top: '35%', width: '62%', height: '29%', pointerEvents: 'auto', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }
+          }
+        />
         {showBody && (
           <img
             src={cuerpo.src}
@@ -701,7 +718,7 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           </RotatingGroup>
         )}
       </div>
-      </button>
+      </div>
     </>
   );
 }

@@ -52,9 +52,13 @@ const minorChords: Chord[] = [
   { spanish: 'SIm', english: 'Bm', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '3' }, { string: 3, fret: 4, finger: '4' }, { string: 2, fret: 3, finger: '2' }], muted: [6] },
 ];
 
-const stringX = (stringNumber: number) => 18 + (6 - stringNumber) * 20;
-const fretY = (fret: number) => 22 + (fret - 0.5) * 19;
-const powerFretY = (fret: number) => 24 + (fret - 0.5) * 19;
+// Coordinates below are pre-rotated 90° left (nut on the left, frets left-to-right,
+// high E on top, low E on bottom) so these diagrams match the MIDI fretboards' orientation.
+const stringY = (stringNumber: number) => 18 + (stringNumber - 1) * 20;
+const fretX = (fret: number) => 22 + (fret - 0.5) * 19;
+const powerFretX = (fret: number) => 24 + (fret - 0.5) * 19;
+
+const highlightedChordNames = new Set(['C', 'F', 'G', 'Am']);
 
 const powerChordShapes: PowerChordShape[] = [
   {
@@ -103,46 +107,43 @@ function spanishChordLabel(chord: Chord) {
 }
 
 function ChordDiagram({ chord }: { chord: Chord }) {
+  const highlight = highlightedChordNames.has(chord.english);
+
   return (
-    <figure className="chord-card">
+    <figure className={`chord-card${highlight ? ' chord-card--highlight' : ''}`}>
       <figcaption>
         <span className="primary-chord-name">{chord.english}</span> <span className="local-chord-name">({spanishChordLabel(chord)})</span>
       </figcaption>
-      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
-        <line className="nut" x1="18" x2="118" y1="22" y2="22" />
-        {[0, 1, 2, 3, 4, 5].map((index) => (
-          <line className="string-line" key={`string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="22" y2="98" />
+      <svg className="chord-diagram" viewBox="0 0 124 136" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
+        <line className="nut" x1="22" x2="22" y1="18" y2="118" />
+        {[1, 2, 3, 4, 5, 6].map((string) => (
+          <line className="string-line" key={`string-${string}`} x1="22" x2="98" y1={stringY(string)} y2={stringY(string)} />
         ))}
         {[1, 2, 3, 4].map((index) => (
-          <line className="fret-line" key={`fret-${index}`} x1="18" x2="118" y1={22 + index * 19} y2={22 + index * 19} />
+          <line className="fret-line" key={`fret-${index}`} x1={22 + index * 19} x2={22 + index * 19} y1="18" y2="118" />
         ))}
-        {(chord.open ?? []).map((string) => (
-          <circle className="open-marker" key={`open-${string}`} cx={stringX(string)} cy="14" r="4.5" />
-        ))}
-        {(chord.muted ?? []).map((string) => (
-          <text className="muted-marker" key={`muted-${string}`} x={stringX(string)} y="15">
-            x
-          </text>
+        {[...(chord.open ?? []), ...(chord.muted ?? [])].map((string) => (
+          <circle className="open-marker" key={`open-${string}`} cx="14" cy={stringY(string)} r="4.5" />
         ))}
         {chord.barre ? (
           <g>
             <rect
               className="barre"
-              height="14"
+              width="14"
               rx="7"
-              width={Math.abs(stringX(chord.barre.to) - stringX(chord.barre.from)) + 16}
-              x={Math.min(stringX(chord.barre.from), stringX(chord.barre.to)) - 8}
-              y={fretY(chord.barre.fret) - 7}
+              height={Math.abs(stringY(chord.barre.to) - stringY(chord.barre.from)) + 16}
+              x={fretX(chord.barre.fret) - 7}
+              y={Math.min(stringY(chord.barre.from), stringY(chord.barre.to)) - 8}
             />
-            <text className="finger-label" x={(stringX(chord.barre.from) + stringX(chord.barre.to)) / 2} y={fretY(chord.barre.fret) + 4}>
+            <text className="finger-label" x={fretX(chord.barre.fret)} y={(stringY(chord.barre.from) + stringY(chord.barre.to)) / 2 + 4}>
               {chord.barre.label}
             </text>
           </g>
         ) : null}
         {chord.markers.map((marker) => (
           <g key={`${marker.string}-${marker.fret}-${marker.finger}`}>
-            <circle className="finger-dot" cx={stringX(marker.string)} cy={fretY(marker.fret)} r="8" />
-            <text className="finger-label" x={stringX(marker.string)} y={fretY(marker.fret) + 4}>
+            <circle className="finger-dot" cx={fretX(marker.fret)} cy={stringY(marker.string)} r="8" />
+            <text className="finger-label" x={fretX(marker.fret)} y={stringY(marker.string) + 4}>
               {marker.finger}
             </text>
           </g>
@@ -158,17 +159,17 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
       <figcaption>
         <span className="primary-chord-name">{shape.name}</span> <span className="local-chord-name">({shape.rootLabel})</span>
       </figcaption>
-      <svg className="power-diagram" viewBox="0 0 136 112" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
-        <line className="nut" x1="18" x2="118" y1="24" y2="24" />
-        {[0, 1, 2, 3, 4, 5].map((index) => (
-          <line className="string-line" key={`power-string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="24" y2="100" />
+      <svg className="power-diagram" viewBox="0 0 112 136" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
+        <line className="nut" x1="24" x2="24" y1="18" y2="118" />
+        {[1, 2, 3, 4, 5, 6].map((string) => (
+          <line className="string-line" key={`power-string-${string}`} x1="24" x2="100" y1={stringY(string)} y2={stringY(string)} />
         ))}
         {[1, 2, 3, 4].map((index) => (
-          <line className="fret-line" key={`power-fret-${index}`} x1="18" x2="118" y1={24 + index * 19} y2={24 + index * 19} />
+          <line className="fret-line" key={`power-fret-${index}`} x1={24 + index * 19} x2={24 + index * 19} y1="18" y2="118" />
         ))}
         {shape.notes.map((note) => (
           <g key={`${shape.name}-${note.string}-${note.fret}`}>
-            <circle className={`power-dot ${note.label === 'E' ? 'power-note-e' : note.label === 'G' ? 'power-note-g' : ''} ${note.fret === 0 ? 'open-power-dot' : ''}`} cx={stringX(note.string)} cy={note.fret === 0 ? 16 : powerFretY(note.fret)} r="9" />
+            <circle className={`power-dot ${note.label === 'E' ? 'power-note-e' : note.label === 'G' ? 'power-note-g' : ''} ${note.fret === 0 ? 'open-power-dot' : ''}`} cx={note.fret === 0 ? 16 : powerFretX(note.fret)} cy={stringY(note.string)} r="9" />
           </g>
         ))}
       </svg>
@@ -203,11 +204,15 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
               <span key={finger}>{finger}</span>
             ))}
           </div>
+          
         </section>
 
-      
+      <section className="practice-strip" aria-label="Forma de practicar">
+        <p>Los acordes en <strong>VERDE</strong> son los que aprenderemos primero</p>
+      </section>
 
         <section className="chord-library" aria-labelledby="major-title">
+          
           <header className="chord-section-header">
             <p className="lesson-kicker">Mayores</p>
             <h2 id="major-title">Acordes mayores</h2>
@@ -541,6 +546,11 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           padding: 14px 8px 12px;
         }
 
+        .chord-card--highlight {
+          background: rgba(4, 120, 87, 0.08);
+          border-color: #6ee7b7;
+        }
+
         .chord-card figcaption {
           color: #080808;
           font-size: clamp(14px, 1.7vw, 20px);
@@ -581,8 +591,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           stroke-width: 2.5;
         }
 
-        .finger-label,
-        .muted-marker {
+        .finger-label {
           dominant-baseline: middle;
           fill: #080808;
           font-size: 10px;
@@ -594,12 +603,6 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
           fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2;
-        }
-
-        .muted-marker {
-          fill: #047857;
-          font-size: 12px;
-          text-transform: uppercase;
         }
 
         .practice-strip {
