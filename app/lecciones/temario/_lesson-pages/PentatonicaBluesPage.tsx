@@ -10,6 +10,8 @@ import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
+import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guitar/NoteMarksOverlay';
+import { useNoteMarks } from '../../../lib/useNoteMarks';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const stringTunings = [
@@ -69,6 +71,10 @@ function FretboardMap({
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
+  const [paintMode, setPaintMode] = useState(false);
+  const paintModeRef = useRef(paintMode);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  const { marks, toggleMark } = useNoteMarks();
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -123,6 +129,7 @@ function FretboardMap({
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      if (paintModeRef.current) toggleMark(displayNote(noteNameForFret(stringTunings[entry.string - 1].open, entry.fret)));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
@@ -243,6 +250,7 @@ function FretboardMap({
     const pos = getPos(e);
     if (!pos) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (paintMode) toggleMark(displayNote(noteNameForFret(stringTunings[pos.string - 1].open, pos.fret)));
     const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
@@ -445,6 +453,14 @@ function FretboardMap({
             Bb también puede llamarse A#
           </text>
         ) : null}
+        <NoteMarksOverlay
+          endFret={12}
+          getNoteName={(string, fret) => displayNote(noteNameForFret(stringTunings[string - 1].open, fret))}
+          getX={fretX}
+          getY={stringY}
+          marks={marks}
+          startFret={0}
+        />
         {interactionOverlay()}
       </svg>
     </figure>
@@ -456,6 +472,7 @@ function FretboardMap({
         </span>
       )}
     >
+      <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
           onClick={() => setKbMode(m => !m)}

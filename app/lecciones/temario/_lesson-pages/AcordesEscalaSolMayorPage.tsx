@@ -9,6 +9,8 @@ import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
+import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { useNoteMarks, type NoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -117,10 +119,13 @@ type FretboardProps = {
   chord: ChordMap;
   kbMode: boolean;
   kbPositions: { string: number; fret: number }[];
+  marks: NoteMarks;
+  paintMode: boolean;
+  toggleMark: (noteName: string) => void;
   volumeRef: React.RefObject<number>;
 };
 
-function ChordScaleFretboard({ chord, kbMode, kbPositions, volumeRef }: FretboardProps) {
+function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, toggleMark, volumeRef }: FretboardProps) {
   const boardX = 44;
   const boardY = 30;
   const fretWidth = 54;
@@ -209,6 +214,7 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, volumeRef }: Fretboar
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
+    if (paintMode) toggleMark(noteNameForFret(stringTunings[pos.string - 1].open, pos.fret));
     const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
@@ -402,6 +408,15 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, volumeRef }: Fretboar
             </text>
           </g>
         ))}
+        <NoteMarksOverlay
+          endFret={5}
+          getNoteName={(string, fret) => noteNameForFret(stringTunings[string - 1].open, fret)}
+          getX={fretX}
+          getY={stringY}
+          marks={marks}
+          radius={13}
+          startFret={0}
+        />
         {interactionOverlay()}
       </svg>
     </figure>
@@ -414,6 +429,10 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const [paintMode, setPaintMode] = useState(false);
+  const paintModeRef = useRef(paintMode);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  const { marks, toggleMark } = useNoteMarks();
   const metr = useMetronome();
 
   useEffect(() => {
@@ -469,6 +488,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      if (paintModeRef.current) toggleMark(noteNameForFret(stringTunings[entry.string - 1].open, entry.fret));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
@@ -558,6 +578,9 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
                 chord={chord}
                 kbMode={kbMode}
                 kbPositions={kbPositions}
+                marks={marks}
+                paintMode={paintMode}
+                toggleMark={toggleMark}
                 volumeRef={volumeRef}
               />
             ))}
@@ -570,6 +593,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
               </span>
             )}
           >
+            <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
             <div className="midi-anchor">
               <button
                 onClick={() => setKbMode(m => !m)}

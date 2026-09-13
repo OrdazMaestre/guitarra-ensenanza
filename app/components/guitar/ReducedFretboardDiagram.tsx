@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
+import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
+import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -122,6 +124,8 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
+  const [paintMode, setPaintMode] = useState(false);
+  const { marks, toggleMark } = useNoteMarks();
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -138,6 +142,8 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
+  const paintModeRef = useRef(paintMode);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   const metr = useMetronome();
   useEffect(() => {
     if (!kbMode && !metr.on) return;
@@ -177,6 +183,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      if (paintModeRef.current) toggleMark(noteNameForFret(entry.string, entry.fret));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
@@ -293,6 +300,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
+    if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret));
     const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
@@ -542,6 +550,14 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
           );
         }
       )}
+      <NoteMarksOverlay
+        endFret={endFret}
+        getNoteName={noteNameForFret}
+        getX={(fret) => fretMarkerX(boardX, fretWidth, startFret, fret)}
+        getY={stringY}
+        marks={marks}
+        startFret={startFret}
+      />
       {interactionOverlay()}
     </svg>
     <MidiInstrumentChrome
@@ -551,6 +567,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
         </span>
       )}
     >
+      <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
           onClick={() => setKbMode(m => !m)}

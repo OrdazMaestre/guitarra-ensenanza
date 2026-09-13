@@ -20,9 +20,9 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
             <p className="lesson-kicker">Trastes</p>
             <h2 id="frets-title">Cada número marca un lugar del mástil</h2>
             <p>
-              El <strong>0</strong> significa cuerda al aire: tocamos sin pisar ningún traste. El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demás números nos mandan avanzar por el mástil.
+              El <strong>0</strong> significa cuerda al aire: tocamos sin pisar ningún traste.
             </p>
-            
+            <p> El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demás números nos mandan avanzar por el mástil.</p>
               <p>Intentamos memorizar este mapa de notas para aprender más fácil la canción.</p>
               <p>EJERCICIO 1: practicar el siguiente patrón</p>
               <p> (2 - 4 - 5  -  2 - 4 - 5) - (4 - 5 - 7  -  4 - 5 - 7) - (0 - 2 - 4  -  0 - 2 - 4)</p>

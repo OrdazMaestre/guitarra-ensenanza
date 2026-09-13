@@ -11,6 +11,8 @@ import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
+import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guitar/NoteMarksOverlay';
+import { useNoteMarks } from '../../../lib/useNoteMarks';
 
 const fretNotes = [
   { fret: 0, string: 2, note: 'B' },
@@ -62,6 +64,10 @@ function GChordFretboard() {
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
+  const [paintMode, setPaintMode] = useState(false);
+  const paintModeRef = useRef(paintMode);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  const { marks, toggleMark } = useNoteMarks();
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -116,6 +122,7 @@ function GChordFretboard() {
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      if (paintModeRef.current) toggleMark(noteNameForFret(entry.string, entry.fret));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
@@ -236,6 +243,7 @@ function GChordFretboard() {
     const pos = getPos(e);
     if (!pos) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret));
     const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
@@ -429,6 +437,14 @@ function GChordFretboard() {
             </g>
           );
         })}
+        <NoteMarksOverlay
+          endFret={12}
+          getNoteName={noteNameForFret}
+          getX={fretX}
+          getY={stringY}
+          marks={marks}
+          startFret={0}
+        />
         {interactionOverlay()}
       </svg>
     </figure>
@@ -440,6 +456,7 @@ function GChordFretboard() {
         </span>
       )}
     >
+      <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
           onClick={() => setKbMode(m => !m)}

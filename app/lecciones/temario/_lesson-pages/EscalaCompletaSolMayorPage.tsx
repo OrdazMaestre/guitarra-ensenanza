@@ -9,6 +9,8 @@ import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
+import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { useNoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -89,6 +91,10 @@ function ScaleFretboard({
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
+  const [paintMode, setPaintMode] = useState(false);
+  const paintModeRef = useRef(paintMode);
+  useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  const { marks, toggleMark } = useNoteMarks();
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -144,6 +150,7 @@ function ScaleFretboard({
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
+      if (paintModeRef.current) toggleMark(noteNameForFret(stringTunings[entry.string - 1].open, entry.fret));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
@@ -256,6 +263,7 @@ function ScaleFretboard({
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
+    if (paintMode) toggleMark(noteNameForFret(stringTunings[pos.string - 1].open, pos.fret));
     const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
@@ -477,6 +485,14 @@ function ScaleFretboard({
             </g>
           );
         })}
+        <NoteMarksOverlay
+          endFret={12}
+          getNoteName={(string, fret) => noteNameForFret(stringTunings[string - 1].open, fret)}
+          getX={fretX}
+          getY={stringY}
+          marks={marks}
+          startFret={0}
+        />
         {interactionOverlay()}
       </svg>
     </figure>
@@ -488,6 +504,7 @@ function ScaleFretboard({
         </span>
       )}
     >
+      <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
           onClick={() => setKbMode(m => !m)}
