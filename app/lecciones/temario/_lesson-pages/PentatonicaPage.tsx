@@ -616,7 +616,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
             </Link>
             <Link href="/lecciones/temario/pentatonica-blues">
               <span>Pentatónica de blues</span>
-              <small>Para añadir la nota blues más adelante.</small>
+              <small>Para añadir la blue note más adelante.</small>
             </Link>
           </div>
         </section>

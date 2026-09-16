@@ -524,7 +524,7 @@ const evolutionItems = [
         <p>Son muy amplias, pero algo restrictivas.</p>
       </>
     ),
-    period: 'Siglos XVII-XIX',
+    period: 'Finales del siglo XVI',
     title: (
       <a className="timeline-title-link" href="https://www.youtube.com/watch?v=E1HHKGlBugA" rel="noreferrer" target="_blank">
         Música clásica
@@ -651,6 +651,7 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           <p>E, G, A, Bb, B y D.</p>
           <p>La nota extra no suena tranquila.</p>
           <p>Eso es lo especial que tiene el sonido del blues entre otras cosas.</p>
+          <p>Esa nota nueva se llama <strong>blue note</strong>.</p>
         </section>
 
         <section className="practice-link" aria-label="Volver a ejercicios">
@@ -663,10 +664,16 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
 
         <section className="history-box" aria-labelledby="history-title">
           <div className="history-copy">
-            <p>Los músicos de blues dominaban la música folk de su tierra además de la teoría y técnica de la música clásica.</p>
+            <h2>Música clásica vs música moderna</h2>
+            <p>Aclaro que con "música clásica" nos referimos al conjunto Barroco, Rococó, Clasicismo y Romanticismo principalmente.</p>
+            <p><strong>Los músicos de blues</strong> dominaban la música folk de su tierra además de la teoría y técnica de la música clásica.</p>
             <p>
               Ellos fueron los primeros en proponer una música compleja y distinta a como{' '}
               <span className="underlined">se creía en aquella época que era la única manera de hacer música bien</span>.
+            </p>
+            <p>
+              <span className="underlined">Así nace la <strong>música moderna</strong>, diferenciándose</span> de forma fundamental con la{' '}
+              <span className="underlined"><strong>música clásica</strong></span>.
             </p>
             <p>
               <strong>Muy pocos clásicos</strong> usaron antes estos recursos “raros” como{' '}
@@ -685,11 +692,6 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
               </a>{' '}
               e Igor Stravinsky se influenciaron mucho de estos en el siglo XX.
             </p>
-            <p>
-              <span className="underlined">Así nace la <strong>música moderna</strong>, diferenciándose</span> de forma fundamental con la{' '}
-              <span className="underlined"><strong>música clásica</strong></span>.
-            </p>
-            <p>Aclaro que con "música clásica" nos referimos al conjunto Barroco, Rococó, Clasicismo y Romanticismo principalmente.</p>
           <p>El Jazz fue la cúspide de esa experimentación musical: escalas de 7 a 12 notas, múltiples escalas en la misma canción... etc.</p>
           </div>
 
@@ -982,6 +984,14 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
           font-size: clamp(18px, 2vw, 25px);
           font-weight: 620;
           line-height: 1.5;
+        }
+
+        .history-copy h2 {
+          font-size: clamp(24px, 3.4vw, 40px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 1.1;
+          margin: 0;
         }
 
         .history-copy strong,
