@@ -57,11 +57,11 @@ export default function PasosPage() {
             <li><strong>Llegué al final:</strong> tras llegar al tema 10, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
             <li>Aprender cosas nuevas es necesario para avanzar y también facilita entender lo anterior.</li>
           </ul>
-          <p className="steps-strong">Niveles:</p>
+          <p className="steps-strong">Niveles: a nuestro ritmo</p>
           <ul className="steps-list">
-            <li>Nivel 1 → al superar el tema 5</li>
-            <li>Nivel 2 → al entender todos los temas principales</li>
-            <li>Nivel 3 → al completar todos los apartados (listo para clases avanzadas)</li>
+            <li><strong>Nivel 1</strong> → al superar el tema 5</li>
+            <li><strong>Nivel 2</strong> → al entender todos los temas principales</li>
+            <li><strong>Nivel 3</strong> → al completar todos los apartados (listo para clases avanzadas)</li>
           </ul>
           
         </div>

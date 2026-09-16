@@ -75,11 +75,11 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
               <p className="lesson-kicker">Distancias</p>
               <h2 id="interval-title">5 semitonos casi siempre entre una cuerda y la siguiente </h2>
               <p>
-                </p> <p>La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay 4 semitonos.
+                </p> <p>La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay <strong>4 semitonos</strong>.
               </p>
               <p>
-                Es la afinación más habitual, por eso se llama &quot;afinación estándar&quot;. </p><p>Aprenderemos por qué más adelante.
-           </p>
+                Es la afinación más habitual, por eso se llama <strong>afinación estándar</strong>. </p>
+              <p>Nosotros tocamos en <strong>Mi estándar</strong>, pero hay muchas afinaciones estándar y muchas más que no son estándar</p>
             </div>
 
             <div className="interval-row" aria-label="Distancias entre cuerdas de la afinación estándar">

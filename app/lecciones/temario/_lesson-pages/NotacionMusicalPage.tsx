@@ -47,15 +47,76 @@ const fretboardStrings = [
   { label: 'E', open: 4, fullRange: true },
 ];
 
-const fretboardNotes = fretboardStrings.flatMap((string, index) => {
-  const frets = string.fullRange ? Array.from({ length: 13 }, (_, fret) => fret) : [0, 12];
+// Rainbow order starts at E (open string 1/6, fret 0) instead of the usual
+// C-start chromatic order, so walking up either E string from the nut reads
+// as one smooth 12-hue rainbow: E, F, F#, G, ..., D# at fret 11, wrapping
+// back to the same red-ish E hue at fret 12.
+const rainbowNotes = ['E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'C', 'C#', 'D', 'D#'];
 
-  return frets.map((fret) => ({
-    fret,
-    highlight: Boolean(string.highlight) && fret > 0,
-    note: chromaticLetters[(string.open + fret) % 12],
-    string: index + 1,
-  }));
+function rainbowColorForNote(note: string) {
+  const index = rainbowNotes.indexOf(note);
+  return `hsl(${index * 30}, 90%, 58%)`;
+}
+
+// Extra call-outs on top of the rainbow, independent of the string-2 "every
+// fret" highlight: E2/G2 on string 6, plus every other string's open note
+// (A2 on string 5, D3 on string 4, G3 on string 3, B3 on string 2, E4 on
+// string 1) — marks all six open strings at fret 0, given by their
+// scientific pitch name (matches OPEN_STRING_MIDI).
+const extraHighlights = [
+  { fret: 0, string: 6 }, // E2 (open low E)
+  { fret: 3, string: 6 }, // G2
+  { fret: 0, string: 5 }, // A2 (open A)
+  { fret: 0, string: 4 }, // D3 (open D)
+  { fret: 0, string: 3 }, // G3 (open G)
+  { fret: 0, string: 2 }, // B3 (open B)
+  { fret: 0, string: 1 }, // E4 (open high E)
+];
+
+function isExtraHighlight(string: number, fret: number) {
+  return extraHighlights.some((h) => h.string === string && h.fret === fret);
+}
+
+// Explicit per-phase delay, applied inline on each ring below, so every
+// member of a phase group shares the exact same animation start point
+// regardless of class cascade or per-element mount timing.
+const phaseDelays: Record<string, string> = { open: '0s', string2: '-1s', g2: '-2s' };
+
+const fretboardNotes = fretboardStrings.flatMap((string, stringIndex) => {
+  const frets = string.fullRange ? Array.from({ length: 13 }, (_, fret) => fret) : [0, 12];
+  // Only strings 1 and 6 (both tuned to E) get the full rainbow, plus frets 0
+  // and 12 on every string — together they show that both E strings play
+  // identical notes, and that fret 0 and fret 12 are the same note an octave
+  // apart, wherever you are on the neck.
+  const isRainbowString = stringIndex === 0 || stringIndex === 5;
+
+  return frets.map((fret) => {
+    const note = chromaticLetters[(string.open + fret) % 12];
+    const stringNumber = stringIndex + 1;
+    const callout = isExtraHighlight(stringNumber, fret);
+    const highlight = Boolean(string.highlight) && fret > 0;
+    // Three memorization zones, each cycling color on its own phase (see
+    // .fretboard-phase-* below) so they read as visually distinct groups
+    // even though they share the same 12-hue animation: every open string
+    // (fret 0), the rest of string 2 (frets 1-12), and G2 on its own.
+    const phase = fret === 0 && callout
+      ? 'open'
+      : stringNumber === 6 && fret === 3
+        ? 'g2'
+        : highlight
+          ? 'string2'
+          : undefined;
+
+    return {
+      callout,
+      fret,
+      highlight,
+      note,
+      phase,
+      rainbowColor: isRainbowString || fret === 0 || fret === 12 ? rainbowColorForNote(note) : undefined,
+      string: stringNumber,
+    };
+  });
 });
 
 function FullFretboardDiagram() {
@@ -421,6 +482,9 @@ function FullFretboardDiagram() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        <text className="fretboard-fret-number" key="number-0" x={fretX(0)} y="26">
+          0
+        </text>
         {Array.from({ length: 12 }, (_, fret) => (
           <text className="fretboard-fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y="26">
             {fret + 1}
@@ -460,11 +524,28 @@ function FullFretboardDiagram() {
         {fretboardNotes.map((item) => (
           <g key={`${item.string}-${item.fret}`}>
             <circle
-              className={item.highlight ? 'fretboard-note fretboard-note-special' : 'fretboard-note'}
+              className={item.rainbowColor ? 'fretboard-note fretboard-note-vivid' : 'fretboard-note'}
               cx={fretX(item.fret)}
               cy={stringY(item.string)}
               r="16"
+              style={item.rainbowColor ? { fill: item.rainbowColor } : undefined}
             />
+            {item.highlight || item.callout ? (
+              // A separate stroke-only ring, on its own element: it needs the
+              // dark-mode counter-invert (see .fretboard-note-callout below)
+              // so its animated color reads the same in both themes, but the
+              // circle underneath must NOT get that filter, or its plain fill
+              // would stop following the page's normal dark-mode inversion.
+              <circle
+                className="fretboard-note-callout fretboard-note-vivid"
+                cx={fretX(item.fret)}
+                cy={stringY(item.string)}
+                fill="none"
+                pointerEvents="none"
+                r="16"
+                style={item.phase ? { animationDelay: phaseDelays[item.phase] } : undefined}
+              />
+            ) : null}
             <text className="fretboard-note-label" x={fretX(item.fret)} y={stringY(item.string) + 5}>
               {item.note}
             </text>
@@ -558,10 +639,13 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
       <article className="notes-content">
         <header className="notes-header">
           <h1>Notas musicales</h1>
-          <p>
-            NOTACIÓN INTERNACIONAL: Nombrar a las notas musicales con las letras del abecedario.
-          </p>
-          <p>A,  B,  C,  D,  E,  F  y  G.</p>
+          <h3>(Do, Re, Mi, Fa, Sol, La y Si)</h3>
+          <div className="rule-box">
+            <p>
+              <strong>NOTACIÓN INTERNACIONAL:</strong> Nombrar a las notas musicales con las letras del <strong>ABECEDARIO</strong> o, como lo llamo aqui;
+            </p>
+            <h2>ABCDEFGario: <strong>A,  B,  C,  D,  E,  F  y  G.</strong></h2>
+          </div>
         </header>
 
         <section className="note-section" aria-labelledby="natural-notes-title">
@@ -600,12 +684,21 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
         <section className="note-section fretboard-section" aria-labelledby="fretboard-title">
           <header className="note-section-header">
           </header>
-          
+       
           <div className="fretboard-copy">
             
           </div>
 
           <FullFretboardDiagram />
+          
+          <section className="lesson-close" aria-label="Resumen">
+          <h2>POCO A POCO MEMORIZAREMOS LA POSICION DE VARIAS NOTAS EN LA GUITARRA</h2>
+          <p>Trastes 0 y 12 son iguales.</p>
+          <p>Cuerdas 1 y 6 son iguales.</p>
+          <p>TRUCOS: Empieza aprendiendo las notas del traste 0 de abajo a arriba.</p>
+          <p>Memoriza que la cuerda 2 contiene de Do a Si en orden por toda la cuerda.</p>
+          <p>El resto de posiciones las sacaremos cada vez más rápido sabiéndonos el abecedefgario.</p>
+          </section>
         </section>
 
         <section className="branch-link-section" aria-label="Rama de afinación">
@@ -671,6 +764,32 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           font-weight: 650;
           line-height: 1.42;
           margin: clamp(24px, 4vw, 36px) auto 0;
+        }
+
+        .rule-box p {
+          color: #303030;
+          font-size: clamp(18px, 2vw, 24px);
+          font-weight: 650;
+          line-height: 1.42;
+          margin: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .rule-box {
+          border: 4px solid #2f65ad;
+          border-radius: 10px;
+          display: grid;
+          gap: 10px;
+          margin: clamp(24px, 4vw, 36px) auto 0;
+          max-width: 980px;
+          padding: clamp(18px, 3vw, 28px);
+          text-align: center;
+          width: 100%;
+        }
+
+        .rule-box strong {
+          color: #080808;
+          font-weight: 950;
         }
 
         .note-section {
@@ -854,15 +973,59 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           stroke-width: 3;
         }
 
-        .fretboard-note-special {
-          stroke: #dc2626;
-          stroke-width: 5;
+        /* Every highlighted note — string 2's B, all fret/octave (the old
+           static red ring), plus the four extra call-outs (E2/G2 on string
+           6, A2 on string 5, D3 on string 4) — gets this same ring, drawn as
+           a separate stroke-only circle on top so its animated color can be
+           counter-inverted in dark mode (see .fretboard-note-vivid below)
+           without also pinning the note's own fill away from the page's
+           normal dark-mode inversion. All rings share one animation starting
+           from the same render, so they cycle through the 12 rainbow hues
+           perfectly in sync — a static red ring barely stood out against
+           some of the rainbow fills, but a fast color sweep is unmissable
+           regardless of what's underneath. */
+        /* Three memorization zones share the same cycle but start at a
+           different point in it (see the inline animationDelay set per
+           item.phase above — open strings, the rest of string 2, and G2
+           each land on a distinct color at any given moment, while every
+           member of the same zone always matches its own group exactly). */
+        .fretboard-note-callout {
+          animation: fretboard-callout-cycle 3s linear infinite;
+          stroke-width: 6;
+        }
+
+        @keyframes fretboard-callout-cycle {
+          0%     { stroke: hsl(0, 90%, 58%); }
+          8.3%   { stroke: hsl(30, 90%, 58%); }
+          16.7%  { stroke: hsl(60, 90%, 58%); }
+          25%    { stroke: hsl(90, 90%, 58%); }
+          33.3%  { stroke: hsl(120, 90%, 58%); }
+          41.7%  { stroke: hsl(150, 90%, 58%); }
+          50%    { stroke: hsl(180, 90%, 58%); }
+          58.3%  { stroke: hsl(210, 90%, 58%); }
+          66.7%  { stroke: hsl(240, 90%, 58%); }
+          75%    { stroke: hsl(270, 90%, 58%); }
+          83.3%  { stroke: hsl(300, 90%, 58%); }
+          91.7%  { stroke: hsl(330, 90%, 58%); }
+          100%   { stroke: hsl(360, 90%, 58%); }
+        }
+
+        /* Dark mode inverts the whole page so notes/keyboards keep contrast
+           (see globals.css) — these two classes carry deliberately-chosen
+           colors (the rainbow fill, the call-out ring's cycle) that must
+           read the same in both themes, so counter-invert them right back,
+           the same trick globals.css already uses for <img>. */
+        html[data-theme='dark'] .fretboard-note-vivid {
+          filter: invert(1) hue-rotate(180deg);
         }
 
         .fretboard-note-label {
           fill: #080808;
           font-size: 16px;
           font-weight: 950;
+          paint-order: stroke;
+          stroke: #ffffff;
+          stroke-width: 3px;
           text-anchor: middle;
         }
 
@@ -878,6 +1041,19 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
           font-size: 18px;
           font-weight: 760;
           line-height: 1.55;
+          margin: 0;
+        }
+
+        .lesson-close {
+          border-left: 5px solid #047857;
+          display: grid;
+          gap: 21px;
+          margin: clamp(28px, 5vw, 48px) auto 0;
+          max-width: 860px;
+          padding-left: clamp(16px, 3vw, 24px);
+        }
+
+        .lesson-close p {
           margin: 0;
         }
 

@@ -43,8 +43,8 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
                     </svg>
                   </figure>
                 </div>
-
-
+                <p>Solemos llamar a los sonidos como: AGUDOS - MEDIOS - GRAVES</p>
+                <p>En nuestra guitarra y en el dibujo del final (podemos tocarlo) las cuerdas <strong>1 y 2</strong> son agudas, la <strong>3 y 4</strong> hacen los medios y la <strong>5 y 6</strong> son las graves </p>
                 <Link href="/lecciones/temario/el-sonido-en-la-musica" className="music-more-link">
                   SABER MÁS
                 </Link>
