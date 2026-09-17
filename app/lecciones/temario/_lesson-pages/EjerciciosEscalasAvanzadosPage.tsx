@@ -1,5 +1,6 @@
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -205,7 +206,7 @@ function FigureOneDiagram() {
   );
 }
 
-export default function EjerciciosEscalasAvanzadosPage({ previous, next }: LessonPageProps) {
+export default function EjerciciosEscalasAvanzadosPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="advanced-scale-page">
       <article className="advanced-scale-content">
@@ -254,6 +255,7 @@ export default function EjerciciosEscalasAvanzadosPage({ previous, next }: Lesso
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

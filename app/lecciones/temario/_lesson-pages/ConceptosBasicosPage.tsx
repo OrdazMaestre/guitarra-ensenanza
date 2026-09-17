@@ -1,10 +1,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
-export default function ConceptosBasicosPage({ previous, next }: LessonPageProps) {
+export default function ConceptosBasicosPage({ previous, next, quizHref }: LessonPageProps) {
     return (
       <main className="lesson-white-page">
         <article className="lesson-content">
@@ -107,6 +108,7 @@ export default function ConceptosBasicosPage({ previous, next }: LessonPageProps
         </article>
 
         <div className="lesson-pager-wrap">
+          <QuizButton quizHref={quizHref} />
           <TemarioPager previous={previous} next={next} />
         </div>
         <ReducedFretboardStyles />

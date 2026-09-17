@@ -1,3 +1,5 @@
+import { upstashCommand } from './upstash';
+
 // Bajado de 1500 a 900 al cambiar de Gemini a Groq (2026-08-27): el modelo
 // estable de producción en el free tier de Groq (openai/gpt-oss-20b) tiene
 // un tope real de ~1.000 peticiones/día (console.groq.com/docs/rate-limits)
@@ -7,31 +9,6 @@ export const MAIKAEL_DAILY_LIMIT = 900;
 export const MAIKAEL_SESSION_LIMIT = 50;
 
 const MADRID_TIME_ZONE = 'Europe/Madrid';
-
-function upstashCredentials(): { url: string; token: string } {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) {
-    throw new Error(
-      'Faltan las variables de entorno UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN'
-    );
-  }
-  return { url, token };
-}
-
-async function upstashCommand(...args: (string | number)[]): Promise<unknown> {
-  const { url, token } = upstashCredentials();
-  const path = args.map((part) => encodeURIComponent(String(part))).join('/');
-  const res = await fetch(`${url}/${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) {
-    throw new Error(`Upstash respondió ${res.status} para el comando ${args[0]}`);
-  }
-  const data = (await res.json()) as { result: unknown };
-  return data.result;
-}
 
 // en-CA formatea fechas como YYYY-MM-DD, que es justo la clave que necesitamos.
 export function todayKeyMadrid(): string {

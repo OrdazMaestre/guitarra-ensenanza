@@ -1,5 +1,6 @@
 import AcousticsCarousel from './AcousticsCarousel';
 import HarmonicsCarousel from './HarmonicsCarousel';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 
 export default function SoundInMusicPage() {
@@ -52,6 +53,7 @@ export default function SoundInMusicPage() {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref="/lecciones/temario/quiz?from=el-sonido-en-la-musica" />
         <TemarioPager
           previous={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos básicos' }}
         />

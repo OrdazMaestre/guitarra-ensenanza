@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
@@ -494,7 +495,7 @@ function GChordFretboard() {
   );
 }
 
-export default function FigurasAcordesPage({ previous, next }: LessonPageProps) {
+export default function FigurasAcordesPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="figures-page">
       <article className="figures-content">
@@ -548,6 +549,7 @@ export default function FigurasAcordesPage({ previous, next }: LessonPageProps) 
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

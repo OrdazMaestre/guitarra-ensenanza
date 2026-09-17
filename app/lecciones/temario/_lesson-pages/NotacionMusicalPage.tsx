@@ -4,6 +4,7 @@ import Link from 'next/link';
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -608,7 +609,7 @@ function FullFretboardDiagram() {
   );
 }
 
-export default function NotacionMusicalPage({ previous, next }: LessonPageProps) {
+export default function NotacionMusicalPage({ previous, next, quizHref }: LessonPageProps) {
   const naturalNotes = [
     ['DO', 'C'],
     ['RE', 'D'],
@@ -710,6 +711,7 @@ export default function NotacionMusicalPage({ previous, next }: LessonPageProps)
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

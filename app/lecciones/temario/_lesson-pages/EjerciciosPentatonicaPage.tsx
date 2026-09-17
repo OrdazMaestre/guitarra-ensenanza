@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -59,7 +60,7 @@ function notesForFigure(startFret: number, endFret: number) {
   );
 }
 
-export default function EjerciciosPentatonicaPage({ previous, next }: LessonPageProps) {
+export default function EjerciciosPentatonicaPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="pentatonic-exercises-page">
       <article className="pentatonic-exercises-content">
@@ -114,6 +115,7 @@ export default function EjerciciosPentatonicaPage({ previous, next }: LessonPage
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

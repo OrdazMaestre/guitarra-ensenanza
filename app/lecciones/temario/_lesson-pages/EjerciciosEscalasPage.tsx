@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -207,7 +208,7 @@ function alphaTexForFigure(title: string, notes: TabNote[]) {
 :8 ${body} |`;
 }
 
-export default function EjerciciosEscalasPage({ previous, next }: LessonPageProps) {
+export default function EjerciciosEscalasPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="scale-exercises-page">
       <article className="scale-exercises-content">
@@ -252,6 +253,7 @@ export default function EjerciciosEscalasPage({ previous, next }: LessonPageProp
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

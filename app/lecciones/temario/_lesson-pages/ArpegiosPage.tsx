@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -81,7 +82,7 @@ const exercises: ArpeggioExercise[] = [
   },
 ];
 
-export default function ArpegiosPage({ previous, next }: LessonPageProps) {
+export default function ArpegiosPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="arpeggio-page">
       <article className="arpeggio-content">
@@ -137,6 +138,7 @@ export default function ArpegiosPage({ previous, next }: LessonPageProps) {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

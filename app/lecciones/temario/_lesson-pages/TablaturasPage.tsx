@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
-export default function TablaturasPage({ previous, next }: LessonPageProps) {
+export default function TablaturasPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="tablature-page">
       <article className="tablature-content">
@@ -82,6 +83,7 @@ export default function TablaturasPage({ previous, next }: LessonPageProps) {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

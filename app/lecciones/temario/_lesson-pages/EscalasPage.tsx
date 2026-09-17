@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
-export default function EscalasPage({ previous, next }: LessonPageProps) {
+export default function EscalasPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="scales-page">
       <article className="scales-content">
@@ -92,6 +93,7 @@ export default function EscalasPage({ previous, next }: LessonPageProps) {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

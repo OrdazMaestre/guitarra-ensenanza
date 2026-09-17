@@ -1,5 +1,6 @@
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -57,7 +58,7 @@ const gSeventhNotes = [
   { fret: 12, label: 'D', string: 4 },
 ];
 
-export default function AmpliacionArpegiosPage({ previous, next }: LessonPageProps) {
+export default function AmpliacionArpegiosPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="arpeggio-extension-page">
       <article className="arpeggio-extension-content">
@@ -126,6 +127,7 @@ export default function AmpliacionArpegiosPage({ previous, next }: LessonPagePro
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

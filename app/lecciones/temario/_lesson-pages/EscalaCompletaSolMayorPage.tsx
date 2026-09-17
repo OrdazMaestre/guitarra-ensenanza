@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -542,7 +543,7 @@ function ScaleFretboard({
   );
 }
 
-export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPageProps) {
+export default function EscalaCompletaSolMayorPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="complete-scale-page">
       <article className="complete-scale-content">
@@ -608,6 +609,7 @@ export default function EscalaCompletaSolMayorPage({ previous, next }: LessonPag
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

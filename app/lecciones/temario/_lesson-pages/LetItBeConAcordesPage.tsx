@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -94,7 +95,7 @@ function ChordPattern({
   );
 }
 
-export default function LetItBeConAcordesPage({ previous, next }: LessonPageProps) {
+export default function LetItBeConAcordesPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="song-page">
       <article className="song-content">
@@ -150,6 +151,7 @@ export default function LetItBeConAcordesPage({ previous, next }: LessonPageProp
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

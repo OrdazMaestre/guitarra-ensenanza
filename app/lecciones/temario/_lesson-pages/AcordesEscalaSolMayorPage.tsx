@@ -4,6 +4,7 @@ import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -423,7 +424,7 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
   );
 }
 
-export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPageProps) {
+export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: LessonPageProps) {
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
@@ -665,6 +666,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next }: LessonPage
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

@@ -35,7 +35,11 @@ export function generateStaticParams() {
   return lessonRouteSlugs.map((slug) => ({ slug }));
 }
 
-function extensionPrevious(href: string, label: string) {
+function quizHrefFor(slug: string) {
+  return `/lecciones/temario/quiz?from=${slug}`;
+}
+
+function extensionPrevious(slug: string, href: string, label: string) {
   // Extension pages only point back to their parent lesson.
   // They intentionally do not expose a "next" pager link, so branches stay discoverable from their parent page.
   return {
@@ -43,6 +47,7 @@ function extensionPrevious(href: string, label: string) {
       href,
       label,
     },
+    quizHref: quizHrefFor(slug),
   };
 }
 
@@ -52,7 +57,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ampliacion-arpegios') {
     return (
       <AmpliacionArpegiosPage
-        {...extensionPrevious('/lecciones/temario/arpegios', 'Arpegios')}
+        {...extensionPrevious(slug, '/lecciones/temario/arpegios', 'Arpegios')}
       />
     );
   }
@@ -60,7 +65,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'afinacion') {
     return (
       <AfinacionPage
-        {...extensionPrevious('/lecciones/temario/notacion-musical', 'Notación musical')}
+        {...extensionPrevious(slug, '/lecciones/temario/notacion-musical', 'Notación musical')}
       />
     );
   }
@@ -73,7 +78,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
     return (
       <PlaceholderLessonPage
         title="Modos"
-        {...extensionPrevious('/lecciones/temario/escalas', 'Escalas')}
+        {...extensionPrevious(slug, '/lecciones/temario/escalas', 'Escalas')}
       >
         <section className="grid gap-4">
           <h2 className="text-2xl font-black text-zinc-50">Vídeos para empezar</h2>
@@ -103,7 +108,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'escala-completa-sol-mayor') {
     return (
       <EscalaCompletaSolMayorPage
-        {...extensionPrevious('/lecciones/temario/escalas', 'Escalas')}
+        {...extensionPrevious(slug, '/lecciones/temario/escalas', 'Escalas')}
       />
     );
   }
@@ -111,7 +116,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-escalas') {
     return (
       <EjerciciosEscalasPage
-        {...extensionPrevious('/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
+        {...extensionPrevious(slug, '/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
       />
     );
   }
@@ -119,7 +124,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'acordes-escala-sol-mayor') {
     return (
       <AcordesEscalaSolMayorPage
-        {...extensionPrevious('/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
+        {...extensionPrevious(slug, '/lecciones/temario/escala-completa-sol-mayor', 'Escala completa de Sol Mayor')}
       />
     );
   }
@@ -127,7 +132,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'acordes-con-septima') {
     return (
       <AcordesSeptimaPage
-        {...extensionPrevious('/lecciones/temario/acordes-escala-sol-mayor', 'Acordes de la escala de Sol Mayor')}
+        {...extensionPrevious(slug, '/lecciones/temario/acordes-escala-sol-mayor', 'Acordes de la escala de Sol Mayor')}
       />
     );
   }
@@ -135,7 +140,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-escalas-avanzados') {
     return (
       <EjerciciosEscalasAvanzadosPage
-        {...extensionPrevious('/lecciones/temario/ejercicios-escalas', 'Ejercicios de escalas')}
+        {...extensionPrevious(slug, '/lecciones/temario/ejercicios-escalas', 'Ejercicios de escalas')}
       />
     );
   }
@@ -143,7 +148,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica') {
     return (
       <EjerciciosPentatonicaPage
-        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatónica')}
+        {...extensionPrevious(slug, '/lecciones/temario/pentatonica', 'Pentatónica')}
       />
     );
   }
@@ -151,7 +156,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica-avanzados') {
     return (
       <EjerciciosPentatonicaAvanzadosPage
-        {...extensionPrevious('/lecciones/temario/ejercicios-pentatonica', 'Ejercicios de pentatónica')}
+        {...extensionPrevious(slug, '/lecciones/temario/ejercicios-pentatonica', 'Ejercicios de pentatónica')}
       />
     );
   }
@@ -159,7 +164,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'pentatonica-blues') {
     return (
       <PentatonicaBluesPage
-        {...extensionPrevious('/lecciones/temario/pentatonica', 'Pentatónica')}
+        {...extensionPrevious(slug, '/lecciones/temario/pentatonica', 'Pentatónica')}
       />
     );
   }
@@ -167,7 +172,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'ejercicios-pentatonica-blues') {
     return (
       <EjerciciosPentatonicaBluesPage
-        {...extensionPrevious('/lecciones/temario/pentatonica-blues', 'Pentatónica de blues')}
+        {...extensionPrevious(slug, '/lecciones/temario/pentatonica-blues', 'Pentatónica de blues')}
       />
     );
   }
@@ -175,7 +180,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
   if (slug === 'tablaturas-dos-cuerdas') {
     return (
       <TablaturasDosCuerdasPage
-        {...extensionPrevious('/lecciones/temario/tablaturas', 'Tablaturas')}
+        {...extensionPrevious(slug, '/lecciones/temario/tablaturas', 'Tablaturas')}
       />
     );
   }
@@ -203,7 +208,7 @@ export default async function LessonBlockPage({ params }: LessonBlockPageProps) 
       }
     : undefined;
 
-  const lessonProps = { previous, next };
+  const lessonProps = { previous, next, quizHref: quizHrefFor(slug) };
 
   if (slug === 'conceptos-basicos') {
     return <ConceptosBasicosPage {...lessonProps} />;

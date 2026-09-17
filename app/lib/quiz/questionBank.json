@@ -1,0 +1,606 @@
+{
+  "meta": {
+    "proyecto": "guitarraesperanza.vercel.app",
+    "reglas_generales": {
+      "opciones_por_pregunta": 5,
+      "opcion_graciosa": "es una de las 5 opciones (no una 6a extra); se marca con el campo 'graciosa': true dentro de ese elemento cuando se use formato objeto, o se indica en 'opcion_graciosa' cuando las opciones son fijas",
+      "multiples_respuestas_correctas": "'correcta' es SIEMPRE un array, aunque tenga un solo elemento. Ej: ['7'] o ['cuerdas','caja']",
+      "variantes": "las preguntas con variables se calculan UNA vez por test facil, DOS veces (con variables distintas) por test dificil, mini-torneo y campeonato",
+      "excepcion_variantes": "9.2.1 (acordes escala Sol) usa 4 variantes SIMULTANEAS por aparicion, no 1 — no normalizar con la regla anterior",
+      "numero_preguntas": "si un tema no tiene preguntas suficientes todavia, rellenar con preguntas aleatorias de temas ANTERIORES (nunca posteriores)",
+      "modo_facil": "4 preguntas del tema por el que se entra al test",
+      "modo_dificil": "6 preguntas del tema actual, incluye las exclusivas de dificil (>=2 variables)",
+      "mini_torneo": "10 preguntas random de todo el temario visto, incluye exclusivas de dificil",
+      "campeonato": "TODAS las preguntas incluyendo las de dificil; las de multiples variables aparecen 2 veces cada una (con variables distintas)",
+      "puntuacion": {
+        "acierto": 1,
+        "bonus_tiempo": {
+          "menos_de_10s": 1,
+          "menos_de_5s": 2,
+          "nota": "el bonus de 5s sustituye al de 10s, no se suman (2 max por rapidez)"
+        },
+        "aplica_a": "todos los tests, incluido el campeonato"
+      }
+    },
+    "leyenda": {
+      "dificultad": "facil | dificil (dificil = explicito en el borrador o >=2 variables)",
+      "opciones": "array de 5 strings. '' = vacio, se rellena en runtime con datos generados (numero, nota, acorde...)",
+      "opcion_graciosa": "texto exacto de cual de las 5 opciones es la graciosa, para poder estilizarla en el front si se quiere. null si no aplica o si es dinamica y no fija",
+      "correcta": "array de strings con el/los texto(s) exacto(s) de la(s) opcion(es) correctas. null si se calcula en runtime y no hay opciones fijas"
+    }
+  },
+  "preguntas": [
+    {
+      "id": "1.1",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Donde estan los trastes?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["en el clavijero", "en las cuerdas", "en la caja", "en el mastil", "en el trastero"],
+      "opcion_graciosa": "en el trastero",
+      "correcta": ["en el mastil"]
+    },
+    {
+      "id": "1.2",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Que distancia hay entre los trastes X-Y? (en semitonos)",
+      "dificultad": "dificil",
+      "variables": ["X (0-24, aleatorio)", "Y (0-24, aleatorio, distinto de X)"],
+      "opciones": ["", "", "", "", "42"],
+      "opcion_graciosa": "42",
+      "correcta": null,
+      "nota_generacion": "correcta = abs(Y-X). Distractores: correcta+1, correcta-1, correcta+2 (evitar negativos, duplicados y que coincidan con 42)"
+    },
+    {
+      "id": "1.3",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Donde colocamos los dedos de la mano derecha?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Soy zurdo, en el mastil", "Soy zurdo, en la caja", "Soy diestro, en el mastil", "Soy diestro, en la caja", "Cruzados, por si acaso"],
+      "opcion_graciosa": "Cruzados, por si acaso",
+      "correcta": ["Soy zurdo, en el mastil", "Soy diestro, en la caja"],
+      "nota": "2 correctas fijas (no dependen de una preferencia guardada del usuario): la mano derecha pisa cuerdas si eres diestro (mano dominante rasguea/puntea junto a la caja) o pisa trastes en el mastil si eres zurdo"
+    },
+    {
+      "id": "1.4",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Donde colocamos los dedos de la mano izquierda?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Soy zurdo, en el mastil", "Soy zurdo, en la caja", "Soy diestro, en el mastil", "Soy diestro, en la caja", "En el bolsillo, para lucirse"],
+      "opcion_graciosa": "En el bolsillo, para lucirse",
+      "correcta": ["Soy diestro, en el mastil", "Soy zurdo, en la caja"]
+    },
+    {
+      "id": "1.5",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Con que parte de la guitarra hacemos sonido?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["cuerdas", "caja", "trastes", "clavijero", "alma"],
+      "opcion_graciosa": null,
+      "correcta": ["cuerdas", "caja"],
+      "nota": "sin opcion graciosa: las 5 opciones ya son partes reales de la guitarra, el reto esta en saber cuales de ellas producen sonido"
+    },
+    {
+      "id": "2.1",
+      "tema": "2 NOTACION",
+      "pregunta": "¿Que nota es? (aleatorio: se muestra en notacion normal o en notacion internacional)",
+      "dificultad": "facil",
+      "variables": ["nota (1 de 12, aleatoria)", "sistema mostrado (normal o internacional, aleatorio)"],
+      "opciones": ["", "", "", "", "Do de pecho"],
+      "opcion_graciosa": "Do de pecho",
+      "correcta": null,
+      "nota_generacion": "se muestra la nota en un sistema, las 4 opciones restantes son su equivalente en el otro sistema + 2 notas vecinas como distractor"
+    },
+    {
+      "id": "2.2",
+      "tema": "2 NOTACION",
+      "pregunta": "¿Cuantas notas naturales hay?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["3", "5", "7", "12", "demasiadas"],
+      "opcion_graciosa": "demasiadas",
+      "correcta": ["7"]
+    },
+    {
+      "id": "2.3",
+      "tema": "2 NOTACION",
+      "pregunta": "¿Cual es el traste cero?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["no existe", "La cuerda al aire", "el comodin", "el mas dificil", "El que nunca encuentras"],
+      "opcion_graciosa": "El que nunca encuentras",
+      "correcta": ["La cuerda al aire"]
+    },
+    {
+      "id": "2.4",
+      "tema": "2 NOTACION",
+      "pregunta": "¿Que trastes tienen las mismas notas?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["2-4", "0-5", "6-12", "0-12", "5-10"],
+      "opcion_graciosa": null,
+      "correcta": ["0-12"]
+    },
+    {
+      "id": "2.5",
+      "tema": "2 NOTACION",
+      "pregunta": "¿Que cuerdas tienen las mismas notas?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Cuerda 1 y cuerda 6", "Cuerda 1 y cuerda 2", "Cuerda 2 y cuerda 4", "Cuerda 3 y cuerda 6", "Cuerda 0 y cuerda 12"],
+      "opcion_graciosa": "Cuerda 0 y cuerda 12",
+      "correcta": ["Cuerda 1 y cuerda 6"]
+    },
+    {
+      "id": "2.2.1",
+      "tema": "2.2 AFINACION",
+      "pregunta": "¿Cual es la afinacion estandar?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["B-E-A-D-F#-B", "D-A-D-G-B-E", "E-A-D-G-B-E", "A-B-C-D-E-F", "B-E-E-F-E-A"],
+      "opcion_graciosa": "B-E-E-F-E-A",
+      "correcta": ["E-A-D-G-B-E"]
+    },
+    {
+      "id": "2.2.2",
+      "tema": "2.2 AFINACION",
+      "pregunta": "(Dificil) ¿Que afinacion NO es estandar?",
+      "dificultad": "dificil",
+      "variables": ["3 afinaciones estandar reales que no empiecen en sostenido/bemol (aleatorias)", "1 afinacion NO estandar (aleatoria)"],
+      "opciones": ["", "", "", "", "Afinacion de ukelele (GCEA)"],
+      "opcion_graciosa": "Afinacion de ukelele (GCEA)",
+      "correcta": null,
+      "nota_generacion": "correcta = la afinacion no estandar generada. La graciosa fija (ukelele) nunca coincide con guitarra, sirve de distractor obvio pero divertido"
+    },
+    {
+      "id": "3.1",
+      "tema": "3 TABLATURAS",
+      "pregunta": "¿Que significa el 0 en una tablatura?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["no se puede", "no hacer nada", "mutear la cuerda", "cuerda al aire", "tocar rapido"],
+      "opcion_graciosa": "tocar rapido",
+      "correcta": ["cuerda al aire"]
+    },
+    {
+      "id": "3.2",
+      "tema": "3 TABLATURAS",
+      "pregunta": "Diagrama de tablatura con una cuerda marcada: ¿es aguda, media o grave?",
+      "dificultad": "facil",
+      "variables": ["cuerda marcada (1-6, aleatoria)"],
+      "opciones": ["aguda", "media", "grave", "eso que es?", "Depende del humor de la cuerda"],
+      "opcion_graciosa": "Depende del humor de la cuerda",
+      "correcta": null,
+      "nota_generacion": "correcta segun cuerda: 1-2=aguda, 3-4=media, 5-6=grave"
+    },
+    {
+      "id": "4.1",
+      "tema": "4 ACORDES",
+      "pregunta": "Identificar el acorde del dibujo",
+      "dificultad": "facil_y_dificil",
+      "variables": ["acorde mostrado (del banco de acordes)"],
+      "opciones": ["", "", "", "", "El acorde secreto de Hogwarts"],
+      "opcion_graciosa": "El acorde secreto de Hogwarts",
+      "correcta": null,
+      "nota_generacion": "Facil: solo mayores basicos. Dificil: mayores + menores + power chords. Diferenciar 'X mayor' de 'X' a secas para power chords. Distractores: otros 3 acordes del banco, evitando confundir mayor/menor de la misma tonica en el mismo set de opciones salvo que sea justo lo que se evalua"
+    },
+    {
+      "id": "5.1",
+      "tema": "5 LET IT BE",
+      "pregunta": "¿Que grupo compuso la cancion Let It Be?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Queen", "Ramones", "The Beatles", "Bon Jovi", "Mi grupo de WhatsApp del insti"],
+      "opcion_graciosa": "Mi grupo de WhatsApp del insti",
+      "correcta": ["The Beatles"]
+    },
+    {
+      "id": "6.1",
+      "tema": "6 FIGURAS",
+      "pregunta": "¿Que notas usa el acorde de Sol Mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["A-B-C", "G-B-C", "G-C-E", "G-B-D", "G-B-A"],
+      "opcion_graciosa": "G-B-A",
+      "correcta": ["G-B-D"]
+    },
+    {
+      "id": "6.2",
+      "tema": "6 FIGURAS",
+      "pregunta": "¿Cuantas figuras tiene por lo general un acorde?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["5", "7", "12", "3", "Las que te caben en la mano"],
+      "opcion_graciosa": "Las que te caben en la mano",
+      "correcta": ["5"]
+    },
+    {
+      "id": "6.3",
+      "tema": "6 FIGURAS",
+      "pregunta": "Diagrama trastes 0-5 con una nota aleatoria marcada: ¿cual es esa nota?",
+      "dificultad": "facil",
+      "variables": ["cuerda (aleatoria)", "traste 0-5 (aleatorio)"],
+      "opciones": ["", "", "", "", "Fa# de la suerte"],
+      "opcion_graciosa": "Fa# de la suerte",
+      "correcta": null,
+      "nota_generacion": "correcta = nota resultante en notacion internacional. Distractores: notas vecinas (+-1, +-2 semitonos)"
+    },
+    {
+      "id": "6.4",
+      "tema": "6 FIGURAS",
+      "pregunta": "¿Que tablatura corresponde a que diagrama de acorde?",
+      "dificultad": "facil",
+      "variables": ["acorde (aleatorio, del banco)"],
+      "opciones": ["", "", "", "", "La tablatura del silencio (todo mudo)"],
+      "opcion_graciosa": "La tablatura del silencio (todo mudo)",
+      "correcta": null,
+      "nota_generacion": "IMPORTANTE: generar primero el acorde y derivar diagrama Y tablatura del mismo dato, nunca por separado, para que siempre coincidan. Distractores: tablaturas de otros 3 acordes del banco"
+    },
+    {
+      "id": "7.1",
+      "tema": "7 ARPEGIOS",
+      "pregunta": "¿Que es un arpegio?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["notas de un acorde tocadas individualmente", "las notas impares de un acorde", "acorde tocado muy rapido", "notas tocadas al azar", "Un acorde timido"],
+      "opcion_graciosa": "Un acorde timido",
+      "correcta": ["notas de un acorde tocadas individualmente"]
+    },
+    {
+      "id": "7.2",
+      "tema": "7 ARPEGIOS",
+      "pregunta": "¿Que acordes puedo arpegiar?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["los pares", "los impares", "solo los mayores", "cualquier acorde", "Solo los que se dejan"],
+      "opcion_graciosa": "Solo los que se dejan",
+      "correcta": ["cualquier acorde"]
+    },
+    {
+      "id": "8.1",
+      "tema": "8 PENTATONICA",
+      "pregunta": "¿Cuantas notas tiene la pentatonica?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["3", "5", "7", "12", "6"],
+      "opcion_graciosa": "6",
+      "correcta": ["5"]
+    },
+    {
+      "id": "8.2",
+      "tema": "8 PENTATONICA",
+      "pregunta": "¿Cuantas notas tiene la pentatonica de blues?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["3", "5", "7", "6", "12"],
+      "opcion_graciosa": "12",
+      "correcta": ["6"]
+    },
+    {
+      "id": "8.3",
+      "tema": "8 PENTATONICA",
+      "pregunta": "¿Que otra pentatonica tenemos con las notas de la pentatonica de Sol?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Mi menor", "La menor", "Do mayor", "Do menor", "La del primo lejano"],
+      "opcion_graciosa": "La del primo lejano",
+      "correcta": ["Mi menor"]
+    },
+    {
+      "id": "8.4",
+      "tema": "8 PENTATONICA",
+      "pregunta": "¿Que combinacion de notas usa la pentatonica de Sol mayor y Mi menor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["A-B-C-D-E", "G-A-B-D-E", "G-A-B-C-E", "G-A-C-D-E", "G-A-B-D-F"],
+      "opcion_graciosa": "G-A-B-D-F",
+      "correcta": ["G-A-B-D-E"]
+    },
+    {
+      "id": "8.1.1",
+      "tema": "8.1 BLUES",
+      "pregunta": "¿Cual es la blue note de Sol mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Bb", "F#", "E", "A", "La nota que llora en la esquina"],
+      "opcion_graciosa": "La nota que llora en la esquina",
+      "correcta": ["Bb"]
+    },
+    {
+      "id": "8.1.2",
+      "tema": "8.1 BLUES",
+      "pregunta": "¿Cual es la blue note de Mi menor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["Bb", "F#", "E", "A", "Su prima hermana"],
+      "opcion_graciosa": "Su prima hermana",
+      "correcta": ["Bb"],
+      "nota": "coincide con 8.1.1 porque Mi menor es la relativa menor de Sol mayor y comparten pentatonica y blue note - revisa que sea la intencion antes de dar por bueno"
+    },
+    {
+      "id": "8.1.3",
+      "tema": "8.1 BLUES",
+      "pregunta": "(Dificil) ¿Cual es la blue note de cualquier pentatonica mayor o menor?",
+      "dificultad": "dificil",
+      "variables": ["tonica (aleatoria)", "modo: mayor o menor (aleatorio)"],
+      "opciones": ["", "", "", "", "La que se cuela sin avisar"],
+      "opcion_graciosa": "La que se cuela sin avisar",
+      "correcta": null,
+      "nota_generacion": "blue note = b5 sobre la pentatonica menor correspondiente (o b3 sobre la mayor relativa, segun el enfoque que uses en la web)"
+    },
+    {
+      "id": "8.1.4",
+      "tema": "8.1 BLUES",
+      "pregunta": "¿Que diferencia hay entre musica clasica y musica moderna?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["bonito vs feo", "interpretar vs improvisar", "solo una usa la blue note", "la musica clasica son solo pianos", "Unos 300 anos de diferencia"],
+      "opcion_graciosa": "Unos 300 anos de diferencia",
+      "correcta": ["interpretar vs improvisar"]
+    },
+    {
+      "id": "8.1.5",
+      "tema": "8.1 BLUES",
+      "pregunta": "(Dificil) ¿En que siglo comienza [genero] segun la web?",
+      "dificultad": "dificil",
+      "variables": ["genero (1 de: clasica, blues, jazz, rock; se genera 1 vez en test dificil/mini-torneo, 2 veces con generos distintos en campeonato)"],
+      "opciones": ["XV", "XVII", "XIX", "XX", "XXI"],
+      "opcion_graciosa": "XXI",
+      "correcta": null,
+      "nota_generacion": "mapping fijo: clasica=XVII, blues=XIX, jazz=XX, rock=XX. La correcta se selecciona segun el genero generado; jazz y rock comparten siglo, es correcto que ambos apunten a XX"
+    },
+    {
+      "id": "8.1.6",
+      "tema": "8.1 BLUES",
+      "pregunta": "¿Que estilos son parte de la musica clasica?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["barroco", "rococo", "romanticismo", "swing", "bachata"],
+      "opcion_graciosa": "bachata",
+      "correcta": ["barroco", "rococo", "romanticismo"]
+    },
+    {
+      "id": "9.1",
+      "tema": "9 ESCALAS",
+      "pregunta": "Distancia en semitonos entre dos notas aleatorias marcadas en un mastil",
+      "dificultad": "dificil",
+      "variables": ["nota 1 (aleatoria)", "nota 2 (aleatoria, distinta de nota 1)"],
+      "opciones": ["", "", "", "", "una eternidad"],
+      "opcion_graciosa": "una eternidad",
+      "correcta": null,
+      "nota_generacion": "correcta = distancia real en semitonos entre las 2 notas marcadas en el mastil"
+    },
+    {
+      "id": "9.2",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Cuantos semitonos tiene X tonos?",
+      "dificultad": "facil",
+      "variables": ["X (entero aleatorio, ej. 1-6)"],
+      "opciones": ["", "", "", "", "los que tu quieras"],
+      "opcion_graciosa": "los que tu quieras",
+      "correcta": null,
+      "nota_generacion": "correcta = X * 2"
+    },
+    {
+      "id": "9.3",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Cuantos tonos son X semitonos?",
+      "dificultad": "facil",
+      "variables": ["X (entero par aleatorio, para que el resultado sea limpio)"],
+      "opciones": ["", "", "", "", "medio y medio"],
+      "opcion_graciosa": "medio y medio",
+      "correcta": null,
+      "nota_generacion": "correcta = X / 2"
+    },
+    {
+      "id": "9.4",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Que patron de semitonos tiene la escala mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["T-ST-T-ST-T-T-ST", "T-T-ST-T-ST-T-T", "T-ST-ST-T-T-T-ST", "T-T-ST-T-T-T-ST", "T-ST-T-ST-T-ST-T"],
+      "opcion_graciosa": "T-ST-T-ST-T-ST-T",
+      "correcta": ["T-T-ST-T-T-T-ST"]
+    },
+    {
+      "id": "9.5",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Que patron de semitonos tiene la escala menor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["T-ST-T-ST-T-T-ST", "T-T-ST-T-ST-T-T", "T-ST-ST-T-T-T-ST", "T-ST-T-T-ST-T-T", "T-ST-T-ST-T-ST-T"],
+      "opcion_graciosa": "T-ST-T-ST-T-ST-T",
+      "correcta": ["T-ST-T-T-ST-T-T"]
+    },
+    {
+      "id": "9.6",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Como se llama a la escala menor que tiene las mismas notas que una escala mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["bemol", "relativa de blues", "semidisminuida", "relativa menor", "nieta"],
+      "opcion_graciosa": "nieta",
+      "correcta": ["relativa menor"]
+    },
+    {
+      "id": "9.7",
+      "tema": "9 ESCALAS",
+      "pregunta": "(Dificil) ¿# es...?",
+      "dificultad": "dificil",
+      "variables": [],
+      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar mas fuerte"],
+      "opcion_graciosa": "tocar mas fuerte",
+      "correcta": ["subir medio tono"]
+    },
+    {
+      "id": "9.8",
+      "tema": "9 ESCALAS",
+      "pregunta": "(Dificil) ¿Bemol es...?",
+      "dificultad": "dificil",
+      "variables": [],
+      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar mas flojo"],
+      "opcion_graciosa": "tocar mas flojo",
+      "correcta": ["bajar medio tono"]
+    },
+    {
+      "id": "9.9",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Que nota es la octava?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["agudo", "grave", "12 semitonos o 6 tonos", "todas las anteriores", "es la misma nota"],
+      "opcion_graciosa": "es la misma nota",
+      "correcta": ["todas las anteriores"]
+    },
+    {
+      "id": "9.10",
+      "tema": "9 ESCALAS",
+      "pregunta": "¿Que nota no esta en las cuerdas al aire en Mi estandar?",
+      "dificultad": "facil",
+      "variables": ["3 notas aleatorias de {E,A,D,G,B} (SI estan al aire)", "1 nota aleatoria de {C,F} (NO esta al aire)"],
+      "opciones": ["", "", "", "", ""],
+      "opcion_graciosa": null,
+      "correcta": null,
+      "nota_generacion": "correcta = la nota elegida de {C,F}. No hace falta graciosa: las 4 notas reales de cuerdas al aire ya hacen de distractor natural"
+    },
+    {
+      "id": "9.11",
+      "tema": "9 ESCALAS",
+      "pregunta": "X# va antes de...",
+      "dificultad": "facil",
+      "variables": ["X (aleatoria, solo entre C, D, F, G, A)"],
+      "opciones": ["", "", "", "", "Antes y despues, como una peli de Almodovar"],
+      "opcion_graciosa": "Antes y despues, como una peli de Almodovar",
+      "correcta": null,
+      "nota_generacion": "IMPORTANTE: excluir E y B de las variables posibles, porque E#=F y B#=C ya son la nota natural siguiente y la pregunta no tendria sentido"
+    },
+    {
+      "id": "9.11.1",
+      "tema": "9 ESCALAS",
+      "pregunta": "Xb va despues de...",
+      "dificultad": "facil",
+      "variables": ["X (aleatoria, solo entre D, E, G, A, B)"],
+      "opciones": ["", "", "", "", "Despues de las clases de solfeo"],
+      "opcion_graciosa": "Despues de las clases de solfeo",
+      "correcta": null,
+      "nota_generacion": "IMPORTANTE: excluir C y F de las variables posibles, porque Cb=B y Fb=E ya son la nota natural anterior y la pregunta no tendria sentido"
+    },
+    {
+      "id": "9.1.1",
+      "tema": "9.1 ESCALASOL",
+      "pregunta": "Sol Mayor es...",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["solo un acorde", "solo una pentatonica", "solo una escala", "solo el relativo mayor de Mi", "todas son correctas"],
+      "opcion_graciosa": null,
+      "correcta": ["todas son correctas"],
+      "nota": "sin opcion graciosa: es una pregunta de tipo 'todas las respuestas son correctas', las 4 primeras opciones son incorrectas precisamente por el 'solo' (Sol Mayor es acorde, pentatonica, escala Y relativo mayor de Mi a la vez, no una sola cosa)"
+    },
+    {
+      "id": "9.1.2",
+      "tema": "9.1 ESCALASOL",
+      "pregunta": "¿Que representa este dibujo?",
+      "dificultad": "facil",
+      "variables": ["tipo de dibujo generado (acorde, arpegio, pentatonica o escala, aleatorio)"],
+      "opciones": ["acorde", "arpegio", "pentatonica", "escala", "abaco"],
+      "opcion_graciosa": "abaco",
+      "correcta": null,
+      "nota_generacion": "correcta = el tipo de dibujo que se genero"
+    },
+    {
+      "id": "9.2.1",
+      "tema": "9.2 ACORDES SOL",
+      "pregunta": "Nombrar dibujos de cualquier acorde de escala-Sol-Mayor y acordes-basicos",
+      "dificultad": "facil",
+      "variables": ["acorde (4 variantes SIMULTANEAS por aparicion, excepcion a la regla general)"],
+      "opciones": ["", "", "", "", "El acorde que se llama a si mismo"],
+      "opcion_graciosa": "El acorde que se llama a si mismo",
+      "correcta": null,
+      "nota": "EXCEPCION: aparecen 4 variantes de esta pregunta a la vez en un test normal, no 1"
+    },
+    {
+      "id": "9.3.1",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "¿Que nota es F# en Sol Mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["segunda", "cuarta", "quinta", "septima", "La nota rebelde de la escala"],
+      "opcion_graciosa": "La nota rebelde de la escala",
+      "correcta": ["septima"]
+    },
+    {
+      "id": "9.3.2",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "¿Que nota es cualquiera de la escala de Sol Mayor / Mi menor / Do Mayor / La menor?",
+      "dificultad": "dificil",
+      "variables": ["escala (1 de las 4, aleatoria)", "nota marcada en el mastil (aleatoria)"],
+      "opciones": ["", "", "", "", "Una nota cualquiera, sin compromiso"],
+      "opcion_graciosa": "Una nota cualquiera, sin compromiso",
+      "correcta": null,
+      "nota_generacion": "correcta = grado que ocupa esa nota dentro de la escala elegida (requiere tabla de grados por escala)"
+    },
+    {
+      "id": "9.3.3",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "¿Cuantos acordes tiene la escala de Sol Mayor?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["3", "5", "7", "12", "6"],
+      "opcion_graciosa": "6",
+      "correcta": ["7"]
+    },
+    {
+      "id": "9.3.4",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "¿Que diferencia hay entre triada y cuatriada?",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["una usa 3 dedos y la otra 4", "una usa 3 cuerdas y la otra 4", "una usa 3 acordes y la otra 4", "una usa 3 notas y la otra 4", "una usa 3 anotaciones y la otra 4"],
+      "opcion_graciosa": "una usa 3 anotaciones y la otra 4",
+      "correcta": ["una usa 3 notas y la otra 4"]
+    },
+    {
+      "id": "9.3.5",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "(Dificil) ¿Que notas tiene cualquier acorde con septima de la escala de Sol Mayor / Mi menor / Do Mayor / La menor?",
+      "dificultad": "dificil",
+      "variables": ["escala (1 de las 4, aleatoria)", "grado del acorde con septima (aleatorio)"],
+      "opciones": ["", "", "", "", "Las de un acorde que se hizo mayor de edad"],
+      "opcion_graciosa": "Las de un acorde que se hizo mayor de edad",
+      "correcta": null,
+      "nota_generacion": "requiere tabla de acordes con septima por grado para cada una de las 4 escalas"
+    },
+    {
+      "id": "9.3.6",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "Decir a que numero corresponde el acorde del dibujo sabiendo que pertenece a la escala de Sol Mayor / Mi menor / Do Mayor / La menor",
+      "dificultad": "dificil",
+      "variables": ["escala (1 de las 4, aleatoria)", "acorde mostrado (aleatorio dentro de esa escala)"],
+      "opciones": ["", "", "", "", "El numero de la suerte"],
+      "opcion_graciosa": "El numero de la suerte",
+      "correcta": null,
+      "nota_generacion": "forzar que el acorde mostrado SI pertenezca a la escala elegida; correcta = grado (I-VII) que ocupa"
+    },
+    {
+      "id": "9.3.7",
+      "tema": "9.3 ACORDES SEPTIMA",
+      "pregunta": "(Dificil) ¿Que notas tiene el siguiente acorde con septima (dado por su nombre), de la escala de Sol Mayor / Mi menor / Do Mayor / La menor?",
+      "dificultad": "dificil",
+      "variables": ["escala (1 de las 4, aleatoria)", "grado del acorde con septima (aleatorio)"],
+      "opciones": ["", "", "", "", "Las que le apetezcan al acorde ese dia"],
+      "opcion_graciosa": "Las que le apetezcan al acorde ese dia",
+      "correcta": null,
+      "nota_generacion": "complementaria de 9.3.5: aqui se da el acorde por su NOMBRE (ej. GMaj7), sin decir de que grado/escala sale -- prueba la formula del acorde (1-3-5-7), no la derivacion desde grado+escala. Distractores = notas de otros grados de la MISMA escala (igual que 9.3.5)"
+    }
+  ],
+  "decisiones_confirmadas": [
+    "4.1: el banco de acordes existente expone nombre, tipo (mayor/menor/power) y datos suficientes para generar diagrama+tablatura desde el mismo objeto",
+    "6.3, 9.3.2, 9.3.5, 9.3.6, 9.3.7: los grados de Sol Mayor ya existen en la web; falta generar la tabla de grados/notas para Mi menor, Do Mayor y La menor antes de implementar estas preguntas",
+    "8.1.2: la blue note de Mi menor coincide con la de Sol mayor (Bb) porque son relativas — es intencional, no un error",
+    "9.1.1: reescrita como pregunta de tipo 'todas las respuestas son correctas', sin opcion graciosa (todas las opciones falsas lo son por el 'solo', no por ser un chiste)",
+    "9.3.5: la version original incluia el nombre corto del acorde entre parentesis junto al grado/escala (ej. '... del grado iii de Sol Mayor (Bm7)?') -- se quito por regalar la respuesta (con el nombre del acorde no hace falta saber nada de grado/escala). 9.3.7 se añadio como complementaria: mismo tipo de pregunta pero dando el acorde por su nombre en vez de por grado+escala"
+  ]
+}

@@ -1,8 +1,9 @@
 import Image from 'next/image';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
-export default function AfinacionPage({ previous, next }: LessonPageProps) {
+export default function AfinacionPage({ previous, next, quizHref }: LessonPageProps) {
     const strings = [
       ['6', 'E', 'Mi grave'],
       ['5', 'A', 'La'],
@@ -101,6 +102,7 @@ export default function AfinacionPage({ previous, next }: LessonPageProps) {
         </article>
 
         <div className="lesson-pager-wrap">
+          <QuizButton quizHref={quizHref} />
           <TemarioPager previous={previous} next={next} />
         </div>
 

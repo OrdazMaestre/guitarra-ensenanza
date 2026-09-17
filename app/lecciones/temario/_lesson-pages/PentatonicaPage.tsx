@@ -4,6 +4,7 @@ import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../compon
 import Link from 'next/link';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -552,7 +553,7 @@ function PentatonicFretboard() {
   );
 }
 
-export default function PentatonicaPage({ previous, next }: LessonPageProps) {
+export default function PentatonicaPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="pentatonic-page">
       <article className="pentatonic-content">
@@ -623,6 +624,7 @@ export default function PentatonicaPage({ previous, next }: LessonPageProps) {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

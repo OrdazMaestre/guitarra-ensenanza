@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
@@ -611,7 +612,7 @@ const evolutionItems = [
   },
 ];
 
-export default function PentatonicaBluesPage({ previous, next }: LessonPageProps) {
+export default function PentatonicaBluesPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="blues-page">
       <article className="blues-content">
@@ -763,6 +764,7 @@ export default function PentatonicaBluesPage({ previous, next }: LessonPageProps
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

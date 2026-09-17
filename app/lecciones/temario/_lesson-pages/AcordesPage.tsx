@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -177,7 +178,7 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
   );
 }
 
-export default function AcordesPage({ previous, next }: LessonPageProps) {
+export default function AcordesPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="chords-page">
       <article className="chords-content">
@@ -287,6 +288,7 @@ export default function AcordesPage({ previous, next }: LessonPageProps) {
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

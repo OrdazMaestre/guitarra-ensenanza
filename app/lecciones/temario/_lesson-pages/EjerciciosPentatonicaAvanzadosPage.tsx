@@ -1,5 +1,6 @@
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -83,7 +84,7 @@ function FigureThreeDiagram() {
   );
 }
 
-export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: LessonPageProps) {
+export default function EjerciciosPentatonicaAvanzadosPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="advanced-pentatonic-page">
       <article className="advanced-pentatonic-content">
@@ -138,6 +139,7 @@ export default function EjerciciosPentatonicaAvanzadosPage({ previous, next }: L
       </article>
 
       <div className="lesson-pager-wrap">
+        <QuizButton quizHref={quizHref} />
         <TemarioPager previous={previous} next={next} />
       </div>
 

@@ -19,6 +19,11 @@ const SECONDARY_TARGETS: Partial<Record<string, BranchItem['secondaryTarget']>> 
 
 // Derivado de extensionPages (temarioData.ts), la fuente única de las
 // páginas rama — antes era un literal mantenido a mano aquí mismo.
+//
+// El quiz (/lecciones/temario/quiz) se deja fuera A PROPÓSITO de este árbol: no es una rama de
+// una lección concreta (no tiene un parentSlug real), es una utilidad transversal accesible desde
+// el botón QUIZ de CUALQUIER lección vía quizHref. Incluirlo aquí rompería la lectura del árbol
+// como "de qué lección cuelga qué".
 const branchMap: Record<string, BranchItem[]> = extensionPages.reduce(
   (acc, page) => {
     (acc[page.parentSlug] ??= []).push({

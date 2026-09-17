@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
@@ -8,7 +9,7 @@ interface PlaceholderLessonPageProps extends LessonPageProps {
   title: string;
 }
 
-export default function PlaceholderLessonPage({ children, next, previous, title }: PlaceholderLessonPageProps) {
+export default function PlaceholderLessonPage({ children, next, previous, quizHref, title }: PlaceholderLessonPageProps) {
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <Link href="/lecciones/temario" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
@@ -30,6 +31,7 @@ export default function PlaceholderLessonPage({ children, next, previous, title 
         ) : null}
       </section>
 
+      <QuizButton quizHref={quizHref} />
       <TemarioPager previous={previous} next={next} />
     </main>
   );
