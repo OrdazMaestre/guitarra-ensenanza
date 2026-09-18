@@ -1,4 +1,4 @@
-import { majorChords, minorChords, powerChords, spanishChordLabel, tablatureForOpenChord, type OpenChord, type PowerChord } from '../chordBank';
+import { majorChords, minorChords, powerChords, spanishChordLabel, verticalTabLines, type OpenChord, type PowerChord } from '../chordBank';
 import { enunciadosChordBank } from '../enunciados';
 import { pick, pickOne, shuffle, type Rng } from '../shuffle';
 import type { QuestionBankEntry } from '../questionBank.types';
@@ -29,8 +29,8 @@ function chordTonic(chord: BankChord): string {
   return chord.spanish.replace(/m$/, '').replace(/5$/, '');
 }
 
-function diagramFor(chord: BankChord): QuizDiagram {
-  return { type: 'chord-diagram', chordEnglish: chord.english, quality: chord.quality };
+function diagramFor(chord: BankChord, hideNoteLabels?: boolean): QuizDiagram {
+  return { type: 'chord-diagram', chordEnglish: chord.english, quality: chord.quality, hideNoteLabels };
 }
 
 function pickDistractors<T extends BankChord>(pool: T[], correct: T, count: number, rng: Rng): T[] {
@@ -68,22 +68,38 @@ export function generateIdentifyChord(entry: QuestionBankEntry, mode: QuizMode, 
   // entry.dificultad es 'facil_y_dificil' (única en todo el banco): a diferencia del resto de
   // generadores, aquí la dificultad real depende del modo con el que se generó, no del valor fijo
   // del JSON (baseQuestion() lo mapearía siempre a 'dificil').
-  return [{ ...baseQuestion(entry, 0), dificultad: mode === 'facil' ? 'facil' : 'dificil', enunciado: enunciadosChordBank['4.1'](), opciones, diagrama: diagramFor(correct) }];
+  // hideNoteLabels: SOLO aqui -- 4.1 pregunta literalmente "identificar el acorde", asi que el
+  // nombre del acorde (via aria-label del diagrama) chivaria la respuesta. 6.4 y 9.2.1 usan el
+  // mismo diagramFor() pero sin este flag a proposito (piden otra cosa, no el nombre del acorde).
+  return [{ ...baseQuestion(entry, 0), dificultad: mode === 'facil' ? 'facil' : 'dificil', enunciado: enunciadosChordBank['4.1'](), opciones, diagrama: diagramFor(correct, true) }];
 }
 
 /** 6.4 — qué tablatura corresponde al diagrama de acorde mostrado. Restringido a acordes abiertos
- * (mayores/menores del banco): tablatureForOpenChord() solo sabe derivar tablatura de ese shape
+ * (mayores/menores del banco): verticalTabLines() solo sabe derivar tablatura de ese shape
  * (markers/open/muted/barre), no de power chords. El diagrama y la tablatura correcta se derivan
  * SIEMPRE del mismo objeto `chord`, nunca por separado, para que nunca puedan desincronizarse
- * (advertencia explícita en questionBank.json). */
+ * (advertencia explícita en questionBank.json).
+ *
+ * Las opciones se pintan como columna vertical (una linea por cuerda, cuerda 1 arriba -> cuerda 6
+ * abajo) en vez del formato compacto "(0.1 0.2 ...)". Entre los distractores SIEMPRE hay uno con
+ * los mismos numeros de la respuesta correcta pero en orden invertido (arriba<->abajo) -- un
+ * "trampa" fijo para comprobar que el alumno lee la orientacion real de la tablatura y no solo
+ * reconoce el conjunto de numeros. Excepcion: si el acorde correcto es un palindromo vertical (ej.
+ * LA Mayor = 0,2,2,2,0, igual leido en los dos sentidos), la version invertida sería idéntica a la
+ * correcta -- en ese caso se omite y se rellena el hueco con un distractor real de más. */
 export function generateChordTablatureMatch(entry: QuestionBankEntry, _mode: QuizMode, rng: Rng): RuntimeQuestion[] {
   const pool: OpenBankChord[] = [...majorChords.map((c) => ({ ...c, quality: 'mayor' as const })), ...minorChords.map((c) => ({ ...c, quality: 'menor' as const }))];
   const correct = pickOne(pool, rng);
-  const distractors = pickDistractors(pool, correct, 3, rng);
+  const correctLines = verticalTabLines(correct);
+  const correctTexto = correctLines.join('\n');
+  const invertidaTexto = [...correctLines].reverse().join('\n');
+  const useInvertida = invertidaTexto !== correctTexto;
+  const distractors = pickDistractors(pool, correct, useInvertida ? 2 : 3, rng);
   const opciones = shuffle(
     [
-      { texto: tablatureForOpenChord(correct), correcta: true },
-      ...distractors.map((c) => ({ texto: tablatureForOpenChord(c), correcta: false })),
+      { texto: correctTexto, correcta: true },
+      ...(useInvertida ? [{ texto: invertidaTexto, correcta: false }] : []),
+      ...distractors.map((c) => ({ texto: verticalTabLines(c).join('\n'), correcta: false })),
       { texto: 'La tablatura del silencio (todo mudo)', correcta: false },
     ],
     rng,

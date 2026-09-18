@@ -43,11 +43,9 @@ export function generateNoteNotationSwap(entry: QuestionBankEntry, _mode: QuizMo
     ],
     rng,
   );
-  const shownSystem = showInternational ? 'notación internacional' : 'notación española';
-  const targetSystem = showInternational ? 'notación española' : 'notación internacional';
   return [{
     ...baseQuestion(entry, 0),
-    enunciado: enunciadosNotation['2.1'](shown, shownSystem, targetSystem),
+    enunciado: enunciadosNotation['2.1'](shown),
     opciones,
   }];
 }

@@ -62,9 +62,10 @@ export function allBasicChords(difficulty: 'facil' | 'dificil'): OpenChord[] {
   return difficulty === 'facil' ? majorChords : [...majorChords, ...minorChords];
 }
 
-/** Tablatura de un acorde abierto/con cejilla, en formato AlphaTab, derivada de las mismas markers
- * que dibujan el diagrama — así 6.4 nunca puede generar un diagrama y una tablatura que no coincidan. */
-export function tablatureForOpenChord(chord: OpenChord): string {
+/** Traste por cuerda de un acorde abierto/con cejilla, derivado de markers+open+barre — fuente
+ * unica que comparten tablatureForOpenChord() y verticalTabLines() para que nunca puedan
+ * desincronizarse entre si (mismo principio que el diagrama/tablatura de 6.4). */
+function fretByStringMap(chord: OpenChord): Map<number, number> {
   const fretByString = new Map<number, number>();
   for (const s of chord.open ?? []) fretByString.set(s, 0);
   for (const m of chord.markers) fretByString.set(m.string, m.fret);
@@ -73,9 +74,30 @@ export function tablatureForOpenChord(chord: OpenChord): string {
       if (!fretByString.has(s)) fretByString.set(s, chord.barre.fret);
     }
   }
-  const notes = [1, 2, 3, 4, 5, 6]
-    .filter((string) => fretByString.has(string) && !(chord.muted ?? []).includes(string))
+  return fretByString;
+}
+
+/** Cuerdas realmente sonando (con traste asignado y no mudas), de la 1 a la 6. */
+function playedStrings(chord: OpenChord): number[] {
+  const fretByString = fretByStringMap(chord);
+  return [1, 2, 3, 4, 5, 6].filter((string) => fretByString.has(string) && !(chord.muted ?? []).includes(string));
+}
+
+/** Tablatura de un acorde abierto/con cejilla, en formato AlphaTab, derivada de las mismas markers
+ * que dibujan el diagrama — así 6.4 nunca puede generar un diagrama y una tablatura que no coincidan. */
+export function tablatureForOpenChord(chord: OpenChord): string {
+  const fretByString = fretByStringMap(chord);
+  const notes = playedStrings(chord)
     .map((string) => `${fretByString.get(string)}.${string}`)
     .join(' ');
   return `(${notes})`;
+}
+
+/** Trastes del acorde en columna vertical, cuerda 1 (aguda) arriba -> cuerda 6 (grave) abajo,
+ * igual que una tablatura real dibujada verticalmente. Usado por 6.4 para pintar las opciones como
+ * lineas de numeros en vez del formato compacto "(0.1 0.2 ...)", y para construir el distractor
+ * "trampa" con los mismos numeros invertidos (ver generateChordTablatureMatch). */
+export function verticalTabLines(chord: OpenChord): string[] {
+  const fretByString = fretByStringMap(chord);
+  return playedStrings(chord).map((string) => String(fretByString.get(string)));
 }

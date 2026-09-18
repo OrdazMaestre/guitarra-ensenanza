@@ -1,9 +1,8 @@
-import { generateFretDistance, generateNeckNoteDistance, generateTonesToSemitones, generateSemitonesToTones } from './arithmetic';
+import { generateFretDistance, generateFretDistanceTones, generateNeckNoteDistance, generateTonesToSemitones, generateSemitonesToTones } from './arithmetic';
 import { generateIdentifyChord, generateChordTablatureMatch, generateNameFourChords } from './chordBankQuestions';
 import { generateNoteDegree, generateSeventhChordNotes, generateSeventhChordByName, generateChordDegreeNumber } from './degreeQuestions';
 import { generateNoteNotationSwap, generateSharpPrecedes, generateFlatFollows } from './notation';
 import {
-  generateNonStandardTuning,
   generateStringRegister,
   generateFretNote,
   generateBlueNoteFormula,
@@ -18,8 +17,8 @@ import type { QuestionGenerator } from '../types';
 // degreeQuestions.ts): necesitan el banco de acordes y/o las tablas de grados de escalas (Fase 0).
 export const GENERATORS: Record<string, QuestionGenerator> = {
   '1.2': generateFretDistance,
+  '1.6': generateFretDistanceTones,
   '2.1': generateNoteNotationSwap,
-  '2.2.2': generateNonStandardTuning,
   '3.2': generateStringRegister,
   '4.1': generateIdentifyChord,
   '6.3': generateFretNote,

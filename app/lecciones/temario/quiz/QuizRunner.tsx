@@ -1,11 +1,13 @@
 'use client';
-import { useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { selectQuestions } from '@/app/lib/quiz/engine';
 import { tierFor } from '@/app/lib/quiz/rankingTiers';
+import { bonusFor } from '@/app/lib/quiz/scoring';
 import { createRng } from '@/app/lib/quiz/shuffle';
 import type { QuizMode, RuntimeQuestion } from '@/app/lib/quiz/types';
-import { isKnownLessonSlug, topicsUpToSlug } from '../quizTemarioMap';
+import { isKnownLessonSlug, resolveQuizTopicForSlug, topicsUpToSlug } from '../quizTemarioMap';
 import QuestionCard from './QuestionCard';
 import { QuizDiagramStyles } from './QuizDiagramView';
 import QuizModeSwitcher from './QuizModeSwitcher';
@@ -27,26 +29,20 @@ function isSpeedrun(quickAnswerCount: number, totalQuestions: number, score: num
   return halfOrMore && reachesBronze;
 }
 
-// Puntuacion: meta.reglas_generales.puntuacion en questionBank.json. El bonus de <5s SUSTITUYE al
-// de <10s (no se suman) -- por eso es un if/else if, no dos ifs independientes.
-function bonusFor(elapsedSeconds: number): number {
-  if (elapsedSeconds < 5) return 2;
-  if (elapsedSeconds < 10) return 1;
-  return 0;
-}
-
 interface Answered {
   correcta: boolean;
   texto: string;
 }
 
 export default function QuizRunner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const fromSlug = searchParams.get('from') ?? '';
-  const topics = useMemo(() => topicsUpToSlug(fromSlug), [fromSlug]);
   const backHref = isKnownLessonSlug(fromSlug) ? `/lecciones/temario/${fromSlug}` : undefined;
 
   const [mode, setMode] = useState<QuizMode>('facil');
+  const [creandoSala, setCreandoSala] = useState(false);
+  const [errorSala, setErrorSala] = useState<string | null>(null);
   // Arranca vacío a propósito: selectQuestions() usa Math.random() (sin seed), así que generarlo
   // durante el render produciría un set de preguntas DISTINTO en el render de servidor y en la
   // hidratación del cliente -> mismatch de hidratación de React (confirmado con Playwright: el
@@ -71,7 +67,7 @@ export default function QuizRunner() {
   // cada cambio de `topics` (eso ya lo cubre handleModeChange/startMode cuando el usuario actúa).
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
-    setQuestions(selectQuestions('facil', topics, createRng()));
+    setQuestions(selectQuestions('facil', topicsUpToSlug(fromSlug, 'facil'), createRng()));
     testStartRef.current = Date.now();
     questionStartRef.current = Date.now();
   }, []);
@@ -79,7 +75,7 @@ export default function QuizRunner() {
 
   function startMode(newMode: QuizMode) {
     setMode(newMode);
-    setQuestions(selectQuestions(newMode, topics, createRng()));
+    setQuestions(selectQuestions(newMode, topicsUpToSlug(fromSlug, newMode), createRng()));
     setIndex(0);
     setScore(0);
     setCorrectCount(0);
@@ -113,6 +109,34 @@ export default function QuizRunner() {
     setAnswered({ correcta: option.correcta, texto: option.texto });
   }
 
+  // MULTIJUGADOR captura la modalidad activa EN ESE MOMENTO (el `mode` ya seleccionado en el
+  // switcher de arriba) -- no hay pantalla intermedia de "elegir modo", la sala se crea con la que
+  // ya tienes puesta, para cualquier modo/tema. El anfitrionToken se guarda en sessionStorage
+  // (nunca en la URL) para poder compartir el enlace de la sala sin regalar el control de esta.
+  async function handleMultijugador() {
+    if (creandoSala) return;
+    setCreandoSala(true);
+    setErrorSala(null);
+    try {
+      const res = await fetch('/api/quiz/sala/crear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modo: mode, from: fromSlug }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setErrorSala(data?.error ?? 'No se pudo crear la sala');
+        setCreandoSala(false);
+        return;
+      }
+      sessionStorage.setItem(`sala:${data.codigo}:anfitrionToken`, data.anfitrionToken);
+      router.push(`/sala/anfitrion/${data.codigo}`);
+    } catch {
+      setErrorSala('No se pudo crear la sala');
+      setCreandoSala(false);
+    }
+  }
+
   function handleNext() {
     if (index + 1 >= questions.length) {
       setTotalSeconds((Date.now() - testStartRef.current) / 1000);
@@ -129,6 +153,12 @@ export default function QuizRunner() {
 
   return (
     <main className="quiz-page">
+      {backHref ? (
+        <Link href={backHref} aria-label="Volver a la leccion" className="quiz-back-arrow">
+          <span aria-hidden="true">←</span>
+        </Link>
+      ) : null}
+
       <article className="quiz-content">
         <header className="quiz-header">
           <h1>Quiz</h1>
@@ -146,7 +176,7 @@ export default function QuizRunner() {
             mode={mode}
             onRetry={() => startMode(mode)}
             score={score}
-            topic={topics[topics.length - 1]}
+            topic={resolveQuizTopicForSlug(fromSlug)}
             totalQuestions={questions.length}
             totalSeconds={totalSeconds}
           />
@@ -164,6 +194,13 @@ export default function QuizRunner() {
         ) : (
           <p className="quiz-empty">No hay preguntas todavia para este tema.</p>
         )}
+
+        <div className="quiz-multijugador-wrap">
+          <button type="button" className="quiz-multijugador-button" onClick={handleMultijugador} disabled={creandoSala}>
+            {creandoSala ? 'Creando sala...' : 'MULTIJUGADOR'}
+          </button>
+          {errorSala ? <p className="quiz-name-error">{errorSala}</p> : null}
+        </div>
       </article>
 
       <QuizDiagramStyles />
@@ -175,7 +212,41 @@ export default function QuizRunner() {
           min-height: 100vh;
           overflow-x: clip;
           padding: clamp(28px, 5vw, 72px) clamp(16px, 6vw, 96px);
+          position: relative;
           width: 100%;
+        }
+
+        .quiz-back-arrow {
+          align-items: center;
+          background: rgba(255, 255, 255, 0.9);
+          border: 2px solid #080808;
+          border-radius: 6px;
+          color: #080808;
+          display: inline-flex;
+          font-size: clamp(28px, 4vw, 38px);
+          font-weight: 950;
+          height: clamp(48px, 8vw, 58px);
+          justify-content: center;
+          left: clamp(10px, 3vw, 28px);
+          line-height: 1;
+          position: absolute;
+          text-decoration: none;
+          top: clamp(10px, 2vw, 22px);
+          transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+          width: clamp(48px, 8vw, 58px);
+          z-index: 80;
+        }
+
+        .quiz-back-arrow:hover,
+        .quiz-back-arrow:focus-visible {
+          background: #ffffff;
+          border-color: #047857;
+          color: #047857;
+        }
+
+        .quiz-back-arrow:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 4px;
         }
 
         .quiz-content {
@@ -280,6 +351,7 @@ export default function QuizRunner() {
           min-width: 0;
           overflow-wrap: anywhere;
           padding: 12px 14px;
+          white-space: pre-line;
         }
 
         .quiz-option:not(:disabled):hover {
@@ -390,6 +462,39 @@ export default function QuizRunner() {
 
         .quiz-empty {
           text-align: center;
+        }
+
+        .quiz-multijugador-wrap {
+          border-top: 1px solid #d4d4d8;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          margin-top: clamp(48px, 8vw, 80px);
+          padding-top: clamp(28px, 5vw, 44px);
+        }
+
+        .quiz-multijugador-button {
+          background: #047857;
+          border: 2px solid #047857;
+          border-radius: 8px;
+          color: #ffffff;
+          cursor: pointer;
+          font-size: clamp(18px, 2.4vw, 24px);
+          font-weight: 950;
+          letter-spacing: 0.08em;
+          padding: 14px 40px;
+        }
+
+        .quiz-multijugador-button:hover,
+        .quiz-multijugador-button:focus-visible {
+          background: #065f46;
+          border-color: #065f46;
+        }
+
+        .quiz-multijugador-button:disabled {
+          cursor: default;
+          opacity: 0.6;
         }
 
         .quiz-speedrun {

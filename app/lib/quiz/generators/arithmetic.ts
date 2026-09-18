@@ -60,6 +60,34 @@ export function generateFretDistance(entry: QuestionBankEntry, _mode: QuizMode, 
   return [{ ...baseQuestion(entry, 0), enunciado: enunciadosArithmetic['1.2'](x, y), opciones }];
 }
 
+/** Semitonos -> texto en tonos, con medios tonos para distancias impares (3 semitonos = "1 tono y
+ * medio", 1 semitono = "medio tono"). */
+function tonosLabel(semitonos: number): string {
+  const tonosEnteros = Math.floor(semitonos / 2);
+  if (semitonos % 2 === 0) return String(tonosEnteros);
+  if (tonosEnteros === 0) return 'medio tono';
+  return `${tonosEnteros} tono${tonosEnteros === 1 ? '' : 's'} y medio`;
+}
+
+/** 1.6 — igual que 1.2 pero pidiendo el resultado en tonos, no semitonos: cualquier distancia
+ * (par o impar) vale, las impares se expresan con "medio tono" via tonosLabel(). */
+export function generateFretDistanceTones(entry: QuestionBankEntry, _mode: QuizMode, rng: Rng): RuntimeQuestion[] {
+  const x = randomInt(0, 24, rng);
+  let y = randomInt(0, 24, rng);
+  while (y === x) y = randomInt(0, 24, rng);
+  const correctSemitonos = Math.abs(y - x);
+  const distractorSemitonos = numericDistractors(correctSemitonos, 3, []);
+  const opciones = shuffle(
+    [
+      { texto: tonosLabel(correctSemitonos), correcta: true },
+      ...distractorSemitonos.map((d) => ({ texto: tonosLabel(d), correcta: false })),
+      { texto: '42', correcta: false },
+    ],
+    rng,
+  );
+  return [{ ...baseQuestion(entry, 0), enunciado: enunciadosArithmetic['1.6'](x, y), opciones }];
+}
+
 /** 9.1 — distancia en semitonos entre dos notas marcadas en el mástil (frets 0-12, dos cuerdas
  * cualquiera, pueden repetirse). Semitonos = diferencia de MIDI real, no de número de traste, así
  * que si están en cuerdas distintas hay que pasar por OPEN_STRING_MIDI. */

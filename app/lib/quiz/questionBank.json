@@ -44,12 +44,23 @@
       "id": "1.2",
       "tema": "1 CONCEPTOS BASICOS",
       "pregunta": "¿Que distancia hay entre los trastes X-Y? (en semitonos)",
-      "dificultad": "dificil",
+      "dificultad": "facil",
       "variables": ["X (0-24, aleatorio)", "Y (0-24, aleatorio, distinto de X)"],
       "opciones": ["", "", "", "", "42"],
       "opcion_graciosa": "42",
       "correcta": null,
       "nota_generacion": "correcta = abs(Y-X). Distractores: correcta+1, correcta-1, correcta+2 (evitar negativos, duplicados y que coincidan con 42)"
+    },
+    {
+      "id": "1.6",
+      "tema": "1 CONCEPTOS BASICOS",
+      "pregunta": "¿Que distancia hay entre los trastes X-Y? (en tonos)",
+      "dificultad": "dificil",
+      "variables": ["X (0-24, aleatorio)", "Y (0-24, aleatorio, distinto de X)"],
+      "opciones": ["", "", "", "", "42"],
+      "opcion_graciosa": "42",
+      "correcta": null,
+      "nota_generacion": "igual que 1.2 pero en tonos: semitonos = abs(Y-X), correcta = semitonos/2 en tonos. Si semitonos es impar, se expresa con medio tono (ej. 3 semitonos = '1 tono y medio', 1 semitono = 'medio tono'). Distractores: semitonos+1, semitonos-1, semitonos+2 (evitar negativos y duplicados), cada uno pasado por la misma conversion a texto en tonos"
     },
     {
       "id": "1.3",
@@ -82,6 +93,28 @@
       "opcion_graciosa": null,
       "correcta": ["cuerdas", "caja"],
       "nota": "sin opcion graciosa: las 5 opciones ya son partes reales de la guitarra, el reto esta en saber cuales de ellas producen sonido"
+    },
+    {
+      "id": "1.1.1",
+      "tema": "1.1 EL SONIDO EN LA MUSICA",
+      "pregunta": "Un sonido agudo vibra ___ que uno grave",
+      "dificultad": "facil",
+      "variables": [],
+      "opciones": ["mas rapido", "mas lento", "igual de rapido", "con mas fuerza", "dando saltitos"],
+      "opcion_graciosa": "dando saltitos",
+      "correcta": ["mas rapido"],
+      "nota": "apartado El sonido en la musica: vibracion rapida = sonido agudo, vibracion lenta = sonido grave"
+    },
+    {
+      "id": "1.1.2",
+      "tema": "1.1 EL SONIDO EN LA MUSICA",
+      "pregunta": "¿Donde tenemos el primer armonico (1 octava)?",
+      "dificultad": "dificil",
+      "variables": [],
+      "opciones": ["entre los trastes 12 y 13", "entre los trastes 7 y 8", "entre los trastes 5 y 6", "entre los trastes 2 y 3", "en el clavijero"],
+      "opcion_graciosa": "en el clavijero",
+      "correcta": ["entre los trastes 12 y 13"],
+      "nota": "apartado El sonido en la musica: armonicos naturales en los trastes 2, 5, 7 y 12 -- el de 1 octava es el del traste 12"
     },
     {
       "id": "2.1",
@@ -143,17 +176,6 @@
       "opciones": ["B-E-A-D-F#-B", "D-A-D-G-B-E", "E-A-D-G-B-E", "A-B-C-D-E-F", "B-E-E-F-E-A"],
       "opcion_graciosa": "B-E-E-F-E-A",
       "correcta": ["E-A-D-G-B-E"]
-    },
-    {
-      "id": "2.2.2",
-      "tema": "2.2 AFINACION",
-      "pregunta": "(Dificil) ¿Que afinacion NO es estandar?",
-      "dificultad": "dificil",
-      "variables": ["3 afinaciones estandar reales que no empiecen en sostenido/bemol (aleatorias)", "1 afinacion NO estandar (aleatoria)"],
-      "opciones": ["", "", "", "", "Afinacion de ukelele (GCEA)"],
-      "opcion_graciosa": "Afinacion de ukelele (GCEA)",
-      "correcta": null,
-      "nota_generacion": "correcta = la afinacion no estandar generada. La graciosa fija (ukelele) nunca coincide con guitarra, sirve de distractor obvio pero divertido"
     },
     {
       "id": "3.1",
@@ -494,9 +516,9 @@
       "pregunta": "Sol Mayor es...",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["solo un acorde", "solo una pentatonica", "solo una escala", "solo el relativo mayor de Mi", "todas son correctas"],
+      "opciones": ["solo un acorde", "solo una pentatonica", "solo una escala", "solo el relativo mayor de Mi", "todas a la vez"],
       "opcion_graciosa": null,
-      "correcta": ["todas son correctas"],
+      "correcta": ["todas a la vez"],
       "nota": "sin opcion graciosa: es una pregunta de tipo 'todas las respuestas son correctas', las 4 primeras opciones son incorrectas precisamente por el 'solo' (Sol Mayor es acorde, pentatonica, escala Y relativo mayor de Mi a la vez, no una sola cosa)"
     },
     {

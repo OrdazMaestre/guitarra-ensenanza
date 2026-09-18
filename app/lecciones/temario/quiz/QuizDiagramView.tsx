@@ -8,6 +8,12 @@ import type { QuizDiagram } from '@/app/lib/quiz/types';
 
 const STRING_LABELS = ['E', 'B', 'G', 'D', 'A', 'E'];
 
+// Trastes de referencia estandar (mismos que usa ReducedFretboardDiagram en el resto de la web) —
+// un punto/doble-punto con su numero romano debajo, para orientarse en el mastil sobre todo cuando
+// el diagrama no muestra el nombre de la nota (ver hideNoteLabels).
+const ROMAN_FRET_LABELS: Record<number, string> = { 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' };
+const REFERENCE_FRETS = [3, 5, 7, 9, 12];
+
 function StringMarkerDiagram({ string }: { string: number }) {
   const gap = 24;
   const width = 220;
@@ -28,7 +34,7 @@ function StringMarkerDiagram({ string }: { string: number }) {
   );
 }
 
-function FretboardMarksDiagram({ startFret, endFret, positions, ordered }: { endFret: number; ordered?: boolean; positions: { fret: number; string: number }[]; startFret: number }) {
+function FretboardMarksDiagram({ startFret, endFret, positions, ordered, hideNoteLabels }: { endFret: number; hideNoteLabels?: boolean; ordered?: boolean; positions: { fret: number; string: number }[]; startFret: number }) {
   const boardX = 40;
   const fretWidth = 52;
   const boardHeight = 140;
@@ -43,6 +49,8 @@ function FretboardMarksDiagram({ startFret, endFret, positions, ordered }: { end
     if (startFret === 0 && fret === 0) return boardX - 18;
     return startFret === 0 ? boardX + (fret - 0.5) * fretWidth : boardX + (fret - startFret + 0.5) * fretWidth;
   };
+  const referenceFrets = REFERENCE_FRETS.filter((f) => f >= startFret && f <= endFret);
+  const romanY = boardY + boardHeight + 22;
 
   return (
     <svg className="quiz-diagram quiz-fretboard-diagram" viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`} role="img" aria-label="Posiciones marcadas en el mastil">
@@ -64,12 +72,22 @@ function FretboardMarksDiagram({ startFret, endFret, positions, ordered }: { end
           />
         );
       })}
+      {referenceFrets.flatMap((fret) => (fret === 12 ? [stringY(2), stringY(5)] : [stringY(3.5)]).map((cy) => (
+        <circle key={`guide-${fret}-${cy}`} className="quiz-guide-dot" cx={fretX(fret)} cy={cy} r="6" />
+      )))}
+      {referenceFrets.map((fret) => (
+        <text key={`roman-${fret}`} className="quiz-roman-fret" x={fretX(fret)} y={romanY}>
+          {ROMAN_FRET_LABELS[fret]}
+        </text>
+      ))}
       {positions.map((pos, index) => (
         <g key={`${pos.string}-${pos.fret}`}>
           <circle className="quiz-note-dot" cx={fretX(pos.fret)} cy={stringY(pos.string)} r="15" />
-          <text className="quiz-note-label" x={fretX(pos.fret)} y={stringY(pos.string) + 5}>
-            {noteNameForFret(pos.string, pos.fret)}
-          </text>
+          {hideNoteLabels ? null : (
+            <text className="quiz-note-label" x={fretX(pos.fret)} y={stringY(pos.string) + 5}>
+              {noteNameForFret(pos.string, pos.fret)}
+            </text>
+          )}
           {ordered ? (
             <text className="quiz-order-badge" x={fretX(pos.fret) + 14} y={stringY(pos.string) - 14}>
               {index + 1}
@@ -86,19 +104,26 @@ function findChord(chordEnglish: string, quality: 'mayor' | 'menor' | 'power') {
   return [...majorChords, ...minorChords].find((c) => c.english === chordEnglish && c.quality === quality);
 }
 
-function ChordDiagramView({ chordEnglish, quality }: { chordEnglish: string; quality: 'mayor' | 'menor' | 'power' }) {
+function ChordDiagramView({ chordEnglish, hideNoteLabels, quality }: { chordEnglish: string; hideNoteLabels?: boolean; quality: 'mayor' | 'menor' | 'power' }) {
   const chord = findChord(chordEnglish, quality);
   if (!chord) return null;
 
   const stringY = (s: number) => 18 + (s - 1) * 20;
 
+  // Grid de 4 trastes solamente (nut..fret4): el unico traste de referencia estandar que cabe
+  // siempre dentro es el III. Chords cuyos markers llegan a fret 5 (ej. DOm, SOLm) ya se salen del
+  // grid dibujado por este diagrama, asi que V no tendria una columna real donde apoyarse aqui.
+  const chordReferenceFret = 3;
+
   if (quality === 'power' && 'notes' in chord) {
     const fretX = (fret: number) => 24 + (fret - 0.5) * 19;
     return (
-      <svg className="quiz-diagram quiz-chord-diagram" viewBox="0 0 112 136" role="img" aria-label={`Power chord ${chord.english}`}>
+      <svg className="quiz-diagram quiz-chord-diagram" viewBox="0 0 112 136" role="img" aria-label={hideNoteLabels ? 'Diagrama de un power chord de guitarra' : `Power chord ${chord.english}`}>
         <line className="quiz-nut" x1="24" x2="24" y1="18" y2="118" />
         {[1, 2, 3, 4, 5, 6].map((s) => <line key={s} className="quiz-string" x1="24" x2="100" y1={stringY(s)} y2={stringY(s)} />)}
         {[1, 2, 3, 4].map((i) => <line key={i} className="quiz-fret" x1={24 + i * 19} x2={24 + i * 19} y1="18" y2="118" />)}
+        <circle className="quiz-guide-dot" cx={fretX(chordReferenceFret)} cy={stringY(3.5)} r="5" />
+        <text className="quiz-roman-fret" x={fretX(chordReferenceFret)} y="132">{ROMAN_FRET_LABELS[chordReferenceFret]}</text>
         {chord.notes.map((note) => (
           <circle key={`${note.string}-${note.fret}`} className="quiz-power-dot" cx={note.fret === 0 ? 16 : fretX(note.fret)} cy={stringY(note.string)} r="9" />
         ))}
@@ -109,12 +134,24 @@ function ChordDiagramView({ chordEnglish, quality }: { chordEnglish: string; qua
   if (!('markers' in chord)) return null;
   const fretX = (fret: number) => 22 + (fret - 0.5) * 19;
   return (
-    <svg className="quiz-diagram quiz-chord-diagram" viewBox="0 0 124 136" role="img" aria-label={`Acorde ${chord.english}`}>
+    <svg className="quiz-diagram quiz-chord-diagram" viewBox="0 0 124 136" role="img" aria-label={hideNoteLabels ? 'Diagrama de un acorde de guitarra' : `Acorde ${chord.english}`}>
       <line className="quiz-nut" x1="22" x2="22" y1="18" y2="118" />
       {[1, 2, 3, 4, 5, 6].map((s) => <line key={s} className="quiz-string" x1="22" x2="98" y1={stringY(s)} y2={stringY(s)} />)}
       {[1, 2, 3, 4].map((i) => <line key={i} className="quiz-fret" x1={22 + i * 19} x2={22 + i * 19} y1="18" y2="118" />)}
-      {[...(chord.open ?? []), ...(chord.muted ?? [])].map((s) => (
+      <circle className="quiz-guide-dot" cx={fretX(chordReferenceFret)} cy={stringY(3.5)} r="5" />
+      <text className="quiz-roman-fret" x={fretX(chordReferenceFret)} y="132">{ROMAN_FRET_LABELS[chordReferenceFret]}</text>
+      {/* Circulo (O) = cuerda al aire, SI entra en la tablatura como traste 0. Aspa (X) = cuerda
+          muted, NO entra en la tablatura. Antes ambas dibujaban el mismo circulo -- imposible
+          distinguir a simple vista si una cuerda marcada debia sonar como "0" o no sonar en
+          absoluto, y la unica opcion correcta de 6.4 podia "parecer" incompleta por eso. */}
+      {(chord.open ?? []).map((s) => (
         <circle key={`open-${s}`} className="quiz-open-marker" cx="14" cy={stringY(s)} r="4.5" />
+      ))}
+      {(chord.muted ?? []).map((s) => (
+        <g key={`muted-${s}`} className="quiz-muted-marker">
+          <line x1="10.5" y1={stringY(s) - 4} x2="17.5" y2={stringY(s) + 4} />
+          <line x1="17.5" y1={stringY(s) - 4} x2="10.5" y2={stringY(s) + 4} />
+        </g>
       ))}
       {chord.barre ? (
         <rect
@@ -135,8 +172,8 @@ function ChordDiagramView({ chordEnglish, quality }: { chordEnglish: string; qua
 
 export default function QuizDiagramView({ diagram }: { diagram: QuizDiagram }) {
   if (diagram.type === 'string-marker') return <StringMarkerDiagram string={diagram.string} />;
-  if (diagram.type === 'chord-diagram') return <ChordDiagramView chordEnglish={diagram.chordEnglish} quality={diagram.quality} />;
-  return <FretboardMarksDiagram startFret={diagram.startFret} endFret={diagram.endFret} positions={diagram.positions} ordered={diagram.ordered} />;
+  if (diagram.type === 'chord-diagram') return <ChordDiagramView chordEnglish={diagram.chordEnglish} hideNoteLabels={diagram.hideNoteLabels} quality={diagram.quality} />;
+  return <FretboardMarksDiagram startFret={diagram.startFret} endFret={diagram.endFret} positions={diagram.positions} ordered={diagram.ordered} hideNoteLabels={diagram.hideNoteLabels} />;
 }
 
 export function QuizDiagramStyles() {
@@ -164,7 +201,10 @@ export function QuizDiagramStyles() {
       .quiz-order-badge { fill: #047857; font-size: 11px; font-weight: 950; text-anchor: middle; }
       .quiz-power-dot { fill: #f1f5f9; stroke: #a1a1aa; stroke-width: 2.5; }
       .quiz-open-marker { fill: #f1f5f9; stroke: #047857; stroke-width: 2; }
+      .quiz-muted-marker line { stroke: #b91c1c; stroke-width: 2; stroke-linecap: round; }
       .quiz-barre, .quiz-finger-dot { fill: #f1f5f9; stroke: #047857; stroke-width: 2.5; }
+      .quiz-guide-dot { fill: #9ca3af; opacity: 0.7; }
+      .quiz-roman-fret { fill: #080808; font-size: 12px; font-weight: 900; text-anchor: middle; }
     `}</style>
   );
 }

@@ -1,12 +1,15 @@
+import type { QuizMode } from '../../lib/quiz/types';
 import { extensionPages, legacyLessonSlugs, lessonBlocks } from './temarioData';
 
 // Traduce slugs reales del temario a los ids de "tema" tal como aparecen, literalmente, en el
 // campo `tema` de app/lib/quiz/questionBank.json (ej. "9.2 ACORDES SOL"). No existía ningún mapeo
 // slug<->tema en el repo — se resolvió a mano contra temarioData.ts y el JSON de preguntas.
-// QUIZ_TOPIC_ORDER es la progresión pedagógica real: el orden que usa topicsUpToSlug() para
-// "solo este tema y los anteriores, nunca los posteriores" (regla de meta.reglas_generales).
+// QUIZ_TOPIC_ORDER es la progresión pedagógica real, TEMAS PRINCIPALES y APARTADOS intercalados
+// (cada apartado justo después de su tema principal) — universo completo de temas válidos y
+// también la fuente del tipo QuizTopic.
 export const QUIZ_TOPIC_ORDER = [
   '1 CONCEPTOS BASICOS',
+  '1.1 EL SONIDO EN LA MUSICA',
   '2 NOTACION',
   '2.2 AFINACION',
   '3 TABLATURAS',
@@ -24,11 +27,51 @@ export const QUIZ_TOPIC_ORDER = [
 
 export type QuizTopic = (typeof QUIZ_TOPIC_ORDER)[number];
 
+// TEMAS PRINCIPALES: la secuencia principal del temario, en orden. Todo QuizTopic que no esté
+// aquí es un APARTADO (rama lateral) de alguno de estos — ver PARENT_MAIN_TOPIC.
+const MAIN_TOPICS = [
+  '1 CONCEPTOS BASICOS',
+  '2 NOTACION',
+  '3 TABLATURAS',
+  '4 ACORDES',
+  '5 LET IT BE',
+  '6 FIGURAS',
+  '7 ARPEGIOS',
+  '8 PENTATONICA',
+  '9 ESCALAS',
+] as const satisfies readonly QuizTopic[];
+
+// Tema principal "padre" de cada apartado (todo QuizTopic que no sea un tema principal).
+const PARENT_MAIN_TOPIC: Partial<Record<QuizTopic, QuizTopic>> = {
+  '1.1 EL SONIDO EN LA MUSICA': '1 CONCEPTOS BASICOS',
+  '2.2 AFINACION': '2 NOTACION',
+  '8.1 BLUES': '8 PENTATONICA',
+  '9.1 ESCALASOL': '9 ESCALAS',
+  '9.2 ACORDES SOL': '9 ESCALAS',
+  '9.3 ACORDES SEPTIMA': '9 ESCALAS',
+};
+
+function isMainTopic(topic: QuizTopic): boolean {
+  return (MAIN_TOPICS as readonly QuizTopic[]).includes(topic);
+}
+
+function mainTopicOf(topic: QuizTopic): QuizTopic {
+  return isMainTopic(topic) ? topic : (PARENT_MAIN_TOPIC[topic] as QuizTopic);
+}
+
+/** Todos los apartados (nunca temas principales) cuyo padre está en `mains`. Usado solo para
+ * APARTADOSanteriores (regla 3: mini-torneo/campeonato), nunca para facil/dificil. */
+function apartadosOf(mains: readonly QuizTopic[]): QuizTopic[] {
+  const mainSet = new Set<QuizTopic>(mains);
+  return QUIZ_TOPIC_ORDER.filter((t) => !isMainTopic(t) && mainSet.has(mainTopicOf(t)));
+}
+
 // Solo los slugs que tienen tema propio en el JSON. El resto de extensionPages (ejercicios,
-// modos griegos, el-sonido-en-la-musica...) no tiene preguntas propias todavía — usan el tema
-// de su parentSlug (ver resolveQuizTopicForSlug).
+// modos griegos...) no tiene preguntas propias todavía — usan el tema de su parentSlug (ver
+// resolveQuizTopicForSlug).
 export const SLUG_TO_QUIZ_TOPIC: Record<string, QuizTopic> = {
   'conceptos-basicos': '1 CONCEPTOS BASICOS',
+  'el-sonido-en-la-musica': '1.1 EL SONIDO EN LA MUSICA',
   'notacion-musical': '2 NOTACION',
   afinacion: '2.2 AFINACION',
   tablaturas: '3 TABLATURAS',
@@ -54,18 +97,42 @@ export function resolveQuizTopicForSlug(slug: string): QuizTopic | undefined {
 }
 
 /**
- * Temas progresivos disponibles al entrar al quiz desde `slug`: el suyo y todos los anteriores en
- * QUIZ_TOPIC_ORDER, nunca los posteriores. Si el slug no tiene ningún tema resuelto (ej.
- * 'funciones-tonales', el último bloque principal, todavía sin preguntas propias) o no se
- * reconoce, se devuelven TODOS los temas — el motor de selección ya sabe rellenar con temas
- * anteriores cuando el tema de entrada no tiene preguntas suficientes.
+ * Temas en juego al entrar al quiz desde `slug`, según la modalidad — nunca temas posteriores.
+ * Distingue TEMAS PRINCIPALES de APARTADOS (ramas laterales del temario):
+ *
+ * 1. Entrando desde un TEMA PRINCIPAL: en facil/dificil solo cuentan temas principales (el actual
+ *    y los anteriores) — ningún apartado, aunque sea cronológicamente anterior.
+ * 2. Entrando desde un APARTADO: en facil/dificil solo cuenta ESE apartado + los temas
+ *    principales correspondientes (el suyo y los anteriores) — no otros apartados.
+ * 3. APARTADOSanteriores (solo mini-torneo/campeonato): TODOS los apartados de los temas
+ *    principales actual y anteriores, no solo el que se usó para entrar.
+ * 4. Por modalidad: facil/dificil aplican 1 o 2 según el punto de entrada; mini-torneo y
+ *    campeonato siempre usan temas principales (actual y anteriores) + APARTADOSanteriores,
+ *    sea cual sea el punto de entrada.
+ *
+ * Si el slug no tiene ningún tema resuelto (ej. 'funciones-tonales', el último bloque principal,
+ * todavía sin preguntas propias) o no se reconoce, se devuelven TODOS los temas — el motor de
+ * selección ya sabe rellenar con temas anteriores cuando el tema de entrada no tiene preguntas
+ * suficientes.
  */
-export function topicsUpToSlug(slug: string): QuizTopic[] {
+export function topicsUpToSlug(slug: string, mode: QuizMode): QuizTopic[] {
   const topic = resolveQuizTopicForSlug(slug);
   if (!topic) return [...QUIZ_TOPIC_ORDER];
 
-  const index = QUIZ_TOPIC_ORDER.indexOf(topic);
-  return QUIZ_TOPIC_ORDER.slice(0, index + 1);
+  const mainTopic = mainTopicOf(topic);
+  const mainIndex = MAIN_TOPICS.indexOf(mainTopic as (typeof MAIN_TOPICS)[number]);
+  const mainsUpToCurrent = MAIN_TOPICS.slice(0, mainIndex + 1) as QuizTopic[];
+
+  let scope: Set<QuizTopic>;
+  if (mode === 'mini-torneo' || mode === 'campeonato') {
+    scope = new Set([...mainsUpToCurrent, ...apartadosOf(mainsUpToCurrent)]);
+  } else if (isMainTopic(topic)) {
+    scope = new Set(mainsUpToCurrent);
+  } else {
+    scope = new Set([...mainsUpToCurrent, topic]);
+  }
+
+  return QUIZ_TOPIC_ORDER.filter((t) => scope.has(t));
 }
 
 /** true si `slug` es una ruta real del temario (para saber si el botón "Volver a la lección" del

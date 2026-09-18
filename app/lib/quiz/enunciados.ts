@@ -20,6 +20,8 @@ interface EnunciadosEstaticas {
   '1.3': () => string;
   '1.4': () => string;
   '1.5': () => string;
+  '1.1.1': () => string;
+  '1.1.2': () => string;
   '2.2': () => string;
   '2.2.1': () => string;
   '2.3': () => string;
@@ -56,6 +58,8 @@ export const enunciadosEstaticas: EnunciadosEstaticas = {
   '1.3': () => '¿Donde colocamos los dedos de la mano derecha?',
   '1.4': () => '¿Donde colocamos los dedos de la mano izquierda?',
   '1.5': () => '¿Con que parte de la guitarra hacemos sonido?',
+  '1.1.1': () => 'Un sonido agudo vibra ___ que uno grave',
+  '1.1.2': () => '¿Donde tenemos el primer armonico (1 octava)?',
   '2.2': () => '¿Cuantas notas naturales hay?',
   '2.2.1': () => '¿Cual es la afinacion estandar?',
   '2.3': () => '¿Cual es el traste cero?',
@@ -82,14 +86,15 @@ export const enunciadosEstaticas: EnunciadosEstaticas = {
   '9.4': () => '¿Que patron de semitonos tiene la escala mayor?',
   '9.5': () => '¿Que patron de semitonos tiene la escala menor?',
   '9.6': () => '¿Como se llama a la escala menor que tiene las mismas notas que una escala mayor?',
-  '9.7': () => '(Dificil) ¿# es...?',
-  '9.8': () => '(Dificil) ¿Bemol es...?',
+  '9.7': () => '¿# es...?',
+  '9.8': () => '¿Bemol es...?',
   '9.9': () => '¿Que nota es la octava?',
 };
 
-// Coincide con app/lib/quiz/generators/arithmetic.ts (1.2, 9.1, 9.2, 9.3).
+// Coincide con app/lib/quiz/generators/arithmetic.ts (1.2, 1.6, 9.1, 9.2, 9.3).
 interface EnunciadosArithmetic {
   '1.2': (fretX: number, fretY: number) => string;
+  '1.6': (fretX: number, fretY: number) => string;
   '9.1': () => string;
   '9.2': (tonos: number) => string;
   '9.3': (semitonos: number) => string;
@@ -97,6 +102,7 @@ interface EnunciadosArithmetic {
 
 export const enunciadosArithmetic: EnunciadosArithmetic = {
   '1.2': (fretX, fretY) => `¿Qué distancia hay entre los trastes ${fretX} y ${fretY}? (en semitonos)`,
+  '1.6': (fretX, fretY) => `¿Qué distancia hay entre los trastes ${fretX} y ${fretY}? (en tonos)`,
   '9.1': () => '¿Qué distancia hay entre estas dos notas?',
   '9.2': (tonos) => `¿Cuantos semitonos tiene ${tonos} tono${tonos === 1 ? '' : 's'}?`,
   '9.3': (semitonos) => `¿Cuantos tonos son ${semitonos} semitonos?`,
@@ -104,20 +110,19 @@ export const enunciadosArithmetic: EnunciadosArithmetic = {
 
 // Coincide con app/lib/quiz/generators/notation.ts (2.1, 9.11, 9.11.1).
 interface EnunciadosNotation {
-  '2.1': (notaMostrada: string, sistemaMostrado: string, sistemaObjetivo: string) => string;
+  '2.1': (notaMostrada: string) => string;
   '9.11': (nota: string) => string;
   '9.11.1': (nota: string) => string;
 }
 
 export const enunciadosNotation: EnunciadosNotation = {
-  '2.1': (notaMostrada, sistemaMostrado, sistemaObjetivo) => `La nota "${notaMostrada}" (en ${sistemaMostrado}), ¿cómo se llama en ${sistemaObjetivo}?`,
+  '2.1': (notaMostrada) => `¿Que otro nombre tiene "${notaMostrada}"?`,
   '9.11': (nota) => `${nota}# va antes de...`,
   '9.11.1': (nota) => `${nota}b va despues de...`,
 };
 
-// Coincide con app/lib/quiz/generators/theory.ts (2.2.2, 3.2, 6.3, 8.1.3, 8.1.5, 9.10, 9.1.2).
+// Coincide con app/lib/quiz/generators/theory.ts (3.2, 6.3, 8.1.3, 8.1.5, 9.10, 9.1.2).
 interface EnunciadosTheory {
-  '2.2.2': () => string;
   '3.2': () => string;
   '6.3': () => string;
   '8.1.3': (tonica: string, modo: string) => string;
@@ -127,7 +132,6 @@ interface EnunciadosTheory {
 }
 
 export const enunciadosTheory: EnunciadosTheory = {
-  '2.2.2': () => '(Dificil) ¿Que afinacion NO es estandar?',
   '3.2': () => '¿Esta cuerda en una tablatura es aguda, media o grave?',
   '6.3': () => '¿cual es esta nota?',
   '8.1.3': (tonica, modo) => `¿Cual es la blue note de la pentatonica de ${tonica} ${modo}?`,
@@ -167,7 +171,7 @@ export const enunciadosDegree: EnunciadosDegree = {
   // 9.3.7 — complementaria de 9.3.5: aquí se da el acorde por su NOMBRE (símbolo estándar, ej.
   // "GMaj7"), sin decir de qué grado/escala sale -- se prueba el conocimiento de la fórmula del
   // acorde en sí (1-3-5-7), no la derivación desde la escala.
-  '9.3.7': (nombreSeptima) => `¿Que notas tiene el acorde con septima ${nombreSeptima}?`,
+  '9.3.7': (nombreSeptima) => `¿Que notas tiene ${nombreSeptima}?`,
 };
 
 /** Usado por engine.ts para las preguntas de Grupo A (opciones fijas, sin generador propio) —

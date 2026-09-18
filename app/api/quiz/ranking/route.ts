@@ -1,15 +1,10 @@
 import type { NextRequest } from 'next/server';
 import { containsProfanity } from '@/app/lib/quiz/profanityFilter';
 import { getTop, insertScore } from '@/app/lib/quiz/redisRanking';
-import type { QuizMode } from '@/app/lib/quiz/types';
+import { isValidQuizMode as isValidMode, type QuizMode } from '@/app/lib/quiz/types';
 import { QUIZ_TOPIC_ORDER, type QuizTopic } from '@/app/lecciones/temario/quizTemarioMap';
 
-const VALID_MODES: QuizMode[] = ['facil', 'dificil', 'mini-torneo', 'campeonato'];
 const MAX_NAME_LENGTH = 20;
-
-function isValidMode(value: unknown): value is QuizMode {
-  return typeof value === 'string' && (VALID_MODES as string[]).includes(value);
-}
 
 function isValidTopic(value: unknown): value is QuizTopic {
   return typeof value === 'string' && (QUIZ_TOPIC_ORDER as readonly string[]).includes(value);

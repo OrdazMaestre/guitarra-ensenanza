@@ -173,5 +173,9 @@ export function selectQuestions(mode: QuizMode, topics: QuizTopic[], rng: Rng): 
       }
     }
   }
-  return questions;
+  // El orden de `picks` sigue la agrupación por tema (campeonato ni siquiera lo baraja: ver
+  // allEntriesWithOccurrences). Se reordena aquí, una sola vez y para todos los modos por igual,
+  // para que NINGUNA modalidad tenga un orden predecible de preguntas (bug reportado: en
+  // campeonato la primera pregunta era siempre "¿donde estan los trastes?").
+  return shuffle(questions, rng);
 }

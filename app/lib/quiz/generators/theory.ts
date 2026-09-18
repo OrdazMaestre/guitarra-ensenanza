@@ -15,26 +15,6 @@ function baseQuestion(entry: QuestionBankEntry, index: number): Pick<RuntimeQues
   };
 }
 
-// Afinaciones alternativas reales y conocidas, ninguna empieza en sostenido/bemol (regla del JSON).
-const KNOWN_STANDARD_TUNINGS = ['E-A-D-G-B-E', 'D-A-D-G-B-E', 'D-A-D-G-A-D', 'D-G-D-G-B-D'];
-// Afinaciones inventadas, sin uso real, para que quede claro cuál "NO es estandar".
-const NON_STANDARD_TUNINGS = ['C-F-A#-D#-G-C', 'G-C-F-A#-D-G', 'E-G-C-F-A-D'];
-
-/** 2.2.2 — cuál de 4 afinaciones NO es estándar. */
-export function generateNonStandardTuning(entry: QuestionBankEntry, _mode: QuizMode, rng: Rng): RuntimeQuestion[] {
-  const standardShown = pick(KNOWN_STANDARD_TUNINGS, 3, rng);
-  const nonStandard = pickOne(NON_STANDARD_TUNINGS, rng);
-  const opciones = shuffle(
-    [
-      { texto: nonStandard, correcta: true },
-      ...standardShown.map((texto) => ({ texto, correcta: false })),
-      { texto: 'Afinacion de ukelele (GCEA)', correcta: false },
-    ],
-    rng,
-  );
-  return [{ ...baseQuestion(entry, 0), enunciado: enunciadosTheory['2.2.2'](), opciones }];
-}
-
 /** 3.2 — cuerda 1-2 aguda, 3-4 media, 5-6 grave. */
 export function generateStringRegister(entry: QuestionBankEntry, _mode: QuizMode, rng: Rng): RuntimeQuestion[] {
   const string = randomInt(1, 6, rng);
@@ -74,7 +54,10 @@ export function generateFretNote(entry: QuestionBankEntry, _mode: QuizMode, rng:
     ],
     rng,
   );
-  const diagrama: QuizDiagram = { type: 'fretboard-marks', startFret: 0, endFret: 5, positions: [{ string, fret }] };
+  // hideNoteLabels: el nombre de la nota es justo la respuesta que se pregunta -- mostrarlo en el
+  // dibujo chivaria la respuesta (a diferencia de 9.1/9.1.2, que usan este mismo diagrama para
+  // otra cosa y si pueden mostrarlo).
+  const diagrama: QuizDiagram = { type: 'fretboard-marks', startFret: 0, endFret: 5, positions: [{ string, fret }], hideNoteLabels: true };
   return [{ ...baseQuestion(entry, 0), enunciado: enunciadosTheory['6.3'](), opciones, diagrama }];
 }
 
