@@ -4,7 +4,7 @@
 // Cubre exactamente lo que pide la pregunta 4.1: "Facil: solo mayores basicos.
 // Dificil: mayores + menores + power chords."
 
-export type ChordMarker = { finger: string; fret: number; string: number };
+export type ChordMarker = { finger?: string; fret: number; string: number };
 
 export type ChordBarre = { fret: number; from: number; label: string; to: number };
 
@@ -26,24 +26,29 @@ export interface PowerChord {
   spanish: string;
 }
 
+// Sincronizado tal cual con app/lecciones/temario/_lesson-pages/AcordesPage.tsx (majorChords /
+// minorChords ahi mismo) -- RE/REm ya no mutean la 6a: llevan un marker real (sin finger asignado)
+// en el traste que da la nota correcta del acorde (F#/F, no E al aire, que no pertenecia ni a Re
+// Mayor ni a Re menor). SI/DOm/SIm ya no tienen campo `muted` en absoluto (antes lo tenian, pero
+// ese barre no llega a la 6a cuerda y no hay ninguna nota que mostrar ahi).
 export const majorChords: OpenChord[] = [
   { spanish: 'DO', english: 'C', quality: 'mayor', markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 2, finger: '2' }, { string: 2, fret: 1, finger: '1' }], muted: [6], open: [3, 1] },
-  { spanish: 'RE', english: 'D', quality: 'mayor', markers: [{ string: 3, fret: 2, finger: '1' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 2, finger: '2' }], muted: [6, 5], open: [4] },
+  { spanish: 'RE', english: 'D', quality: 'mayor', markers: [{ string: 6, fret: 2 }, { string: 3, fret: 2, finger: '1' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 2, finger: '2' }], muted: [5], open: [4] },
   { spanish: 'MI', english: 'E', quality: 'mayor', markers: [{ string: 5, fret: 2, finger: '2' }, { string: 4, fret: 2, finger: '3' }, { string: 3, fret: 1, finger: '1' }], open: [6, 2, 1] },
   { spanish: 'FA', english: 'F', quality: 'mayor', barre: { fret: 1, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 3, finger: '4' }, { string: 3, fret: 2, finger: '2' }] },
   { spanish: 'SOL', english: 'G', quality: 'mayor', markers: [{ string: 6, fret: 3, finger: '2' }, { string: 5, fret: 2, finger: '1' }, { string: 1, fret: 3, finger: '3' }], open: [4, 3, 2] },
   { spanish: 'LA', english: 'A', quality: 'mayor', markers: [{ string: 4, fret: 2, finger: '1' }, { string: 3, fret: 2, finger: '2' }, { string: 2, fret: 2, finger: '3' }], muted: [6], open: [5, 1] },
-  { spanish: 'SI', english: 'B', quality: 'mayor', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '2' }, { string: 3, fret: 4, finger: '3' }, { string: 2, fret: 4, finger: '4' }], muted: [6] },
+  { spanish: 'SI', english: 'B', quality: 'mayor', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '2' }, { string: 3, fret: 4, finger: '3' }, { string: 2, fret: 4, finger: '4' }] },
 ];
 
 export const minorChords: OpenChord[] = [
-  { spanish: 'DOm', english: 'Cm', quality: 'menor', barre: { fret: 3, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 5, finger: '3' }, { string: 3, fret: 5, finger: '4' }, { string: 2, fret: 4, finger: '2' }], muted: [6] },
-  { spanish: 'REm', english: 'Dm', quality: 'menor', markers: [{ string: 3, fret: 2, finger: '2' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 1, finger: '1' }], muted: [6, 5], open: [4] },
+  { spanish: 'DOm', english: 'Cm', quality: 'menor', barre: { fret: 3, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 5, finger: '3' }, { string: 3, fret: 5, finger: '4' }, { string: 2, fret: 4, finger: '2' }] },
+  { spanish: 'REm', english: 'Dm', quality: 'menor', markers: [{ string: 6, fret: 1 }, { string: 3, fret: 2, finger: '2' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 1, finger: '1' }], muted: [5], open: [4] },
   { spanish: 'MIm', english: 'Em', quality: 'menor', markers: [{ string: 5, fret: 2, finger: '2' }, { string: 4, fret: 2, finger: '3' }], open: [6, 3, 2, 1] },
   { spanish: 'FAm', english: 'Fm', quality: 'menor', barre: { fret: 1, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 3, finger: '4' }] },
   { spanish: 'SOLm', english: 'Gm', quality: 'menor', barre: { fret: 3, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 5, finger: '3' }, { string: 4, fret: 5, finger: '4' }] },
   { spanish: 'LAm', english: 'Am', quality: 'menor', markers: [{ string: 4, fret: 2, finger: '2' }, { string: 3, fret: 2, finger: '3' }, { string: 2, fret: 1, finger: '1' }], muted: [6], open: [5, 1] },
-  { spanish: 'SIm', english: 'Bm', quality: 'menor', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '3' }, { string: 3, fret: 4, finger: '4' }, { string: 2, fret: 3, finger: '2' }], muted: [6] },
+  { spanish: 'SIm', english: 'Bm', quality: 'menor', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '3' }, { string: 3, fret: 4, finger: '4' }, { string: 2, fret: 3, finger: '2' }] },
 ];
 
 export const powerChords: PowerChord[] = [
@@ -62,12 +67,16 @@ export function allBasicChords(difficulty: 'facil' | 'dificil'): OpenChord[] {
   return difficulty === 'facil' ? majorChords : [...majorChords, ...minorChords];
 }
 
-/** Traste por cuerda de un acorde abierto/con cejilla, derivado de markers+open+barre — fuente
- * unica que comparten tablatureForOpenChord() y verticalTabLines() para que nunca puedan
- * desincronizarse entre si (mismo principio que el diagrama/tablatura de 6.4). */
+/** Traste por cuerda de un acorde abierto/con cejilla, derivado de markers+open+muted+barre —
+ * fuente unica que comparten tablatureForOpenChord() y verticalTabLines() para que nunca puedan
+ * desincronizarse entre si (mismo principio que el diagrama/tablatura de 6.4).
+ * `muted` se trata igual que `open` (traste 0) a proposito: pese al nombre, AcordesPage.tsx
+ * dibuja ambos como el mismo circulo (ver ChordDiagramView) -- no es una cuerda silenciada, es una
+ * cuerda al aire igual que `open`, solo con otro nombre historico en los datos. Las cuerdas que de
+ * verdad no se tocan (ej. la 6a en SI/DOm/SIm) simplemente no aparecen en ningun campo. */
 function fretByStringMap(chord: OpenChord): Map<number, number> {
   const fretByString = new Map<number, number>();
-  for (const s of chord.open ?? []) fretByString.set(s, 0);
+  for (const s of [...(chord.open ?? []), ...(chord.muted ?? [])]) fretByString.set(s, 0);
   for (const m of chord.markers) fretByString.set(m.string, m.fret);
   if (chord.barre) {
     for (let s = chord.barre.to; s <= chord.barre.from; s += 1) {
@@ -77,10 +86,10 @@ function fretByStringMap(chord: OpenChord): Map<number, number> {
   return fretByString;
 }
 
-/** Cuerdas realmente sonando (con traste asignado y no mudas), de la 1 a la 6. */
+/** Cuerdas realmente sonando (con traste asignado), de la 1 a la 6. */
 function playedStrings(chord: OpenChord): number[] {
   const fretByString = fretByStringMap(chord);
-  return [1, 2, 3, 4, 5, 6].filter((string) => fretByString.has(string) && !(chord.muted ?? []).includes(string));
+  return [1, 2, 3, 4, 5, 6].filter((string) => fretByString.has(string));
 }
 
 /** Tablatura de un acorde abierto/con cejilla, en formato AlphaTab, derivada de las mismas markers

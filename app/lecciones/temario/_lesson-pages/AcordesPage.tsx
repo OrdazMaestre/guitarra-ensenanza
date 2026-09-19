@@ -4,7 +4,7 @@ import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
 type Marker = {
-  finger: string;
+  finger?: string;
   fret: number;
   string: number;
 };
@@ -24,6 +24,10 @@ type Chord = {
 };
 
 type PowerChordShape = {
+  extraNote?: {
+    fret: number;
+    string: number;
+  };
   name: string;
   notes: {
     fret: number;
@@ -35,22 +39,22 @@ type PowerChordShape = {
 
 const majorChords: Chord[] = [
   { spanish: 'DO', english: 'C', markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 2, finger: '2' }, { string: 2, fret: 1, finger: '1' }], muted: [6], open: [3, 1] },
-  { spanish: 'RE', english: 'D', markers: [{ string: 3, fret: 2, finger: '1' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 2, finger: '2' }], muted: [6, 5], open: [4] },
+  { spanish: 'RE', english: 'D', markers: [{ string: 6, fret: 2 }, { string: 3, fret: 2, finger: '1' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 2, finger: '2' }], muted: [5], open: [4] },
   { spanish: 'MI', english: 'E', markers: [{ string: 5, fret: 2, finger: '2' }, { string: 4, fret: 2, finger: '3' }, { string: 3, fret: 1, finger: '1' }], open: [6, 2, 1] },
   { spanish: 'FA', english: 'F', barre: { fret: 1, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 3, finger: '4' }, { string: 3, fret: 2, finger: '2' }] },
   { spanish: 'SOL', english: 'G', markers: [{ string: 6, fret: 3, finger: '2' }, { string: 5, fret: 2, finger: '1' }, { string: 1, fret: 3, finger: '3' }], open: [4, 3, 2] },
   { spanish: 'LA', english: 'A', markers: [{ string: 4, fret: 2, finger: '1' }, { string: 3, fret: 2, finger: '2' }, { string: 2, fret: 2, finger: '3' }], muted: [6], open: [5, 1] },
-  { spanish: 'SI', english: 'B', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '2' }, { string: 3, fret: 4, finger: '3' }, { string: 2, fret: 4, finger: '4' }], muted: [6] },
+  { spanish: 'SI', english: 'B', barre: { fret: 2, from: 6, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '2' }, { string: 3, fret: 4, finger: '3' }, { string: 2, fret: 4, finger: '4' }] },
 ];
 
 const minorChords: Chord[] = [
-  { spanish: 'DOm', english: 'Cm', barre: { fret: 3, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 5, finger: '3' }, { string: 3, fret: 5, finger: '4' }, { string: 2, fret: 4, finger: '2' }], muted: [6] },
-  { spanish: 'REm', english: 'Dm', markers: [{ string: 3, fret: 2, finger: '2' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 1, finger: '1' }], muted: [6, 5], open: [4] },
+  { spanish: 'DOm', english: 'Cm', barre: { fret: 3, from: 6, to: 1, label: '1' }, markers: [{ string: 4, fret: 5, finger: '3' }, { string: 3, fret: 5, finger: '4' }, { string: 2, fret: 4, finger: '2' }] },
+  { spanish: 'REm', english: 'Dm', markers: [{ string: 6, fret: 1 }, { string: 3, fret: 2, finger: '2' }, { string: 2, fret: 3, finger: '3' }, { string: 1, fret: 1, finger: '1' }], muted: [5], open: [4] },
   { spanish: 'MIm', english: 'Em', markers: [{ string: 5, fret: 2, finger: '2' }, { string: 4, fret: 2, finger: '3' }], open: [6, 3, 2, 1] },
   { spanish: 'FAm', english: 'Fm', barre: { fret: 1, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 3, finger: '3' }, { string: 4, fret: 3, finger: '4' }] },
   { spanish: 'SOLm', english: 'Gm', barre: { fret: 3, from: 6, to: 1, label: '1' }, markers: [{ string: 5, fret: 5, finger: '3' }, { string: 4, fret: 5, finger: '4' }] },
   { spanish: 'LAm', english: 'Am', markers: [{ string: 4, fret: 2, finger: '2' }, { string: 3, fret: 2, finger: '3' }, { string: 2, fret: 1, finger: '1' }], muted: [6], open: [5, 1] },
-  { spanish: 'SIm', english: 'Bm', barre: { fret: 2, from: 5, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '3' }, { string: 3, fret: 4, finger: '4' }, { string: 2, fret: 3, finger: '2' }], muted: [6] },
+  { spanish: 'SIm', english: 'Bm', barre: { fret: 2, from: 6, to: 1, label: '1' }, markers: [{ string: 4, fret: 4, finger: '3' }, { string: 3, fret: 4, finger: '4' }, { string: 2, fret: 3, finger: '2' }] },
 ];
 
 // Coordinates below are pre-rotated 90° left (nut on the left, frets left-to-right,
@@ -58,6 +62,12 @@ const minorChords: Chord[] = [
 const stringY = (stringNumber: number) => 18 + (stringNumber - 1) * 20;
 const fretX = (fret: number) => 22 + (fret - 0.5) * 19;
 const powerFretX = (fret: number) => 24 + (fret - 0.5) * 19;
+const neckCenterY = (stringY(1) + stringY(6)) / 2;
+
+const fretInlays = [
+  { fret: 3, roman: 'III' },
+  { fret: 5, roman: 'V' },
+];
 
 const highlightedChordNames = new Set(['C', 'F', 'G', 'Am']);
 
@@ -70,6 +80,7 @@ const powerChordShapes: PowerChordShape[] = [
       { label: '5', string: 5, fret: 2 },
       { label: '8', string: 4, fret: 2 },
     ],
+    extraNote: { string: 3, fret: 1 },
   },
   {
     name: 'F',
@@ -79,6 +90,17 @@ const powerChordShapes: PowerChordShape[] = [
       { label: '5', string: 5, fret: 3 },
       { label: '8', string: 4, fret: 3 },
     ],
+    extraNote: { string: 3, fret: 2 },
+  },
+  {
+    name: 'Gm',
+    rootLabel: 'Sol menor',
+    notes: [
+      { label: 'T', string: 6, fret: 3 },
+      { label: '5', string: 5, fret: 5 },
+      { label: '8', string: 4, fret: 5 },
+    ],
+    extraNote: { string: 3, fret: 3 },
   },
   {
     name: 'A',
@@ -88,6 +110,7 @@ const powerChordShapes: PowerChordShape[] = [
       { label: '5', string: 4, fret: 2 },
       { label: '8', string: 3, fret: 2 },
     ],
+    extraNote: { string: 2, fret: 2 },
   },
   {
     name: 'B',
@@ -97,6 +120,17 @@ const powerChordShapes: PowerChordShape[] = [
       { label: '5', string: 4, fret: 4 },
       { label: '8', string: 3, fret: 4 },
     ],
+    extraNote: { string: 2, fret: 4 },
+  },
+  {
+    name: 'Cm',
+    rootLabel: 'Do menor',
+    notes: [
+      { label: 'T', string: 5, fret: 3 },
+      { label: '5', string: 4, fret: 5 },
+      { label: '8', string: 3, fret: 5 },
+    ],
+    extraNote: { string: 2, fret: 4 },
   },
 ];
 
@@ -115,13 +149,19 @@ function ChordDiagram({ chord }: { chord: Chord }) {
       <figcaption>
         <span className="primary-chord-name">{chord.english}</span> <span className="local-chord-name">({spanishChordLabel(chord)})</span>
       </figcaption>
-      <svg className="chord-diagram" viewBox="0 0 124 136" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
+      <svg className="chord-diagram" viewBox="0 0 143 136" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
         <line className="nut" x1="22" x2="22" y1="18" y2="118" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
-          <line className="string-line" key={`string-${string}`} x1="22" x2="98" y1={stringY(string)} y2={stringY(string)} />
+          <line className="string-line" key={`string-${string}`} x1="22" x2="117" y1={stringY(string)} y2={stringY(string)} />
         ))}
-        {[1, 2, 3, 4].map((index) => (
+        {[1, 2, 3, 4, 5].map((index) => (
           <line className="fret-line" key={`fret-${index}`} x1={22 + index * 19} x2={22 + index * 19} y1="18" y2="118" />
+        ))}
+        {fretInlays.map(({ fret, roman }) => (
+          <g key={`inlay-${fret}`} aria-hidden="true">
+            <circle className="fret-inlay" cx={fretX(fret)} cy={neckCenterY} r="3" />
+            <text className="fret-inlay-label" x={fretX(fret)} y="130">{roman}</text>
+          </g>
         ))}
         {[...(chord.open ?? []), ...(chord.muted ?? [])].map((string) => (
           <circle className="open-marker" key={`open-${string}`} cx="14" cy={stringY(string)} r="4.5" />
@@ -142,11 +182,13 @@ function ChordDiagram({ chord }: { chord: Chord }) {
           </g>
         ) : null}
         {chord.markers.map((marker) => (
-          <g key={`${marker.string}-${marker.fret}-${marker.finger}`}>
+          <g key={`${marker.string}-${marker.fret}-${marker.finger ?? 'x'}`}>
             <circle className="finger-dot" cx={fretX(marker.fret)} cy={stringY(marker.string)} r="8" />
-            <text className="finger-label" x={fretX(marker.fret)} y={stringY(marker.string) + 4}>
-              {marker.finger}
-            </text>
+            {marker.finger ? (
+              <text className="finger-label" x={fretX(marker.fret)} y={stringY(marker.string) + 4}>
+                {marker.finger}
+              </text>
+            ) : null}
           </g>
         ))}
       </svg>
@@ -160,19 +202,33 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
       <figcaption>
         <span className="primary-chord-name">{shape.name}</span> <span className="local-chord-name">({shape.rootLabel})</span>
       </figcaption>
-      <svg className="power-diagram" viewBox="0 0 112 136" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
+      <svg className="power-diagram" viewBox="0 0 131 136" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
         <line className="nut" x1="24" x2="24" y1="18" y2="118" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
-          <line className="string-line" key={`power-string-${string}`} x1="24" x2="100" y1={stringY(string)} y2={stringY(string)} />
+          <line className="string-line" key={`power-string-${string}`} x1="24" x2="119" y1={stringY(string)} y2={stringY(string)} />
         ))}
-        {[1, 2, 3, 4].map((index) => (
+        {[1, 2, 3, 4, 5].map((index) => (
           <line className="fret-line" key={`power-fret-${index}`} x1={24 + index * 19} x2={24 + index * 19} y1="18" y2="118" />
+        ))}
+        {fretInlays.map(({ fret, roman }) => (
+          <g key={`power-inlay-${fret}`} aria-hidden="true">
+            <circle className="fret-inlay" cx={powerFretX(fret)} cy={neckCenterY} r="3" />
+            <text className="fret-inlay-label" x={powerFretX(fret)} y="130">{roman}</text>
+          </g>
         ))}
         {shape.notes.map((note) => (
           <g key={`${shape.name}-${note.string}-${note.fret}`}>
-            <circle className={`power-dot ${note.label === 'E' ? 'power-note-e' : note.label === 'G' ? 'power-note-g' : ''} ${note.fret === 0 ? 'open-power-dot' : ''}`} cx={note.fret === 0 ? 16 : powerFretX(note.fret)} cy={stringY(note.string)} r="9" />
+            <circle className="power-dot" cx={note.fret === 0 ? 16 : powerFretX(note.fret)} cy={stringY(note.string)} r="9" />
           </g>
         ))}
+        {shape.extraNote ? (
+          <circle
+            className="power-dot-extra"
+            cx={shape.extraNote.fret === 0 ? 16 : powerFretX(shape.extraNote.fret)}
+            cy={stringY(shape.extraNote.string)}
+            r="5"
+          />
+        ) : null}
       </svg>
     </figure>
   );
@@ -194,7 +250,7 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         <section className="finger-guide" aria-labelledby="finger-guide-title">
           <div>
             <p>
-              En estos dibujos, los números dicen qué dedos colocar.
+              En estos dibujos, los <strong>números</strong> dicen qué <strong>dedos</strong> colocar.
             </p>
             <p>
               El 1 es el dedo índice y el 4 es el meñique.
@@ -238,20 +294,20 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         </section>
 
         <section className="shape-guide" aria-labelledby="shape-guide-title">
-          <p className="lesson-kicker">Figuras</p>
-          <h2 id="shape-guide-title">Las formas que más vamos a usar</h2>
+          <p className="lesson-kicker">POWER CHORDS</p>
+          <h2 id="shape-guide-title">La forma que más vamos a usar</h2>
           <div className="shape-copy">
-            <p>Las figuras de acordes que más usaremos son <strong>E</strong>, <strong>F</strong>, <strong>G</strong>, <strong>A</strong> y <strong>B</strong>.</p>
-            
-            <p><strong>E</strong>, <strong>F</strong>, <strong>A</strong> y <strong>B</strong> tienen básicamente la misma forma.</p>
-            
+            <p>La figura para los acordes que más usaremos la vemos en <strong>A</strong>, <strong>B</strong>, <strong>Cm</strong>, <strong>E</strong>, <strong>F</strong> y <strong>Gm</strong>.</p>
+
+            <p><strong>TODOS LOS ACORDES BÁSICOS</strong> menos <strong>D</strong> pueden tener básicamente la misma forma.</p>
+
+            <p>El punto gris es la nota que falta para que sea Mayor o menor.</p>
           </div>
-          <div className="power-shape-grid" aria-label="E, F, A y B como power chords">
+          <div className="power-shape-grid" aria-label="E, F, Gm, A, B y Cm como power chords">
             {powerChordShapes.map((shape) => (
               <PowerChordDiagram key={shape.name} shape={shape} />
             ))}
           </div>
-          
         </section>
 
         <section className="practice-strip" aria-label="Forma de practicar">
@@ -422,9 +478,9 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         .power-shape-grid {
           display: grid;
           gap: clamp(14px, 2.4vw, 22px);
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: repeat(3, minmax(0, 1fr));
           margin: clamp(18px, 3vw, 28px) auto 0;
-          max-width: 900px;
+          max-width: 700px;
           min-width: 0;
           width: 100%;
         }
@@ -477,16 +533,14 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
 
         .power-dot {
           fill: #f1f5f9;
-          stroke: #a1a1aa;
+          stroke: #047857;
           stroke-width: 2.5;
         }
 
-        .power-note-e {
-          stroke: #059669;
-        }
-
-        .power-note-g {
-          stroke: #2563eb;
+        .power-dot-extra {
+          fill: #e4e4e7;
+          stroke: #a1a1aa;
+          stroke-width: 1.5;
         }
 
         .power-legend {
@@ -605,6 +659,18 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2;
+        }
+
+        .fret-inlay {
+          fill: #c4c4cb;
+          stroke: none;
+        }
+
+        .fret-inlay-label {
+          fill: #9a9aa2;
+          font-size: 9px;
+          font-weight: 700;
+          text-anchor: middle;
         }
 
         .practice-strip {

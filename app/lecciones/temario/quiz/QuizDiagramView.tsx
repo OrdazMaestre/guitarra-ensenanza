@@ -140,18 +140,12 @@ function ChordDiagramView({ chordEnglish, hideNoteLabels, quality }: { chordEngl
       {[1, 2, 3, 4].map((i) => <line key={i} className="quiz-fret" x1={22 + i * 19} x2={22 + i * 19} y1="18" y2="118" />)}
       <circle className="quiz-guide-dot" cx={fretX(chordReferenceFret)} cy={stringY(3.5)} r="5" />
       <text className="quiz-roman-fret" x={fretX(chordReferenceFret)} y="132">{ROMAN_FRET_LABELS[chordReferenceFret]}</text>
-      {/* Circulo (O) = cuerda al aire, SI entra en la tablatura como traste 0. Aspa (X) = cuerda
-          muted, NO entra en la tablatura. Antes ambas dibujaban el mismo circulo -- imposible
-          distinguir a simple vista si una cuerda marcada debia sonar como "0" o no sonar en
-          absoluto, y la unica opcion correcta de 6.4 podia "parecer" incompleta por eso. */}
-      {(chord.open ?? []).map((s) => (
+      {/* `open` y `muted` se dibujan como el mismo circulo -- mismo criterio que AcordesPage.tsx
+          (linea 126 de esa pagina): pese al nombre, "muted" tambien se toca, solo es un campo con
+          otro nombre historico. Solo quedan sin circulo SI/SIm/DOm (no tienen ni `open` ni
+          `muted`) porque su cejilla no llega a la 6a cuerda y ahi no hay nada que tocar. */}
+      {[...(chord.open ?? []), ...(chord.muted ?? [])].map((s) => (
         <circle key={`open-${s}`} className="quiz-open-marker" cx="14" cy={stringY(s)} r="4.5" />
-      ))}
-      {(chord.muted ?? []).map((s) => (
-        <g key={`muted-${s}`} className="quiz-muted-marker">
-          <line x1="10.5" y1={stringY(s) - 4} x2="17.5" y2={stringY(s) + 4} />
-          <line x1="17.5" y1={stringY(s) - 4} x2="10.5" y2={stringY(s) + 4} />
-        </g>
       ))}
       {chord.barre ? (
         <rect
@@ -201,7 +195,6 @@ export function QuizDiagramStyles() {
       .quiz-order-badge { fill: #047857; font-size: 11px; font-weight: 950; text-anchor: middle; }
       .quiz-power-dot { fill: #f1f5f9; stroke: #a1a1aa; stroke-width: 2.5; }
       .quiz-open-marker { fill: #f1f5f9; stroke: #047857; stroke-width: 2; }
-      .quiz-muted-marker line { stroke: #b91c1c; stroke-width: 2; stroke-linecap: round; }
       .quiz-barre, .quiz-finger-dot { fill: #f1f5f9; stroke: #047857; stroke-width: 2.5; }
       .quiz-guide-dot { fill: #9ca3af; opacity: 0.7; }
       .quiz-roman-fret { fill: #080808; font-size: 12px; font-weight: 900; text-anchor: middle; }

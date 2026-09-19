@@ -168,7 +168,7 @@ export default function QuizRunner() {
         <QuizModeSwitcher mode={mode} onChange={handleModeChange} />
 
         {finished && speedrunDetected ? (
-          <QuizSpeedrunScreen backHref={backHref} onRetry={() => startMode(mode)} />
+          <QuizSpeedrunScreen onRetry={() => startMode(mode)} score={score} totalSeconds={totalSeconds} />
         ) : finished ? (
           <QuizResults
             backHref={backHref}
@@ -511,6 +511,19 @@ export default function QuizRunner() {
         .quiz-speedrun-message {
           font-size: clamp(24px, 4vw, 36px);
           font-weight: 900;
+          margin: 0;
+        }
+
+        .quiz-speedrun-score {
+          font-size: clamp(40px, 7vw, 64px);
+          font-weight: 950;
+          margin: 0;
+        }
+
+        .quiz-speedrun-time {
+          color: #dc2626;
+          font-size: clamp(28px, 5vw, 44px);
+          font-weight: 950;
           margin: 0;
         }
 

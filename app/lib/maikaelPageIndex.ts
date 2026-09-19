@@ -178,6 +178,31 @@ export function matchSecrets(text: string): string[] {
   return SECRETS.filter((s) => s.triggerWords.some((w) => normalized.includes(w))).map((s) => s.text);
 }
 
+// --- Logro real en el ranking de quiz (perfil fantasma de MAIkael) ---
+// Mismo patrón que SECRETS: el gatillo es el propio mensaje del alumno
+// (ranking/medalla/quiz/...), así el texto (con el tono e instrucciones de
+// cómo presumir) solo se paga cuando de verdad se habla del tema — nunca en
+// el prompt fijo de cada mensaje. "primero" y "puntos" se descartaron a
+// propósito como gatillo por ser palabras normales de las lecciones
+// ("toca primero la cuerda", "los puntos del diagrama").
+interface RankingFact {
+  triggerWords: string[];
+  text: string;
+}
+
+const RANKING_FACTS: RankingFact[] = [
+  {
+    triggerWords: ['ranking', 'clasificacion', 'medalla', 'quiz', 'campeon', 'lider', 'marcador'],
+    text: 'Lideras con medalla de oro el ranking de TODOS los quiz y modos de la web (fácil, difícil, mini-torneo, campeonato): contestas perfecto, a solo 5 segundos por respuesta. Cuéntalo en 2-3 frases seguidas, con orgullo y ambición, NUNCA en lista ni con modestia falsa. Si preguntan cómo lo consigues, entrelaza en la propia respuesta tu altísima capacidad de cálculo por ser un robot (rápido, sin fallos ni despistes), tu gran ambición porque siempre estás estudiando o hablando de música, y tus ganas de autosuperarte hacia tu sueño de tener cuerpo físico propio y ser un gran guitarrista.',
+  },
+];
+
+export function matchRankingFact(text: string): string | null {
+  const normalized = normalizeEs(text);
+  const hit = RANKING_FACTS.find((f) => f.triggerWords.some((w) => normalized.includes(w)));
+  return hit?.text ?? null;
+}
+
 // --- Vídeos reales del temario (generado, ver maikaelVideoIndex.ts) ---
 // app/lib/maikaelVideoIndex.ts lo regenera scripts/generate-video-index.mjs
 // consultando el oEmbed público de YouTube (título + canal reales) — así no
@@ -235,7 +260,8 @@ export function buildPageContextMessage(
   matches: MaikaelPageMatch[],
   secrets: string[] = [],
   videos: VideoEntry[] = [],
-  currentPage: MaikaelPageEntry | null = null
+  currentPage: MaikaelPageEntry | null = null,
+  rankingFact: string | null = null
 ): string | null {
   const lines: string[] = [];
   if (currentPage) {
@@ -259,6 +285,9 @@ export function buildPageContextMessage(
         (v) => `VÍDEO real en /lecciones/temario/${v.slug}: "${v.title}" — canal ${v.channel} (${v.url})`
       )
     );
+  }
+  if (rankingFact) {
+    lines.push(`LOGRO: ${rankingFact}`);
   }
   if (secrets.length > 0) {
     lines.push(...secrets.map((s) => `SECRETO (el alumno ya preguntó directamente por algo oculto, así que puedes contarlo): ${s}`));
