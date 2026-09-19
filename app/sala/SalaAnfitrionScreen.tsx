@@ -86,9 +86,6 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
   if (estado.estado === 'lobby') {
     return (
       <div className="sala-panel">
-        <p className="sala-kicker">Tu codigo de sala</p>
-        <p className="sala-codigo-grande">{codigo}</p>
-
         <form className="sala-unirse-otra" onSubmit={handleUnirseOtra}>
           <p className="sala-kicker">¿Te vas a unir a la sala de otra persona?</p>
           <div className="quiz-name-row">
@@ -112,6 +109,11 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
           </div>
           {errorUnirse ? <p className="quiz-name-error">{errorUnirse}</p> : null}
         </form>
+
+        <div className="sala-codigo-box">
+          <p className="sala-kicker">Tu codigo de sala</p>
+          <p className="sala-codigo-grande">{codigo}</p>
+        </div>
 
         <div className="sala-jugadores-box">
           <p className="sala-kicker">Se han unido con tu codigo ({estado.jugadores.length})</p>

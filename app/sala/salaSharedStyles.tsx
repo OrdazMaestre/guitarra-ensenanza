@@ -250,6 +250,12 @@ export function SalaStyles() {
       }
 
       .sala-unirse-otra {
+        display: grid;
+        gap: 8px;
+        width: 100%;
+      }
+
+      .sala-codigo-box {
         border-top: 1px solid #d4d4d8;
         display: grid;
         gap: 8px;
