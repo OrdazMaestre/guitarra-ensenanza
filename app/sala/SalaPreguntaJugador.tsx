@@ -1,5 +1,7 @@
 import QuizDiagramView from '@/app/lecciones/temario/quiz/QuizDiagramView';
 import type { RuntimeQuestion } from '@/app/lib/quiz/types';
+import SalaJugadoresLive, { SalaJugadoresLiveStyles } from './SalaJugadoresLive';
+import type { SalaJugadorEstado } from './useSalaEstado';
 
 interface MiRespuesta {
   correcta: boolean;
@@ -9,6 +11,7 @@ interface MiRespuesta {
 
 interface SalaPreguntaJugadorProps {
   indice: number;
+  jugadoresEstado: SalaJugadorEstado[];
   miRespuesta: MiRespuesta | null;
   onAnswer: (opcionIndex: number) => void;
   pregunta: RuntimeQuestion;
@@ -20,7 +23,7 @@ interface SalaPreguntaJugadorProps {
 // anfitrión decide ese momento) -- aunque el jugador ya sepa si acertó desde que respondió
 // (miRespuesta.correcta llega en la respuesta del servidor), enseñarlo antes le quitaria la
 // gracia al momento de "revelar" compartido con el resto de la sala.
-export default function SalaPreguntaJugador({ indice, miRespuesta, onAnswer, pregunta, revelada, totalPreguntas }: SalaPreguntaJugadorProps) {
+export default function SalaPreguntaJugador({ indice, jugadoresEstado, miRespuesta, onAnswer, pregunta, revelada, totalPreguntas }: SalaPreguntaJugadorProps) {
   return (
     <section className="quiz-question-card" aria-live="polite">
       <p className="quiz-progress">Pregunta {indice + 1} de {totalPreguntas}</p>
@@ -50,6 +53,9 @@ export default function SalaPreguntaJugador({ indice, miRespuesta, onAnswer, pre
           );
         })}
       </div>
+
+      <SalaJugadoresLive jugadores={jugadoresEstado} />
+      <SalaJugadoresLiveStyles />
 
       {miRespuesta && !revelada ? <p className="sala-waiting">Ya has respondido. Esperando al resto...</p> : null}
     </section>

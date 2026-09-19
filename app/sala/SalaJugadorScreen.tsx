@@ -120,6 +120,7 @@ export default function SalaJugadorScreen({ codigo }: { codigo: string }) {
     return (
       <SalaPreguntaJugador
         indice={estado.indice}
+        jugadoresEstado={estado.jugadoresEstado}
         miRespuesta={estado.miRespuesta}
         onAnswer={handleAnswer}
         pregunta={estado.pregunta}

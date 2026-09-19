@@ -6,6 +6,13 @@ export interface SalaJugadorInfo {
   nombre: string;
 }
 
+export interface SalaJugadorEstado {
+  id: string;
+  nombre: string;
+  /** Orden de llegada de su respuesta a la pregunta actual, o null si todavia no ha contestado. */
+  orden: number | null;
+}
+
 export interface SalaMarcadorEntry {
   id: string;
   nombre: string;
@@ -17,10 +24,14 @@ export interface SalaEstadoResponse {
   estado: 'lobby' | 'jugando' | 'terminada';
   indice: number;
   jugadores: SalaJugadorInfo[];
+  /** Solo relevante mientras hay una pregunta activa -- lista vacia en el lobby/al terminar. */
+  jugadoresEstado: SalaJugadorEstado[];
   marcador: SalaMarcadorEntry[];
   miRespuesta: { correcta: boolean; opcionIndex: number; puntos: number } | null;
   modo: string;
   pregunta: import('@/app/lib/quiz/types').RuntimeQuestion | null;
+  /** true cuando el anfitrion ya puede pulsar "Revelar respuesta" (todos contestaron y >=30s). */
+  puedeRevelar: boolean;
   respondieron: number;
   revelada: boolean;
   totalJugadores: number;

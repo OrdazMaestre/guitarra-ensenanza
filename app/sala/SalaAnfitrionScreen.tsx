@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import SalaMarcador, { SalaMarcadorStyles } from './SalaMarcador';
-import SalaPreguntaAnfitrion from './SalaPreguntaAnfitrion';
+import SalaPreguntaJugador from './SalaPreguntaJugador';
 import { normalizeRoomCode } from '@/app/lib/quiz/salaCodigo';
 import { useSalaEstado } from './useSalaEstado';
 
@@ -24,15 +24,27 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
   const [uniendose, setUniendose] = useState(false);
   const [errorUnirse, setErrorUnirse] = useState<string | null>(null);
 
+  // El anfitrión es un jugador más: `jugadorId` es su propio id en ESTA sala (distinto de
+  // `anfitrionToken`, que solo autoriza los controles de avance). Se pide su nombre DESPUÉS de
+  // pulsar "Empezar" y ANTES de que la partida arranque para todos -- por eso `pidiendoNombre`
+  // sustituye al botón "Empezar" en vez de abrir un paso aparte.
+  const [jugadorId, setJugadorId] = useState<string | null>(null);
+  const [pidiendoNombre, setPidiendoNombre] = useState(false);
+  const [nombreHost, setNombreHost] = useState('');
+  const [empezando, setEmpezando] = useState(false);
+  const [errorEmpezar, setErrorEmpezar] = useState<string | null>(null);
+  const [respondiendo, setRespondiendo] = useState(false);
+
   // sessionStorage no existe en el servidor, así que leerlo tiene que esperar a un efecto que solo
   // corre en el cliente (mismo patrón ya usado en QuizRunner.tsx para el mismo tipo de lectura).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setAnfitrionToken(sessionStorage.getItem(anfitrionTokenKey(codigo)));
+    setJugadorId(sessionStorage.getItem(jugadorIdKey(codigo)));
   }, [codigo]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const { estado } = useSalaEstado({ activo: !!anfitrionToken, anfitrionToken: anfitrionToken ?? undefined, codigo });
+  const { estado } = useSalaEstado({ activo: !!anfitrionToken, anfitrionToken: anfitrionToken ?? undefined, codigo, jugadorId: jugadorId ?? undefined });
 
   async function avanzar(accion: 'empezar' | 'revelar' | 'siguiente' | 'terminar') {
     if (avanzando || !anfitrionToken) return;
@@ -43,6 +55,48 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
       body: JSON.stringify({ codigo, anfitrionToken, accion }),
     });
     setAvanzando(false);
+  }
+
+  // Unirse-como-jugador (si hace falta) + arrancar la partida, en un solo paso: si el anfitrión ya
+  // tenía jugadorId (ej. recargó la página justo después de enviar el nombre pero antes de que
+  // 'empezar' llegara a confirmarse), no vuelve a darse de alta, solo reintenta el avance.
+  async function handleEmpezar(e: React.FormEvent) {
+    e.preventDefault();
+    const nombreTrim = nombreHost.trim();
+    if (empezando) return;
+    if (!jugadorId && !nombreTrim) return;
+    setEmpezando(true);
+    setErrorEmpezar(null);
+    let miJugadorId = jugadorId;
+    if (!miJugadorId) {
+      const res = await fetch('/api/quiz/sala/unirse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo, nombre: nombreTrim }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setEmpezando(false);
+        setErrorEmpezar(data?.error ?? 'No se pudo unir a la sala');
+        return;
+      }
+      miJugadorId = data.jugadorId;
+      sessionStorage.setItem(jugadorIdKey(codigo), miJugadorId as string);
+      setJugadorId(miJugadorId);
+    }
+    await avanzar('empezar');
+    setEmpezando(false);
+  }
+
+  async function handleAnswer(opcionIndex: number) {
+    if (respondiendo || !estado || !jugadorId) return;
+    setRespondiendo(true);
+    await fetch('/api/quiz/sala/responder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo, jugadorId, indice: estado.indice, opcionIndex }),
+    });
+    setRespondiendo(false);
   }
 
   // Unirse a la sala de OTRA persona: abandona esta (sigue existiendo, expira sola por TTL) y
@@ -124,9 +178,30 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
           </ul>
         </div>
 
-        <button type="button" className="quiz-multijugador-button" onClick={() => avanzar('empezar')} disabled={avanzando}>
-          Empezar
-        </button>
+        {pidiendoNombre ? (
+          <form className="quiz-name-form" onSubmit={handleEmpezar}>
+            <label className="quiz-name-label" htmlFor="sala-host-nombre-input">Tu nombre (tambien vas a jugar)</label>
+            <div className="quiz-name-row">
+              <input
+                id="sala-host-nombre-input"
+                className="quiz-name-input"
+                value={nombreHost}
+                onChange={(e) => setNombreHost(e.target.value)}
+                maxLength={20}
+                placeholder="Ej: Kael"
+                autoFocus
+              />
+              <button type="submit" className="quiz-name-submit" disabled={empezando}>
+                {empezando ? 'Empezando...' : 'Empezar'}
+              </button>
+            </div>
+            {errorEmpezar ? <p className="quiz-name-error">{errorEmpezar}</p> : null}
+          </form>
+        ) : (
+          <button type="button" className="quiz-multijugador-button" onClick={() => setPidiendoNombre(true)}>
+            Empezar
+          </button>
+        )}
       </div>
     );
   }
@@ -134,17 +209,18 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
   if (estado.estado === 'jugando' && estado.pregunta) {
     return (
       <div className="sala-panel">
-        <SalaPreguntaAnfitrion
+        <SalaPreguntaJugador
           indice={estado.indice}
+          jugadoresEstado={estado.jugadoresEstado}
+          miRespuesta={estado.miRespuesta}
+          onAnswer={handleAnswer}
           pregunta={estado.pregunta}
           revelada={estado.revelada}
-          respondieron={estado.respondieron}
-          totalJugadores={estado.totalJugadores}
           totalPreguntas={estado.totalPreguntas}
         />
         <div className="sala-controles">
           {!estado.revelada ? (
-            <button type="button" className="quiz-next-button" onClick={() => avanzar('revelar')} disabled={avanzando}>
+            <button type="button" className="quiz-next-button" onClick={() => avanzar('revelar')} disabled={avanzando || !estado.puedeRevelar}>
               Revelar respuesta
             </button>
           ) : (
@@ -153,6 +229,12 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
             </button>
           )}
         </div>
+        {!estado.revelada && !estado.puedeRevelar ? (
+          <p className="sala-waiting">
+            Podras revelar en cuanto {estado.respondieron} de {estado.totalJugadores} hayan contestado y pasen 30s
+            (como muy tarde, se revela sola a los 60s).
+          </p>
+        ) : null}
         <SalaMarcador marcador={estado.marcador} totalPreguntas={estado.totalPreguntas} />
         <SalaMarcadorStyles />
       </div>

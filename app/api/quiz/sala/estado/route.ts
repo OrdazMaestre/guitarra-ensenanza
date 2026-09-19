@@ -1,11 +1,11 @@
 import type { NextRequest } from 'next/server';
 import {
-  contarRespuestas,
-  getControl,
+  autoAvanzarSiToca,
   getJugadores,
   getMarcador,
   getPreguntas,
-  getRespuesta,
+  getRespuestas,
+  puedeRevelarAhora,
 } from '@/app/lib/quiz/redisSala';
 import { isValidRoomCode, normalizeRoomCode } from '@/app/lib/quiz/salaCodigo';
 import type { RuntimeQuestion } from '@/app/lib/quiz/types';
@@ -27,7 +27,10 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: 'Codigo de sala invalido' }, { status: 400 });
   }
 
-  const control = await getControl(codigo);
+  // autoAvanzarSiToca (no getControl a secas): CUALQUIER sondeo -- del anfitrión o de un jugador
+  // cualquiera -- dispara los avances por tiempo (revelar sola a los 60s, siguiente sola a los 10s
+  // de revelada), así que no dependen de que la pestaña del anfitrión siga abierta.
+  const control = await autoAvanzarSiToca(codigo);
   if (!control) {
     return Response.json({ error: 'Esa sala no existe (puede que haya expirado)' }, { status: 404 });
   }
@@ -36,24 +39,29 @@ export async function GET(request: NextRequest) {
   const esAnfitrion = !!anfitrionToken && anfitrionToken === control.anfitrionToken;
 
   const jugadorId = request.nextUrl.searchParams.get('jugadorId');
-  if (jugadorId && !esAnfitrion) {
-    const jugadores = await getJugadores(codigo);
-    if (!jugadores.some((j) => j.id === jugadorId)) {
-      return Response.json({ error: 'Ese jugador no pertenece a esta sala' }, { status: 404 });
-    }
+  const jugadores = await getJugadores(codigo);
+  if (jugadorId && !esAnfitrion && !jugadores.some((j) => j.id === jugadorId)) {
+    return Response.json({ error: 'Ese jugador no pertenece a esta sala' }, { status: 404 });
   }
 
-  const [jugadores, marcador] = await Promise.all([getJugadores(codigo), getMarcador(codigo)]);
+  const marcador = await getMarcador(codigo);
 
   let pregunta: RuntimeQuestion | null = null;
   let miRespuesta = null;
   let respondieron = 0;
+  // Lista en vivo de "quién ha contestado ya" (ver SalaJugadoresLive.tsx): todos ven la misma,
+  // anfitrión incluido, ahora que también contesta como un jugador más.
+  let jugadoresEstado: { id: string; nombre: string; orden: number | null }[] = [];
+  let puedeRevelar = false;
   if (control.indice >= 0 && control.estado !== 'lobby') {
     const preguntas = await getPreguntas(codigo);
     const raw = preguntas?.[control.indice] ?? null;
     if (raw) pregunta = sanitizeQuestion(raw, esAnfitrion || control.revelada);
-    respondieron = await contarRespuestas(codigo, control.indice);
-    if (jugadorId) miRespuesta = await getRespuesta(codigo, control.indice, jugadorId);
+    const respuestas = await getRespuestas(codigo, control.indice);
+    respondieron = Object.keys(respuestas).length;
+    if (jugadorId) miRespuesta = respuestas[jugadorId] ?? null;
+    jugadoresEstado = jugadores.map((j) => ({ id: j.id, nombre: j.nombre, orden: respuestas[j.id]?.orden ?? null }));
+    puedeRevelar = puedeRevelarAhora(control, respondieron, jugadores.length);
   }
 
   return Response.json({
@@ -61,10 +69,12 @@ export async function GET(request: NextRequest) {
     estado: control.estado,
     indice: control.indice,
     jugadores,
+    jugadoresEstado,
     marcador,
     miRespuesta,
     modo: control.modo,
     pregunta,
+    puedeRevelar,
     respondieron,
     revelada: control.revelada,
     totalJugadores: jugadores.length,

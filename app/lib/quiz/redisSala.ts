@@ -13,6 +13,14 @@ const MAX_CODE_ATTEMPTS = 5;
 export type SalaEstado = 'lobby' | 'jugando' | 'terminada';
 export type SalaAccion = 'empezar' | 'revelar' | 'siguiente' | 'terminar';
 
+// Umbrales fijos del modo sala (encargo explícito del usuario): el botón "Revelar" del anfitrión
+// solo se activa cuando TODOS han contestado Y han pasado >=30s desde que empezó la pregunta;
+// pase lo que pase, a los 60s se revela sola. Tras revelar, "Siguiente" se puede pulsar en
+// cualquier momento, pero a los 10s de revelada se avanza sola si el anfitrión no lo hace.
+export const SALA_REVELAR_MIN_SEGUNDOS = 30;
+export const SALA_REVELAR_MAX_SEGUNDOS = 60;
+export const SALA_AUTO_SIGUIENTE_SEGUNDOS = 10;
+
 export interface SalaControl {
   anfitrionToken: string;
   estado: SalaEstado;
@@ -20,6 +28,7 @@ export interface SalaControl {
   modo: QuizMode;
   preguntaInicioMs: number;
   revelada: boolean;
+  reveladaEnMs: number;
   totalPreguntas: number;
 }
 
@@ -31,6 +40,7 @@ export interface SalaJugador {
 export interface SalaRespuesta {
   correcta: boolean;
   opcionIndex: number;
+  orden: number;
   puntos: number;
 }
 
@@ -49,6 +59,12 @@ function puntuacionesKey(codigo: string): string {
 function respuestasKey(codigo: string, indice: number): string {
   return `sala:${codigo}:respuestas:${indice}`;
 }
+/** Contador atómico (INCR) del orden de llegada de las respuestas de una pregunta -- ver
+ * registrarRespuesta(). Se necesita una clave aparte porque HSETNX (para bloquear el doble envío)
+ * no puede devolver "cuantas hay ya" de forma atómica junto con la propia escritura. */
+function ordenRespuestasKey(codigo: string, indice: number): string {
+  return `sala:${codigo}:orden:${indice}`;
+}
 
 /** Upstash REST devuelve HGETALL como array plano [campo1, valor1, campo2, valor2...]. */
 function flatArrayToObject(flat: unknown): Record<string, string> {
@@ -66,6 +82,7 @@ function controlFromHash(hash: Record<string, string>): SalaControl {
     modo: (hash.modo as QuizMode) ?? 'facil',
     preguntaInicioMs: Number(hash.preguntaInicioMs ?? 0),
     revelada: hash.revelada === '1',
+    reveladaEnMs: Number(hash.reveladaEnMs ?? 0),
     totalPreguntas: Number(hash.totalPreguntas ?? 0),
   };
 }
@@ -96,6 +113,7 @@ export async function crearSala(modo: QuizMode, questions: RuntimeQuestion[]): P
     'indice', -1,
     'revelada', '0',
     'preguntaInicioMs', 0,
+    'reveladaEnMs', 0,
     'anfitrionToken', anfitrionToken,
     'totalPreguntas', questions.length,
   );
@@ -152,9 +170,24 @@ export async function getMarcador(codigo: string): Promise<{ id: string; nombre:
   return marcador;
 }
 
-/** Solo el anfitrión llama a esto (el endpoint ya verifica el token antes). `empezar`/`siguiente`
+function segundosDesde(ms: number): number {
+  if (!ms) return Infinity;
+  return (Date.now() - ms) / 1000;
+}
+
+/** true si el anfitrión ya puede pulsar "Revelar respuesta": todos los jugadores de la sala han
+ * contestado la pregunta actual Y han pasado >=30s desde que empezó -- pasados los 60s se revela
+ * sola de todas formas (ver autoAvanzarSiToca), así que esta función nunca necesita mirar el
+ * límite superior. */
+export function puedeRevelarAhora(control: SalaControl, respondieron: number, totalJugadores: number): boolean {
+  return totalJugadores > 0 && respondieron >= totalJugadores && segundosDesde(control.preguntaInicioMs) >= SALA_REVELAR_MIN_SEGUNDOS;
+}
+
+/** Solo el anfitrión llama a esto (el endpoint ya verifica el token antes, y para 'revelar'
+ * también las condiciones de puedeRevelarAhora -- ver el route handler). `empezar`/`siguiente`
  * fijan `preguntaInicioMs` = AHORA, el reloj compartido contra el que se mide la rapidez de
- * TODOS los jugadores (nunca el reloj de cada navegador). */
+ * TODOS los jugadores (nunca el reloj de cada navegador), y resetean `reveladaEnMs` a 0 porque la
+ * pregunta nueva todavía no está revelada. */
 export async function avanzarSala(codigo: string, accion: SalaAccion): Promise<SalaControl | null> {
   const control = await getControl(codigo);
   if (!control) return null;
@@ -170,10 +203,11 @@ export async function avanzarSala(codigo: string, accion: SalaAccion): Promise<S
         'indice', nextIndex,
         'revelada', '0',
         'preguntaInicioMs', Date.now(),
+        'reveladaEnMs', 0,
       );
     }
   } else if (accion === 'revelar') {
-    await upstashCommand('HSET', controlKey(codigo), 'revelada', '1');
+    await upstashCommand('HSET', controlKey(codigo), 'revelada', '1', 'reveladaEnMs', Date.now());
   } else if (accion === 'terminar') {
     await upstashCommand('HSET', controlKey(codigo), 'estado', 'terminada');
   }
@@ -182,12 +216,45 @@ export async function avanzarSala(codigo: string, accion: SalaAccion): Promise<S
 }
 
 /**
+ * Avances por tiempo que NO dependen de que el anfitrión pulse nada: se llama en cada sondeo de
+ * /api/quiz/sala/estado (de cualquiera, anfitrión o jugador), así que dispara puntualmente sin
+ * importar si la pestaña del anfitrión sigue abierta. Dos disparos casi simultáneos (dos personas
+ * sondeando a la vez) son inofensivos: ambos escriben el mismo valor final (HSET no es un
+ * contador), así que no hace falta ningún lock.
+ * - >=60s sin revelar -> revela sola, salte lo que salte (bypassa puedeRevelarAhora a propósito).
+ * - >=10s desde que se reveló -> avanza sola a la siguiente pregunta (o termina si era la última).
+ */
+export async function autoAvanzarSiToca(codigo: string): Promise<SalaControl | null> {
+  let control = await getControl(codigo);
+  if (!control || control.estado !== 'jugando') return control;
+
+  if (!control.revelada && segundosDesde(control.preguntaInicioMs) >= SALA_REVELAR_MAX_SEGUNDOS) {
+    await upstashCommand('HSET', controlKey(codigo), 'revelada', '1', 'reveladaEnMs', Date.now());
+    control = await getControl(codigo);
+    if (!control) return null;
+  }
+
+  if (control.revelada && segundosDesde(control.reveladaEnMs) >= SALA_AUTO_SIGUIENTE_SEGUNDOS) {
+    return avanzarSala(codigo, 'siguiente');
+  }
+
+  return control;
+}
+
+/**
  * Registra la respuesta de un jugador a una pregunta concreta. HSETNX es atómico y "set-si-no-
  * existe": si el jugador ya había respondido esa pregunta, devuelve false SIN escribir nada y sin
  * necesidad de leer antes -- así se resuelve el doble-clic/doble-envío de raíz, sin condición de
- * carrera posible entre dos peticiones casi simultáneas del mismo jugador.
+ * carrera posible entre dos peticiones casi simultáneas del mismo jugador. El `orden` (para la
+ * lista en vivo de "quién ha contestado ya") viene de un INCR aparte, atómico y sin colisiones
+ * aunque dos jugadores respondan en el mismo instante -- si luego el HSETNX falla (ya había
+ * respondido), ese número de orden simplemente se pierde, no pasa nada porque no necesita ser
+ * consecutivo, solo estrictamente creciente por orden real de llegada.
  */
-export async function registrarRespuesta(codigo: string, indice: number, jugadorId: string, respuesta: SalaRespuesta): Promise<boolean> {
+export async function registrarRespuesta(codigo: string, indice: number, jugadorId: string, respuestaSinOrden: Omit<SalaRespuesta, 'orden'>): Promise<boolean> {
+  const orden = Number(await upstashCommand('INCR', ordenRespuestasKey(codigo, indice)));
+  await upstashCommand('EXPIRE', ordenRespuestasKey(codigo, indice), SALA_TTL_SECONDS);
+  const respuesta: SalaRespuesta = { ...respuestaSinOrden, orden };
   const wasSet = await upstashCommand('HSETNX', respuestasKey(codigo, indice), jugadorId, JSON.stringify(respuesta));
   if (Number(wasSet) === 0) return false;
   await upstashCommand('EXPIRE', respuestasKey(codigo, indice), SALA_TTL_SECONDS);
@@ -199,6 +266,16 @@ export async function getRespuesta(codigo: string, indice: number, jugadorId: st
   const raw = await upstashCommand('HGET', respuestasKey(codigo, indice), jugadorId);
   if (typeof raw !== 'string') return null;
   return JSON.parse(raw) as SalaRespuesta;
+}
+
+/** Todas las respuestas de una pregunta, por jugador -- usado para la lista en vivo de "quién ha
+ * contestado ya" (necesita el `orden` de cada uno, no solo el recuento de contarRespuestas). */
+export async function getRespuestas(codigo: string, indice: number): Promise<Record<string, SalaRespuesta>> {
+  const raw = await upstashCommand('HGETALL', respuestasKey(codigo, indice));
+  const hash = flatArrayToObject(raw);
+  const result: Record<string, SalaRespuesta> = {};
+  for (const [jugadorId, json] of Object.entries(hash)) result[jugadorId] = JSON.parse(json) as SalaRespuesta;
+  return result;
 }
 
 export async function contarRespuestas(codigo: string, indice: number): Promise<number> {
