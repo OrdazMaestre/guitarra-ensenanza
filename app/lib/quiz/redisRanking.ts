@@ -59,17 +59,18 @@ function canonicalQuestionCount(mode: QuizMode): number {
 }
 
 // Perfiles falsos permanentes que aparecen en TODOS los rankings (todo modo×tema, mini-torneo y
-// campeonato) hasta que un jugador real los supera y los saca del top -- ver ensureGhostsSeeded().
-// Encargo explícito del usuario: ZOTE = mitad de la puntuación de bronce sin bonus de tiempo (no
-// llega a ninguna insignia); PAUL = mínimo de bronce; ORDAZ = mínimo de plata; MAIkael = máximo
-// posible (oro). PAUL (por Paul McCartney) sustituye a un HORNET original -- dos guiños a Hollow
-// Knight (ZOTE+HORNET) saturaban el ranking, así que este es un guiño musical (The Beatles) en su
-// lugar, ya que los otros tres perfiles no son referencias a Hollow Knight. El "tiempo por
-// respuesta" de cada uno es solo el tiempoSeg que se les asigna para mostrar en el ranking -- no se
-// recalculan los puntos a partir de ese tiempo con la fórmula real de bonus (por eso ORDAZ a
-// 10s/pregunta o MAIkael a 5s/pregunta no "cuadran" con el bonus real: son perfiles con puntuación
-// fija, el tiempo es solo el dato que se les asigna para mostrar).
-const GHOST_PROFILES: { computeStats: (q: number) => { puntos: number; tiempoSeg: number }; nombre: string }[] = [
+// campeonato, Y en el marcador de cada sala multijugador -- ver seedGhostsEnSala() en
+// redisSala.ts, que reusa exactamente este mismo array) hasta que un jugador real los supera y los
+// saca del top -- ver ensureGhostsSeeded(). Encargo explícito del usuario: ZOTE = mitad de la
+// puntuación de bronce sin bonus de tiempo (no llega a ninguna insignia); PAUL = mínimo de bronce;
+// ORDAZ = mínimo de plata; MAIkael = máximo posible (oro). PAUL (por Paul McCartney) sustituye a un
+// HORNET original -- dos guiños a Hollow Knight (ZOTE+HORNET) saturaban el ranking, así que este es
+// un guiño musical (The Beatles) en su lugar, ya que los otros tres perfiles no son referencias a
+// Hollow Knight. El "tiempo por respuesta" de cada uno es solo el tiempoSeg que se les asigna para
+// mostrar en el ranking -- no se recalculan los puntos a partir de ese tiempo con la fórmula real
+// de bonus (por eso ORDAZ a 10s/pregunta o MAIkael a 5s/pregunta no "cuadran" con el bonus real:
+// son perfiles con puntuación fija, el tiempo es solo el dato que se les asigna para mostrar).
+export const GHOST_PROFILES: { computeStats: (q: number) => { puntos: number; tiempoSeg: number }; nombre: string }[] = [
   { nombre: 'ZOTE', computeStats: (q) => ({ puntos: Math.floor(q / 2), tiempoSeg: 45 * q }) },
   { nombre: 'PAUL', computeStats: (q) => ({ puntos: q, tiempoSeg: 15 * q }) },
   { nombre: 'ORDAZ', computeStats: (q) => ({ puntos: 2 * q, tiempoSeg: 10 * q }) },

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   // autoAvanzarSiToca (no getControl a secas): CUALQUIER sondeo -- del anfitrión o de un jugador
-  // cualquiera -- dispara los avances por tiempo (revelar sola a los 60s, siguiente sola a los 10s
+  // cualquiera -- dispara los avances por tiempo (revelar sola a los 50s, siguiente sola a los 10s
   // de revelada), así que no dependen de que la pestaña del anfitrión siga abierta.
   const control = await autoAvanzarSiToca(codigo);
   if (!control) {

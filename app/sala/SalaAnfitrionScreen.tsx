@@ -229,10 +229,15 @@ export default function SalaAnfitrionScreen({ codigo }: { codigo: string }) {
             </button>
           )}
         </div>
+        {/* "Revelar" se activa con la PRIMERA de dos condiciones (contestan todos, o pasan 25s) --
+            nunca hacen falta las dos a la vez. Si aun asi el anfitrión no lo pulsa, se revela sola
+            a los 50s. "Siguiente" no tiene condición propia: se puede pulsar sin esperar nada en
+            cuanto se revela, y si no, se avanza sola a los 10s -- ambas son la misma red de
+            seguridad para cuando el anfitrión se retrasa o abandona la sala. */}
         {!estado.revelada && !estado.puedeRevelar ? (
           <p className="sala-waiting">
-            Podras revelar en cuanto {estado.respondieron} de {estado.totalJugadores} hayan contestado y pasen 30s
-            (como muy tarde, se revela sola a los 60s).
+            {estado.respondieron} de {estado.totalJugadores} han contestado -- se activa en cuanto
+            contesten todos o pasen 25s (como muy tarde, se revela sola a los 50s).
           </p>
         ) : null}
         <SalaMarcador marcador={estado.marcador} totalPreguntas={estado.totalPreguntas} />

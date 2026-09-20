@@ -33,10 +33,12 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'No eres el anfitrion de esta sala' }, { status: 403 });
   }
 
-  // Defensa en profundidad: el botón ya sale deshabilitado en el cliente hasta que todos han
-  // contestado y pasan 30s (ver puedeRevelarAhora), pero se repite aquí por si alguien salta el
-  // cliente. No hace falta comprobar el límite de 60s: si ya se pasó, autoAvanzarSiToca (disparado
-  // por cualquier sondeo de /estado) ya lo habrá revelado solo antes de que esto se llegue a pedir.
+  // Defensa en profundidad: el botón ya sale deshabilitado en el cliente hasta que contestan
+  // todos O pasan 25s (lo que llegue antes -- ver puedeRevelarAhora), pero se repite aquí por si
+  // alguien salta el cliente. "Siguiente" no tiene condición propia (se puede pulsar sin esperar
+  // nada en cuanto se revela), así que no necesita ninguna comprobación aquí. Tampoco hace falta
+  // comprobar el límite de 50s: si ya se pasó, autoAvanzarSiToca (disparado por cualquier sondeo
+  // de /estado) ya lo habrá revelado solo antes de que esto llegue a pedirse.
   if (accion === 'revelar' && control.estado === 'jugando' && !control.revelada) {
     const [respondieron, jugadores] = await Promise.all([
       contarRespuestas(codigo, control.indice),

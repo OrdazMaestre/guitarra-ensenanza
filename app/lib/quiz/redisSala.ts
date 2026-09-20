@@ -1,6 +1,18 @@
+import { GHOST_PROFILES } from './redisRanking';
 import { generateRoomCode } from './salaCodigo';
 import { upstashCommand } from '../upstash';
 import type { QuizMode, RuntimeQuestion } from './types';
+
+function ghostId(nombre: string): string {
+  return `ghost-${nombre.toLowerCase()}`;
+}
+/** Nombre de un fantasma a partir de su id (`ghost-zote`, etc.), o undefined si `id` no es de un
+ * fantasma -- usado por getMarcador() para resolver el nombre sin tener que meterlos en
+ * `jugadoresKey` (eso los haría contar como jugadores conectados: inflaría "Se han unido con tu
+ * código", `totalJugadores` y la condición de "todos han contestado" para revelar). */
+function ghostNombrePorId(id: string): string | undefined {
+  return GHOST_PROFILES.find((g) => ghostId(g.nombre) === id)?.nombre;
+}
 
 // Esquema de claves (ver plan): el estado de CONTROL (un solo escritor, el anfitrión) va en un
 // Hash normal; los datos POR JUGADOR usan estructuras donde cada escritura toca un único campo/
@@ -13,12 +25,17 @@ const MAX_CODE_ATTEMPTS = 5;
 export type SalaEstado = 'lobby' | 'jugando' | 'terminada';
 export type SalaAccion = 'empezar' | 'revelar' | 'siguiente' | 'terminar';
 
-// Umbrales fijos del modo sala (encargo explícito del usuario): el botón "Revelar" del anfitrión
-// solo se activa cuando TODOS han contestado Y han pasado >=30s desde que empezó la pregunta;
-// pase lo que pase, a los 60s se revela sola. Tras revelar, "Siguiente" se puede pulsar en
-// cualquier momento, pero a los 10s de revelada se avanza sola si el anfitrión no lo hace.
-export const SALA_REVELAR_MIN_SEGUNDOS = 30;
-export const SALA_REVELAR_MAX_SEGUNDOS = 60;
+// Dos reglas que conviven SIMULTANEAMENTE para "Revelar respuesta" (encargo explícito del
+// usuario, corrige un intento anterior que las trataba como excluyentes):
+// 1. El botón se ACTIVA en cuanto se cumple la PRIMERA de estas dos condiciones: han contestado
+//    todos, o han pasado >=25s -- lo que llegue antes. Antes de eso está deshabilitado.
+// 2. Si el anfitrión no lo pulsa él mismo, a los >=50s se revela SOLA (red de seguridad para
+//    cuando se retrasa o abandona la sala, para que el resto no se quede esperando a nadie).
+// "Siguiente pregunta" es más simple y NO tiene equivalente al punto 1: el anfitrión puede
+// pulsarlo en cualquier momento desde que se revela (sin esperar nada), y si no lo hace, a los
+// >=10s de revelada se avanza sola por la misma razón que el punto 2.
+export const SALA_REVELAR_HABILITAR_SEGUNDOS = 25;
+export const SALA_REVELAR_MAX_SEGUNDOS = 50;
 export const SALA_AUTO_SIGUIENTE_SEGUNDOS = 10;
 
 export interface SalaControl {
@@ -120,8 +137,22 @@ export async function crearSala(modo: QuizMode, questions: RuntimeQuestion[]): P
   await upstashCommand('EXPIRE', controlKey(codigo), SALA_TTL_SECONDS);
   await upstashCommand('SET', preguntasKey(codigo), JSON.stringify(questions));
   await upstashCommand('EXPIRE', preguntasKey(codigo), SALA_TTL_SECONDS);
+  await seedGhostsEnSala(codigo, questions.length);
 
   return { anfitrionToken, codigo };
+}
+
+/** Mete los 4 perfiles fantasma (mismos que el ranking individual -- ver GHOST_PROFILES en
+ * redisRanking.ts) en el marcador de ESTA sala, con la puntuación calculada sobre el número EXACTO
+ * de preguntas de esta partida (más preciso que canonicalQuestionCount(), que solo aproxima para el
+ * ranking individual porque ahí no se conoce el total real de antemano). Solo en `puntuacionesKey`,
+ * nunca en `jugadoresKey` -- ver ghostNombrePorId() para el porqué. */
+async function seedGhostsEnSala(codigo: string, totalQuestions: number): Promise<void> {
+  for (const ghost of GHOST_PROFILES) {
+    const { puntos } = ghost.computeStats(totalQuestions);
+    await upstashCommand('ZADD', puntuacionesKey(codigo), puntos, ghostId(ghost.nombre));
+  }
+  await upstashCommand('EXPIRE', puntuacionesKey(codigo), SALA_TTL_SECONDS);
 }
 
 export async function getControl(codigo: string): Promise<SalaControl | null> {
@@ -154,7 +185,9 @@ export async function getJugadores(codigo: string): Promise<SalaJugador[]> {
   return Object.entries(hash).map(([id, nombre]) => ({ id, nombre }));
 }
 
-/** Marcador ordenado de mayor a menor puntuación. */
+/** Marcador ordenado de mayor a menor puntuación -- incluye los 4 fantasmas (ver
+ * seedGhostsEnSala()) compitiendo junto a los jugadores reales, con su nombre resuelto por
+ * ghostNombrePorId() en vez de por `jugadoresKey` (ahí nunca están, a propósito). */
 export async function getMarcador(codigo: string): Promise<{ id: string; nombre: string; puntos: number }[]> {
   const [scoresRaw, jugadores] = await Promise.all([
     upstashCommand('ZREVRANGE', puntuacionesKey(codigo), 0, -1, 'WITHSCORES'),
@@ -165,7 +198,7 @@ export async function getMarcador(codigo: string): Promise<{ id: string; nombre:
   const marcador: { id: string; nombre: string; puntos: number }[] = [];
   for (let i = 0; i < arr.length; i += 2) {
     const id = arr[i];
-    marcador.push({ id, nombre: nombreById.get(id) ?? '???', puntos: Number(arr[i + 1]) });
+    marcador.push({ id, nombre: nombreById.get(id) ?? ghostNombrePorId(id) ?? '???', puntos: Number(arr[i + 1]) });
   }
   return marcador;
 }
@@ -175,19 +208,21 @@ function segundosDesde(ms: number): number {
   return (Date.now() - ms) / 1000;
 }
 
-/** true si el anfitrión ya puede pulsar "Revelar respuesta": todos los jugadores de la sala han
- * contestado la pregunta actual Y han pasado >=30s desde que empezó -- pasados los 60s se revela
- * sola de todas formas (ver autoAvanzarSiToca), así que esta función nunca necesita mirar el
- * límite superior. */
+/** true si el anfitrión ya puede pulsar "Revelar respuesta": basta con que se cumpla UNA de las
+ * dos condiciones (nunca hace falta las dos a la vez) -- han contestado todos, O han pasado
+ * >=25s. Pasados los 50s se revela sola de todas formas (ver autoAvanzarSiToca), así que esta
+ * función nunca necesita mirar ese límite superior. "Siguiente pregunta" no tiene equivalente:
+ * se puede pulsar sin ninguna condición en cuanto se revela (ver el route handler/UI). */
 export function puedeRevelarAhora(control: SalaControl, respondieron: number, totalJugadores: number): boolean {
-  return totalJugadores > 0 && respondieron >= totalJugadores && segundosDesde(control.preguntaInicioMs) >= SALA_REVELAR_MIN_SEGUNDOS;
+  return (totalJugadores > 0 && respondieron >= totalJugadores) || segundosDesde(control.preguntaInicioMs) >= SALA_REVELAR_HABILITAR_SEGUNDOS;
 }
 
 /** Solo el anfitrión llama a esto (el endpoint ya verifica el token antes, y para 'revelar'
- * también las condiciones de puedeRevelarAhora -- ver el route handler). `empezar`/`siguiente`
- * fijan `preguntaInicioMs` = AHORA, el reloj compartido contra el que se mide la rapidez de
- * TODOS los jugadores (nunca el reloj de cada navegador), y resetean `reveladaEnMs` a 0 porque la
- * pregunta nueva todavía no está revelada. */
+ * también las condiciones de puedeRevelarAhora -- ver el route handler). "Siguiente" en cambio no
+ * tiene ninguna condición propia: el anfitrión puede pulsarlo en cuanto se revela, sin esperar
+ * nada. `empezar`/`siguiente` fijan `preguntaInicioMs` = AHORA, el reloj compartido contra el que
+ * se mide la rapidez de TODOS los jugadores (nunca el reloj de cada navegador), y resetean
+ * `reveladaEnMs` a 0 porque la pregunta nueva todavía no está revelada. */
 export async function avanzarSala(codigo: string, accion: SalaAccion): Promise<SalaControl | null> {
   const control = await getControl(codigo);
   if (!control) return null;
@@ -221,7 +256,7 @@ export async function avanzarSala(codigo: string, accion: SalaAccion): Promise<S
  * importar si la pestaña del anfitrión sigue abierta. Dos disparos casi simultáneos (dos personas
  * sondeando a la vez) son inofensivos: ambos escriben el mismo valor final (HSET no es un
  * contador), así que no hace falta ningún lock.
- * - >=60s sin revelar -> revela sola, salte lo que salte (bypassa puedeRevelarAhora a propósito).
+ * - >=50s sin revelar -> revela sola, sin mirar cuántos han contestado.
  * - >=10s desde que se reveló -> avanza sola a la siguiente pregunta (o termina si era la última).
  */
 export async function autoAvanzarSiToca(codigo: string): Promise<SalaControl | null> {

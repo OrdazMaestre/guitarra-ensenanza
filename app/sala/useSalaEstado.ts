@@ -30,7 +30,8 @@ export interface SalaEstadoResponse {
   miRespuesta: { correcta: boolean; opcionIndex: number; puntos: number } | null;
   modo: string;
   pregunta: import('@/app/lib/quiz/types').RuntimeQuestion | null;
-  /** true cuando el anfitrion ya puede pulsar "Revelar respuesta" (todos contestaron y >=30s). */
+  /** true cuando el anfitrion ya puede pulsar "Revelar respuesta": contestaron todos O pasaron
+   * 25s, lo que llegue antes. */
   puedeRevelar: boolean;
   respondieron: number;
   revelada: boolean;
