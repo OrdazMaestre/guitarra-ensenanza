@@ -7,15 +7,19 @@ interface QuestionCardProps {
   onNext: () => void;
   question: RuntimeQuestion;
   questionNumber: number;
+  score: number;
   totalQuestions: number;
 }
 
-export default function QuestionCard({ answered, onAnswer, onNext, question, questionNumber, totalQuestions }: QuestionCardProps) {
+export default function QuestionCard({ answered, onAnswer, onNext, question, questionNumber, score, totalQuestions }: QuestionCardProps) {
   return (
     <section className="quiz-question-card" aria-live="polite">
-      <p className="quiz-progress">
-        Pregunta {questionNumber} de {totalQuestions}
-      </p>
+      <div className="quiz-card-header">
+        <p className="quiz-score-line">Puntos: {score}</p>
+        <p className="quiz-progress">
+          Pregunta {questionNumber} de {totalQuestions}
+        </p>
+      </div>
       <h2 className="quiz-enunciado">{question.enunciado}</h2>
 
       {question.diagrama ? (

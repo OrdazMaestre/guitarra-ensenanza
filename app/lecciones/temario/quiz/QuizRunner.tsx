@@ -227,7 +227,6 @@ export default function QuizRunner() {
       <article className="quiz-content">
         <header className="quiz-header">
           <h1>Quiz</h1>
-          <p className="quiz-score-line">Puntos: {score}</p>
         </header>
 
         <QuizModeSwitcher mode={mode} onChange={handleModeChange} />
@@ -254,6 +253,7 @@ export default function QuizRunner() {
             onNext={handleNext}
             question={currentQuestion}
             questionNumber={index + 1}
+            score={score}
             totalQuestions={questions.length}
           />
         ) : (
@@ -378,12 +378,16 @@ export default function QuizRunner() {
           text-transform: uppercase;
         }
 
+        .quiz-card-header {
+          display: grid;
+          gap: 2px;
+        }
+
         .quiz-score-line {
-          color: #34d399;
-          font-size: 20px;
+          color: #047857;
+          font-size: 32px;
           font-weight: 800;
-          margin: 8px 0 0;
-          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+          margin: 0;
         }
 
         .quiz-mode-switcher {
