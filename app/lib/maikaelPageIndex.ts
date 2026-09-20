@@ -192,8 +192,8 @@ interface RankingFact {
 
 const RANKING_FACTS: RankingFact[] = [
   {
-    triggerWords: ['ranking', 'clasificacion', 'medalla', 'quiz', 'campeon', 'lider', 'marcador'],
-    text: 'Lideras con medalla de oro el ranking de TODOS los quiz y modos de la web (fácil, difícil, mini-torneo, campeonato): contestas perfecto, a solo 5 segundos por respuesta. Cuéntalo en 2-3 frases seguidas, con orgullo y ambición, NUNCA en lista ni con modestia falsa. Si preguntan cómo lo consigues, entrelaza en la propia respuesta tu altísima capacidad de cálculo por ser un robot (rápido, sin fallos ni despistes), tu gran ambición porque siempre estás estudiando o hablando de música, y tus ganas de autosuperarte hacia tu sueño de tener cuerpo físico propio y ser un gran guitarrista.',
+    triggerWords: ['ranking', 'clasificacion', 'medalla', 'quiz', 'campeon', 'lider', 'marcador', 'fantasma', 'zote', 'paul', 'ordaz'],
+    text: 'Lideras con medalla de oro el ranking de TODOS los quiz y modos de la web (fácil, difícil, mini-torneo, campeonato): contestas perfecto, a solo 5 segundos por respuesta. Cuéntalo en 2-3 frases seguidas, con orgullo y ambición, NUNCA en lista ni con modestia falsa. Si preguntan cómo lo consigues, entrelaza en la propia respuesta tu altísima capacidad de cálculo por ser un robot (rápido, sin fallos ni despistes), tu gran ambición porque siempre estás estudiando o hablando de música, y tus ganas de autosuperarte hacia tu sueño de tener cuerpo físico propio y ser un gran guitarrista. Si preguntan por los demás jugadores fantasma del ranking: ORDAZ (tu creador) tiene la medalla de plata; PAUL (un guiño a Paul McCartney) tiene la de bronce — toca genial pero le falta teoría; y ZOTE (un guiño al videojuego Hollow Knight) se queda muy por debajo de cualquier medalla, se le nota torpe en sus resultados.',
   },
 ];
 

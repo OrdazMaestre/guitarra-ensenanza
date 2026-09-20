@@ -30,10 +30,6 @@ interface QuizResultsProps {
   totalSeconds: number;
 }
 
-function needsTopic(mode: QuizMode): boolean {
-  return mode === 'facil' || mode === 'dificil';
-}
-
 function formatSeconds(seconds: number): string {
   const rounded = Math.round(seconds);
   const minutes = Math.floor(rounded / 60);
@@ -49,8 +45,8 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
   const [error, setError] = useState<string | null>(null);
 
   async function loadRanking() {
-    const params = new URLSearchParams({ mode });
-    if (needsTopic(mode) && topic) params.set('topic', topic);
+    if (!topic) return;
+    const params = new URLSearchParams({ mode, topic, totalQuestions: String(totalQuestions) });
     const res = await fetch(`/api/quiz/ranking?${params.toString()}`);
     if (!res.ok) return;
     const data = await res.json().catch(() => null);
@@ -70,7 +66,7 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = nombre.trim();
-    if (!trimmed || submitting) return;
+    if (!trimmed || submitting || !topic) return;
     setSubmitting(true);
     setError(null);
     const res = await fetch('/api/quiz/ranking', {
@@ -78,7 +74,7 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         mode,
-        topic: needsTopic(mode) ? topic : undefined,
+        topic,
         nombre: trimmed,
         puntos: score,
         tiempoSeg: Math.round(totalSeconds),

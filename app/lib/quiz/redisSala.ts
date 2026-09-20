@@ -144,9 +144,11 @@ export async function crearSala(modo: QuizMode, questions: RuntimeQuestion[]): P
 
 /** Mete los 4 perfiles fantasma (mismos que el ranking individual -- ver GHOST_PROFILES en
  * redisRanking.ts) en el marcador de ESTA sala, con la puntuación calculada sobre el número EXACTO
- * de preguntas de esta partida (más preciso que canonicalQuestionCount(), que solo aproxima para el
- * ranking individual porque ahí no se conoce el total real de antemano). Solo en `puntuacionesKey`,
- * nunca en `jugadoresKey` -- ver ghostNombrePorId() para el porqué. */
+ * de preguntas de esta partida -- a diferencia del ranking individual (getTop() en
+ * redisRanking.ts), aquí no hace falta calcularlos al vuelo en cada lectura porque una sala nunca
+ * cambia de tamaño ni se comparte entre partidas distintas: se siembran UNA vez, al crear la sala,
+ * y se quedan fijos y correctos para toda su vida. Solo en `puntuacionesKey`, nunca en
+ * `jugadoresKey` -- ver ghostNombrePorId() para el porqué. */
 async function seedGhostsEnSala(codigo: string, totalQuestions: number): Promise<void> {
   for (const ghost of GHOST_PROFILES) {
     const { puntos } = ghost.computeStats(totalQuestions);

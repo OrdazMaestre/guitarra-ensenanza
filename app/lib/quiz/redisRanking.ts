@@ -1,4 +1,3 @@
-import { ALL_QUESTIONS } from './engine';
 import { upstashCommand } from '../upstash';
 import type { QuizMode } from './types';
 import type { QuizTopic } from '../../lecciones/temario/quizTemarioMap';
@@ -12,64 +11,40 @@ export interface RankingEntry {
 }
 
 const TOP_N_BY_TOPIC = 10;
-const TOP_N_GLOBAL = 20;
+const TOP_N_TORNEO = 20;
 
-function isGlobalMode(mode: QuizMode): boolean {
-  return mode === 'mini-torneo' || mode === 'campeonato';
-}
-
-export function rankingKey(mode: QuizMode, topic?: QuizTopic): string {
-  if (isGlobalMode(mode)) return `ranking:${mode}`;
-  if (!topic) throw new Error(`rankingKey: falta topic para el modo "${mode}"`);
+// TODOS los modos van por tema (incluye mini-torneo/campeonato desde este arreglo -- antes
+// compartían UNA clave global sin tema, así que un campeonato de 10 preguntas desde una lección
+// temprana y uno de 79 desde el temario completo acababan compitiendo en el mismo ranking: mismo
+// bug de fondo que ya afectó a los fantasmas, ver ghostEntriesFor, pero aquí con jugadores reales
+// -- "tomaYA!" de un campeonato del último tema apareciendo en el campeonato del primero, reportado
+// por el usuario). El punto de entrada (topic) es la unidad natural de comparación: dos campeonatos
+// desde el MISMO punto de entrada sí tienen sentido en el mismo ranking porque siempre cubren
+// exactamente el mismo temario, por eso rankingKey ahora exige `topic` siempre, sin excepción.
+export function rankingKey(mode: QuizMode, topic: QuizTopic): string {
   return `ranking:${mode}:${topic}`;
 }
 
 export function topNFor(mode: QuizMode): number {
-  return isGlobalMode(mode) ? TOP_N_GLOBAL : TOP_N_BY_TOPIC;
+  return mode === 'mini-torneo' || mode === 'campeonato' ? TOP_N_TORNEO : TOP_N_BY_TOPIC;
 }
 
 function scoreFor(puntos: number, tiempoSeg: number): number {
   return puntos * 100000 - tiempoSeg;
 }
 
-// Campeonato incluye SIEMPRE todas las preguntas del tema en alcance (nunca una muestra al azar,
-// a diferencia de mini-torneo), así que su recuento total SÍ se puede calcular exacto en vez de
-// aproximar: para cada pregunta, 2 apariciones si tiene CUALQUIER variable (>=1, no >=2 -- ver el
-// comentario largo en allEntriesWithOccurrences() de engine.ts, MISMO umbral, tiene que
-// coincidir exacto o el fantasma del ranking vuelve a quedar incoherente con el total real, que
-// es justo el bug que esto arregla), 4 fijo para 9.2.1 (la excepción explícita del banco) -- sin
-// depender del azar de qué temas concretos se vieron (se calcula sobre TODO el banco, el caso
-// "campeonato completo" desde la última lección).
-function fullCampeonatoQuestionCount(): number {
-  return ALL_QUESTIONS.reduce((sum, entry) => {
-    if (entry.id === '9.2.1') return sum + 4;
-    return sum + (entry.variables.length >= 1 ? 2 : 1);
-  }, 0);
-}
-
-// Recuento "típico" de preguntas por modo, usado solo para calcular la puntuación de los perfiles
-// fantasma (ver GHOST_PROFILES) -- no hace falta que sea exacto en todos los casos (facil/dificil/
-// mini-torneo pueden variar un poco por el relleno de temas anteriores o por si 9.2.1 entra en la
-// selección), son los objetivos fijos de cada modo (meta.reglas_generales en questionBank.json).
-function canonicalQuestionCount(mode: QuizMode): number {
-  if (mode === 'facil') return 4;
-  if (mode === 'dificil') return 6;
-  if (mode === 'mini-torneo') return 10;
-  return fullCampeonatoQuestionCount();
-}
-
-// Perfiles falsos permanentes que aparecen en TODOS los rankings (todo modo×tema, mini-torneo y
-// campeonato, Y en el marcador de cada sala multijugador -- ver seedGhostsEnSala() en
-// redisSala.ts, que reusa exactamente este mismo array) hasta que un jugador real los supera y los
-// saca del top -- ver ensureGhostsSeeded(). Encargo explícito del usuario: ZOTE = mitad de la
-// puntuación de bronce sin bonus de tiempo (no llega a ninguna insignia); PAUL = mínimo de bronce;
-// ORDAZ = mínimo de plata; MAIkael = máximo posible (oro). PAUL (por Paul McCartney) sustituye a un
+// Perfiles falsos que compiten en TODOS los rankings (todo modo×tema, mini-torneo y campeonato, Y
+// en el marcador de cada sala multijugador -- ver seedGhostsEnSala() en redisSala.ts, que reusa
+// exactamente este mismo array) -- SIEMPRE presentes, nunca hace falta "sembrarlos": ver
+// ghostEntriesFor() y por qué NO se guardan en Redis. Encargo explícito del usuario, expresado
+// como un PERFIL de acierto/velocidad (no como una puntuación fija), para que tenga sentido sea
+// cual sea el número de preguntas del test que se está mirando: ZOTE = 50% de aciertos a 45s/
+// respuesta (no llega a ninguna insignia); PAUL = 100% de aciertos a 15s/respuesta (sin bonus de
+// rapidez -> mínimo de bronce); ORDAZ = 100% a 10s/respuesta (bonus +1 -> mínimo de plata); MAIkael
+// = 100% a 5s/respuesta (bonus +2 -> máximo posible, oro). PAUL (por Paul McCartney) sustituye a un
 // HORNET original -- dos guiños a Hollow Knight (ZOTE+HORNET) saturaban el ranking, así que este es
 // un guiño musical (The Beatles) en su lugar, ya que los otros tres perfiles no son referencias a
-// Hollow Knight. El "tiempo por respuesta" de cada uno es solo el tiempoSeg que se les asigna para
-// mostrar en el ranking -- no se recalculan los puntos a partir de ese tiempo con la fórmula real
-// de bonus (por eso ORDAZ a 10s/pregunta o MAIkael a 5s/pregunta no "cuadran" con el bonus real:
-// son perfiles con puntuación fija, el tiempo es solo el dato que se les asigna para mostrar).
+// Hollow Knight.
 export const GHOST_PROFILES: { computeStats: (q: number) => { puntos: number; tiempoSeg: number }; nombre: string }[] = [
   { nombre: 'ZOTE', computeStats: (q) => ({ puntos: Math.floor(q / 2), tiempoSeg: 45 * q }) },
   { nombre: 'PAUL', computeStats: (q) => ({ puntos: q, tiempoSeg: 15 * q }) },
@@ -78,33 +53,29 @@ export const GHOST_PROFILES: { computeStats: (q: number) => { puntos: number; ti
 ];
 
 /**
- * Siembra los 4 perfiles fantasma SOLO si el ranking está completamente vacío (ZCARD === 0) --
- * "permanentes mientras no sean superados": una vez que suficientes jugadores reales los superan y
- * el recorte a top N los saca del set (ZREMRANGEBYRANK, igual que a cualquier entrada real), no se
- * vuelven a sembrar en la siguiente lectura. Los ids son fijos (`ghost-zote`, etc.) y el JSON de
- * cada miembro se construye siempre igual, así que volver a llamar a esto sobre un ranking que ya
- * los tiene (card > 0) es un no-op seguro sin duplicarlos.
+ * Los 4 fantasmas, calculados AL VUELO para `totalQuestions` -- nunca se persisten en Redis (a
+ * diferencia de un intento anterior que los "sembraba" una sola vez por clave con ZADD). Ese
+ * enfoque tenía dos bugs reales: (1) mini-torneo/campeonato usan una clave GLOBAL sin tema
+ * (rankingKey), así que un campeonato de 10 preguntas desde una lección temprana y uno de 79 desde
+ * el temario completo comparten ranking -- los fantasmas, sembrados una única vez con un "total
+ * canónico" fijo, quedaban con una escala completamente ajena a la partida real que se estaba
+ * mirando (puntuaciones como "231 pts" para un test de 10 preguntas); (2) al recortar al top N
+ * (ZREMRANGEBYRANK en insertScore) los fantasmas son entradas más en el set y pueden acabar
+ * recortados como cualquier otra, así que con el tiempo podían desaparecer 1 a 1 sin volver a
+ * sembrarse nunca (el bug real de "solo queda ZOTE en el ranking"). Calculándolos aquí, en cada
+ * lectura, con el `totalQuestions` de quien está mirando el ranking AHORA MISMO, los 4 aparecen
+ * siempre y con una escala que tiene sentido para esa partida.
  */
-async function ensureGhostsSeeded(key: string, mode: QuizMode): Promise<void> {
-  const card = Number(await upstashCommand('ZCARD', key));
-  if (card > 0) return;
-
-  const totalQuestions = canonicalQuestionCount(mode);
-  for (const ghost of GHOST_PROFILES) {
+function ghostEntriesFor(totalQuestions: number): RankingEntry[] {
+  return GHOST_PROFILES.map((ghost) => {
     const { puntos, tiempoSeg } = ghost.computeStats(totalQuestions);
-    const entry: RankingEntry = {
-      id: `ghost-${ghost.nombre.toLowerCase()}`,
-      nombre: ghost.nombre,
-      puntos,
-      tiempoSeg,
-      totalQuestions,
-    };
-    await upstashCommand('ZADD', key, scoreFor(puntos, tiempoSeg), JSON.stringify(entry));
-  }
+    return { id: `ghost-${ghost.nombre.toLowerCase()}`, nombre: ghost.nombre, puntos, tiempoSeg, totalQuestions };
+  });
 }
 
 /**
- * Inserta un resultado y recorta al top N (10 por modo×tema, 20 en mini-torneo/campeonato).
+ * Inserta un resultado y recorta al top N (10 por modo×tema, 20 en mini-torneo/campeonato) --
+ * SOLO cuenta entradas reales, los fantasmas nunca se guardan aquí (ver ghostEntriesFor).
  * Redis Sorted Set: score = puntos*100000 - tiempoSeg, así que a igualdad de puntos gana quien
  * tuvo menos tiempo (score más alto = mejor puesto). El multiplicador deja margen de sobra frente
  * a cualquier tiempoSeg realista (nunca se acerca a 100000) para que el tiempo nunca "se coma" un
@@ -115,9 +86,8 @@ async function ensureGhostsSeeded(key: string, mode: QuizMode): Promise<void> {
  * el índice negativo `-(limit+1)` -- con pocos miembros ese índice negativo puede clampear a 0 y
  * borrar una entrada real por error.
  */
-export async function insertScore(mode: QuizMode, topic: QuizTopic | undefined, nombre: string, puntos: number, tiempoSeg: number, totalQuestions: number): Promise<RankingEntry> {
+export async function insertScore(mode: QuizMode, topic: QuizTopic, nombre: string, puntos: number, tiempoSeg: number, totalQuestions: number): Promise<RankingEntry> {
   const key = rankingKey(mode, topic);
-  await ensureGhostsSeeded(key, mode);
 
   const limit = topNFor(mode);
   const entry: RankingEntry = { id: crypto.randomUUID(), nombre, puntos, tiempoSeg, totalQuestions };
@@ -131,11 +101,19 @@ export async function insertScore(mode: QuizMode, topic: QuizTopic | undefined, 
   return entry;
 }
 
-export async function getTop(mode: QuizMode, topic: QuizTopic | undefined, limit: number = topNFor(mode)): Promise<RankingEntry[]> {
+/**
+ * Top del ranking, con los 4 fantasmas mezclados dentro (a su escala correcta para
+ * `totalQuestions`, la partida que se está mirando ahora) y recortado al `limit` final -- así un
+ * fantasma sigue "hasta que lo superan" (suficientes entradas reales por encima lo sacan del
+ * recorte), pero sin persistirlo nunca ni arriesgarse a que el recorte de insertScore() se lo lleve
+ * por delante sin volver a aparecer.
+ */
+export async function getTop(mode: QuizMode, topic: QuizTopic, totalQuestions: number, limit: number = topNFor(mode)): Promise<RankingEntry[]> {
   const key = rankingKey(mode, topic);
-  await ensureGhostsSeeded(key, mode);
+  const raw = (await upstashCommand('ZREVRANGE', key, 0, -1)) as string[] | null;
+  const reales = (raw ?? []).map((member) => JSON.parse(member) as RankingEntry);
 
-  const raw = (await upstashCommand('ZREVRANGE', key, 0, limit - 1)) as string[] | null;
-  if (!raw) return [];
-  return raw.map((member) => JSON.parse(member) as RankingEntry);
+  const combinado = [...reales, ...ghostEntriesFor(totalQuestions)];
+  combinado.sort((a, b) => scoreFor(b.puntos, b.tiempoSeg) - scoreFor(a.puntos, a.tiempoSeg));
+  return combinado.slice(0, limit);
 }

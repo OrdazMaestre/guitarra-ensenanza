@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { selectQuestions } from '@/app/lib/quiz/engine';
 import { tierFor } from '@/app/lib/quiz/rankingTiers';
 import { bonusFor } from '@/app/lib/quiz/scoring';
@@ -21,6 +22,15 @@ import QuizSpeedrunScreen from './QuizSpeedrunScreen';
 // QuizSpeedrunScreen, que sustituye a QuizResults sin más lógica de bloqueo: QuizResults es quien
 // manda el POST al ranking, así que simplemente no renderizarlo ya evita el envío).
 const QUICK_ANSWER_THRESHOLD_SECONDS = 1;
+
+// "mini-torneo" no tiene foto propia todavia -- comparte la de fondo general (escenario cerrado
+// con sillas) hasta que haya una dedicada.
+const QUIZ_MODE_BACKGROUNDS: Record<QuizMode, string> = {
+  facil: '/images/quiz/facil-bg.webp',
+  dificil: '/images/quiz/dificil-bg.webp',
+  'mini-torneo': '/images/quiz/no-campeonato-bg.webp',
+  campeonato: '/images/quiz/campeonato-bg.webp',
+};
 
 function isSpeedrun(quickAnswerCount: number, totalQuestions: number, score: number): boolean {
   if (totalQuestions === 0) return false;
@@ -57,6 +67,41 @@ export default function QuizRunner() {
   const [totalSeconds, setTotalSeconds] = useState(0);
   const [quickAnswerCount, setQuickAnswerCount] = useState(0);
   const [speedrunDetected, setSpeedrunDetected] = useState(false);
+
+  // El fondo se pinta con un portal a document.body (ver mas abajo) en vez de dentro de
+  // ".quiz-page", asi que necesita saber si ya esta montado en el cliente antes de poder llamar a
+  // createPortal (document no existe durante el render de servidor).
+  const [mounted, setMounted] = useState(false);
+  // Excepcion deliberada: es el patron estandar de React para detectar que ya se hidrato en el
+  // cliente antes de llamar a createPortal (document no existe en el render de servidor), no hay
+  // forma de leerlo de otra fuente externa a la que "suscribirse".
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Los quiz siempre se ven en modo oscuro (el look "negativo" del resto del sitio pega mejor con
+  // el escenario de concierto), independientemente de la preferencia global guardada en
+  // localStorage -- por eso se fuerza aqui en vez de tocar ThemeToggle, y se restaura el tema que
+  // hubiera al entrar cuando el usuario sale del quiz, en vez de dejarlo forzado en el resto del
+  // sitio.
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousTheme = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', 'dark');
+    // ".site-shell" pinta un fondo blanco opaco (globals.css) que, al estar por encima del portal
+    // en el orden de pintado normal, tapa por completo el fondo fijo -- se hace transparente solo
+    // mientras el quiz esta montado (ver ".quiz-bg-active .site-shell" en el <style> de abajo) en
+    // vez de tocar la regla global, para no afectar al resto de paginas que si dependen de ese
+    // fondo blanco (p.ej. el contra-invert de AlphaTab).
+    document.body.classList.add('quiz-bg-active');
+    return () => {
+      if (previousTheme) root.setAttribute('data-theme', previousTheme);
+      else root.removeAttribute('data-theme');
+      document.body.classList.remove('quiz-bg-active');
+    };
+  }, []);
 
   const testStartRef = useRef(0);
   const questionStartRef = useRef(0);
@@ -150,9 +195,29 @@ export default function QuizRunner() {
   }
 
   const currentQuestion = questions[index];
+  const backgroundImage = QUIZ_MODE_BACKGROUNDS[mode];
+  const backgroundLayers = [
+    'linear-gradient(to bottom, rgba(8, 8, 8, 0.43) 0%, rgba(8, 8, 8, 0.15) 18%, rgba(8, 8, 8, 0.08) 42%, rgba(8, 8, 8, 0.18) 78%, rgba(8, 8, 8, 0.46) 100%)',
+    'radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.3) 100%)',
+    `url(${backgroundImage})`,
+  ].join(', ');
 
   return (
     <main className="quiz-page">
+      {/* Fondo fijo al viewport: se pinta con un portal directamente en <body>, fuera de
+          ".site-shell", porque ese contenedor lleva el filtro invert() del modo oscuro del sitio
+          -- un elemento position:fixed DENTRO de un ancestro con filter deja de anclarse al
+          viewport y pasa a comportarse como si fuera absolute respecto a ese ancestro (asi lo
+          especifica CSS), lo que rompía el "fondo fijo" en cuanto el quiz fuerza data-theme=dark.
+          Al vivir fuera de ".site-shell" tampoco le afecta esa inversion, así que ademas ya no
+          hace falta contra-invertirlo para que la foto conserve sus colores reales. */}
+      {mounted
+        ? createPortal(
+            <div className="quiz-bg-fixed" style={{ backgroundImage: backgroundLayers }} aria-hidden="true" />,
+            document.body,
+          )
+        : null}
+
       {backHref ? (
         <Link href={backHref} aria-label="Volver a la leccion" className="quiz-back-arrow">
           <span aria-hidden="true">←</span>
@@ -205,8 +270,18 @@ export default function QuizRunner() {
 
       <QuizDiagramStyles />
       <style>{`
+        /* Transparentes para que se vea el fondo fijo del portal (".quiz-bg-fixed") por debajo --
+           ".site-shell" normalmente pinta un blanco opaco (globals.css) que, sin esto, tapa el
+           portal por completo aunque tenga z-index negativo (el z-index solo ordena capas, no
+           hace huecos en el fondo opaco de un antecesor). Ambas reglas van detras de la clase que
+           el useEffect de arriba pone en <body> mientras el quiz esta montado, asi que el resto
+           del sitio conserva su fondo blanco normal. */
+        body.quiz-bg-active .site-shell {
+          background: transparent;
+        }
+
         .quiz-page {
-          background: #ffffff;
+          background: transparent;
           box-sizing: border-box;
           color: #080808;
           min-height: 100vh;
@@ -214,6 +289,36 @@ export default function QuizRunner() {
           padding: clamp(28px, 5vw, 72px) clamp(16px, 6vw, 96px);
           position: relative;
           width: 100%;
+        }
+
+        /* Vive fuera de ".quiz-page" (portal a <body>, ver JSX de arriba). Fijo al viewport y
+           escalado solo por el alto: "auto 100%" fuerza la altura de la imagen a ocupar el 100%
+           del alto de este elemento (100vh, por el inset:0 en position:fixed), dejando el ancho
+           proporcional aunque eso recorte los lados en pantallas estrechas -- se ve la foto
+           entera de arriba a abajo, nunca de lado a lado. */
+        .quiz-bg-fixed {
+          background-color: #080808;
+          background-position: center;
+          background-repeat: no-repeat;
+          background-size: auto 100%;
+          inset: 0;
+          pointer-events: none;
+          position: fixed;
+          z-index: -1;
+        }
+
+        /* El quiz fuerza data-theme="dark" (ver useEffect mas arriba), lo que invierte
+           ".site-shell" entero -- el resto de la pagina (tarjetas, texto de dentro) SI se deja
+           invertir con el resto del sitio a proposito: estan escritos en tonos oscuros sobre
+           tarjeta clara (para "modo claro"), y esa misma inversion los convierte automaticamente
+           en texto claro sobre tarjeta oscura translucida -- el "modo oscuro" de toda la vida del
+           sitio, sin tener que duplicar cada color a mano.
+           .quiz-header y .quiz-empty son la excepcion: son texto suelto directamente sobre el
+           fondo fijo (sin tarjeta detras) pensado para leerse claro sobre fondo oscuro real, asi
+           que se contra-invierten para que no se giren a negro. */
+        html[data-theme='dark'] .quiz-header,
+        html[data-theme='dark'] .quiz-empty {
+          filter: invert(1) hue-rotate(180deg);
         }
 
         .quiz-back-arrow {
@@ -263,19 +368,22 @@ export default function QuizRunner() {
         }
 
         .quiz-header h1 {
+          color: #ffffff;
           font-size: clamp(36px, 6vw, 64px);
           font-weight: 950;
           letter-spacing: 0;
           line-height: 1;
           margin: 0;
+          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
           text-transform: uppercase;
         }
 
         .quiz-score-line {
-          color: #047857;
+          color: #34d399;
           font-size: 20px;
           font-weight: 800;
           margin: 8px 0 0;
+          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
         }
 
         .quiz-mode-switcher {
@@ -287,7 +395,7 @@ export default function QuizRunner() {
         }
 
         .quiz-mode-button {
-          background: transparent;
+          background: rgba(255, 255, 255, 0.88);
           border: 2px solid #080808;
           border-radius: 999px;
           color: #080808;
@@ -304,8 +412,12 @@ export default function QuizRunner() {
         }
 
         .quiz-question-card {
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          background: rgba(255, 255, 255, 0.48);
           border: 3px solid #080808;
           border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
           box-sizing: border-box;
           display: grid;
           gap: clamp(16px, 3vw, 24px);
@@ -402,8 +514,12 @@ export default function QuizRunner() {
         }
 
         .quiz-results {
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          background: rgba(255, 255, 255, 0.48);
           border: 3px solid #047857;
           border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
           box-sizing: border-box;
           display: grid;
           gap: 10px;
@@ -461,17 +577,24 @@ export default function QuizRunner() {
         }
 
         .quiz-empty {
+          color: #ffffff;
           text-align: center;
+          text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
         }
 
         .quiz-multijugador-wrap {
-          border-top: 1px solid #d4d4d8;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          background: rgba(255, 255, 255, 0.48);
+          border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+          box-sizing: border-box;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 8px;
           margin-top: clamp(48px, 8vw, 80px);
-          padding-top: clamp(28px, 5vw, 44px);
+          padding: clamp(28px, 5vw, 44px) clamp(16px, 4vw, 28px);
         }
 
         .quiz-multijugador-button {
@@ -498,8 +621,12 @@ export default function QuizRunner() {
         }
 
         .quiz-speedrun {
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          background: rgba(255, 255, 255, 0.48);
           border: 3px solid #080808;
           border-radius: 12px;
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
           box-sizing: border-box;
           display: grid;
           gap: 18px;
