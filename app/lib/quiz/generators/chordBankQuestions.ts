@@ -125,7 +125,7 @@ export function generateNameFourChords(entry: QuestionBankEntry, _mode: QuizMode
       [
         { texto: chordLabel(correct), correcta: true },
         ...distractors.map((c) => ({ texto: chordLabel(c), correcta: false })),
-        { texto: 'El acorde que se llama a si mismo', correcta: false },
+        { texto: 'El acorde que se llama a sí mismo', correcta: false },
       ],
       rng,
     );

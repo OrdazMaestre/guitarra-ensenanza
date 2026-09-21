@@ -64,7 +64,7 @@ export function generateSharpPrecedes(entry: QuestionBankEntry, _mode: QuizMode,
     [
       { texto: correct, correcta: true },
       ...distractors.map((texto) => ({ texto, correcta: false })),
-      { texto: 'Antes y despues, como una peli de Almodovar', correcta: false },
+      { texto: 'Antes y después, como una peli de Almodóvar', correcta: false },
     ],
     rng,
   );
@@ -81,7 +81,7 @@ export function generateFlatFollows(entry: QuestionBankEntry, _mode: QuizMode, r
     [
       { texto: correct, correcta: true },
       ...distractors.map((texto) => ({ texto, correcta: false })),
-      { texto: 'Despues de las clases de solfeo', correcta: false },
+      { texto: 'Después de las clases de solfeo', correcta: false },
     ],
     rng,
   );

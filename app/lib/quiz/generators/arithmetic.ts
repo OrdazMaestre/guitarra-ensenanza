@@ -126,7 +126,7 @@ export function generateTonesToSemitones(entry: QuestionBankEntry, _mode: QuizMo
     [
       { texto: String(correct), correcta: true },
       ...distractors.map((d) => ({ texto: String(d), correcta: false })),
-      { texto: 'los que tu quieras', correcta: false },
+      { texto: 'los que tú quieras', correcta: false },
     ],
     rng,
   );

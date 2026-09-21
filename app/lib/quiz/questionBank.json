@@ -36,9 +36,9 @@
       "pregunta": "¿Donde estan los trastes?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["en el clavijero", "en las cuerdas", "en la caja", "en el mastil", "en el trastero"],
+      "opciones": ["en el clavijero", "en las cuerdas", "en la caja", "en el mástil", "en el trastero"],
       "opcion_graciosa": "en el trastero",
-      "correcta": ["en el mastil"]
+      "correcta": ["en el mástil"]
     },
     {
       "id": "1.2",
@@ -68,9 +68,9 @@
       "pregunta": "¿Donde colocamos los dedos de la mano derecha?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["Soy zurdo, en el mastil", "Soy zurdo, en la caja", "Soy diestro, en el mastil", "Soy diestro, en la caja", "Cruzados, por si acaso"],
+      "opciones": ["Soy zurdo, en el mástil", "Soy zurdo, en la caja", "Soy diestro, en el mástil", "Soy diestro, en la caja", "Cruzados, por si acaso"],
       "opcion_graciosa": "Cruzados, por si acaso",
-      "correcta": ["Soy zurdo, en el mastil", "Soy diestro, en la caja"],
+      "correcta": ["Soy zurdo, en el mástil", "Soy diestro, en la caja"],
       "nota": "2 correctas fijas (no dependen de una preferencia guardada del usuario): la mano derecha pisa cuerdas si eres diestro (mano dominante rasguea/puntea junto a la caja) o pisa trastes en el mastil si eres zurdo"
     },
     {
@@ -79,9 +79,9 @@
       "pregunta": "¿Donde colocamos los dedos de la mano izquierda?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["Soy zurdo, en el mastil", "Soy zurdo, en la caja", "Soy diestro, en el mastil", "Soy diestro, en la caja", "En el bolsillo, para lucirse"],
+      "opciones": ["Soy zurdo, en el mástil", "Soy zurdo, en la caja", "Soy diestro, en el mástil", "Soy diestro, en la caja", "En el bolsillo, para lucirse"],
       "opcion_graciosa": "En el bolsillo, para lucirse",
-      "correcta": ["Soy diestro, en el mastil", "Soy zurdo, en la caja"]
+      "correcta": ["Soy diestro, en el mástil", "Soy zurdo, en la caja"]
     },
     {
       "id": "1.5",
@@ -100,9 +100,9 @@
       "pregunta": "Un sonido agudo vibra ___ que uno grave",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["mas rapido", "mas lento", "igual de rapido", "con mas fuerza", "dando saltitos"],
+      "opciones": ["más rápido", "más lento", "igual de rápido", "con más fuerza", "dando saltitos"],
       "opcion_graciosa": "dando saltitos",
-      "correcta": ["mas rapido"],
+      "correcta": ["más rápido"],
       "nota": "apartado El sonido en la musica: vibracion rapida = sonido agudo, vibracion lenta = sonido grave"
     },
     {
@@ -143,7 +143,7 @@
       "pregunta": "¿Cual es el traste cero?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["no existe", "La cuerda al aire", "el comodin", "el mas dificil", "El que nunca encuentras"],
+      "opciones": ["no existe", "La cuerda al aire", "el comodín", "el más difícil", "El que nunca encuentras"],
       "opcion_graciosa": "El que nunca encuentras",
       "correcta": ["La cuerda al aire"]
     },
@@ -183,8 +183,8 @@
       "pregunta": "¿Que significa el 0 en una tablatura?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["no se puede", "no hacer nada", "mutear la cuerda", "cuerda al aire", "tocar rapido"],
-      "opcion_graciosa": "tocar rapido",
+      "opciones": ["no se puede", "no hacer nada", "mutear la cuerda", "cuerda al aire", "tocar rápido"],
+      "opcion_graciosa": "tocar rápido",
       "correcta": ["cuerda al aire"]
     },
     {
@@ -267,8 +267,8 @@
       "pregunta": "¿Que es un arpegio?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["notas de un acorde tocadas individualmente", "las notas impares de un acorde", "acorde tocado muy rapido", "notas tocadas al azar", "Un acorde timido"],
-      "opcion_graciosa": "Un acorde timido",
+      "opciones": ["notas de un acorde tocadas individualmente", "las notas impares de un acorde", "acorde tocado muy rápido", "notas tocadas al azar", "Un acorde tímido"],
+      "opcion_graciosa": "Un acorde tímido",
       "correcta": ["notas de un acorde tocadas individualmente"]
     },
     {
@@ -359,8 +359,8 @@
       "pregunta": "¿Que diferencia hay entre musica clasica y musica moderna?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["bonito vs feo", "interpretar vs improvisar", "solo una usa la blue note", "la musica clasica son solo pianos", "Unos 300 anos de diferencia"],
-      "opcion_graciosa": "Unos 300 anos de diferencia",
+      "opciones": ["bonito vs feo", "interpretar vs improvisar", "solo una usa la blue note", "la música clásica son solo pianos", "Unos 300 años de diferencia"],
+      "opcion_graciosa": "Unos 300 años de diferencia",
       "correcta": ["interpretar vs improvisar"]
     },
     {
@@ -380,9 +380,9 @@
       "pregunta": "¿Que estilos son parte de la musica clasica?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["barroco", "rococo", "romanticismo", "swing", "bachata"],
+      "opciones": ["barroco", "rococó", "romanticismo", "swing", "bachata"],
       "opcion_graciosa": "bachata",
-      "correcta": ["barroco", "rococo", "romanticismo"]
+      "correcta": ["barroco", "rococó", "romanticismo"]
     },
     {
       "id": "9.1",
@@ -453,8 +453,8 @@
       "pregunta": "(Dificil) ¿# es...?",
       "dificultad": "dificil",
       "variables": [],
-      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar mas fuerte"],
-      "opcion_graciosa": "tocar mas fuerte",
+      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar más fuerte"],
+      "opcion_graciosa": "tocar más fuerte",
       "correcta": ["subir medio tono"]
     },
     {
@@ -463,8 +463,8 @@
       "pregunta": "(Dificil) ¿Bemol es...?",
       "dificultad": "dificil",
       "variables": [],
-      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar mas flojo"],
-      "opcion_graciosa": "tocar mas flojo",
+      "opciones": ["bajar un tono", "subir medio tono", "bajar medio tono", "subir un tono", "tocar más flojo"],
+      "opcion_graciosa": "tocar más flojo",
       "correcta": ["bajar medio tono"]
     },
     {
@@ -516,7 +516,7 @@
       "pregunta": "Sol Mayor es...",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["solo un acorde", "solo una pentatonica", "solo una escala", "solo el relativo mayor de Mi", "todas a la vez"],
+      "opciones": ["solo un acorde", "solo una pentatónica", "solo una escala", "solo el relativo mayor de Mi", "todas a la vez"],
       "opcion_graciosa": null,
       "correcta": ["todas a la vez"],
       "nota": "sin opcion graciosa: es una pregunta de tipo 'todas las respuestas son correctas', las 4 primeras opciones son incorrectas precisamente por el 'solo' (Sol Mayor es acorde, pentatonica, escala Y relativo mayor de Mi a la vez, no una sola cosa)"
@@ -549,9 +549,9 @@
       "pregunta": "¿Que nota es F# en Sol Mayor?",
       "dificultad": "facil",
       "variables": [],
-      "opciones": ["segunda", "cuarta", "quinta", "septima", "La nota rebelde de la escala"],
+      "opciones": ["segunda", "cuarta", "quinta", "séptima", "La nota rebelde de la escala"],
       "opcion_graciosa": "La nota rebelde de la escala",
-      "correcta": ["septima"]
+      "correcta": ["séptima"]
     },
     {
       "id": "9.3.2",

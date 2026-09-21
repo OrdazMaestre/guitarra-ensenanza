@@ -8,7 +8,9 @@ import { tierFor } from '@/app/lib/quiz/rankingTiers';
 import { bonusFor } from '@/app/lib/quiz/scoring';
 import { createRng } from '@/app/lib/quiz/shuffle';
 import type { QuizMode, RuntimeQuestion } from '@/app/lib/quiz/types';
+import { useQuizMusic } from '@/app/lib/quiz/useQuizMusic';
 import { isKnownLessonSlug, resolveQuizTopicForSlug, topicsUpToSlug } from '../quizTemarioMap';
+import SpotlightFlank from '../SpotlightFlank';
 import QuestionCard from './QuestionCard';
 import { QuizDiagramStyles } from './QuizDiagramView';
 import QuizModeSwitcher from './QuizModeSwitcher';
@@ -51,6 +53,7 @@ export default function QuizRunner() {
   const backHref = isKnownLessonSlug(fromSlug) ? `/lecciones/temario/${fromSlug}` : undefined;
 
   const [mode, setMode] = useState<QuizMode>('facil');
+  const { volume, setVolume } = useQuizMusic(mode);
   const [creandoSala, setCreandoSala] = useState(false);
   const [errorSala, setErrorSala] = useState<string | null>(null);
   // Arranca vacío a propósito: selectQuestions() usa Math.random() (sin seed), así que generarlo
@@ -224,6 +227,19 @@ export default function QuizRunner() {
         </Link>
       ) : null}
 
+      <label className="quiz-music-volume">
+        <span className="quiz-music-volume-label">Vol {Math.round(volume * 100)}</span>
+        <input
+          aria-label="Volumen de la musica"
+          max="1"
+          min="0"
+          step="0.05"
+          type="range"
+          value={volume}
+          onChange={(e) => setVolume(Number(e.target.value))}
+        />
+      </label>
+
       <article className="quiz-content">
         <header className="quiz-header">
           <h1>Quiz</h1>
@@ -261,9 +277,11 @@ export default function QuizRunner() {
         )}
 
         <div className="quiz-multijugador-wrap">
-          <button type="button" className="quiz-multijugador-button" onClick={handleMultijugador} disabled={creandoSala}>
-            {creandoSala ? 'Creando sala...' : 'MULTIJUGADOR'}
-          </button>
+          <SpotlightFlank>
+            <button type="button" className="quiz-multijugador-button" onClick={handleMultijugador} disabled={creandoSala}>
+              {creandoSala ? 'Creando sala...' : 'MULTIJUGADOR'}
+            </button>
+          </SpotlightFlank>
           {errorSala ? <p className="quiz-name-error">{errorSala}</p> : null}
         </div>
       </article>
@@ -278,6 +296,20 @@ export default function QuizRunner() {
            del sitio conserva su fondo blanco normal. */
         body.quiz-bg-active .site-shell {
           background: transparent;
+        }
+
+        /* .site-home-link ("Portada") y .theme-toggle-button (claro/oscuro) son componentes
+           globales del sitio (globals.css) -- se sobreescriben solo mientras el quiz esta
+           montado, con el mismo scoping por body.quiz-bg-active que .site-shell arriba, para no
+           tocar su aspecto en el resto de paginas. El quiz fuerza data-theme="dark" mientras esta
+           montado (ver useEffect de arriba), asi que solo hace falta la variante oscura del
+           boton de tema. */
+        body.quiz-bg-active .site-home-link {
+          background: rgba(255, 255, 255, 0.5);
+        }
+
+        html[data-theme='dark'] body.quiz-bg-active .theme-toggle-button {
+          background: rgba(24, 24, 27, 0.5);
         }
 
         .quiz-page {
@@ -323,7 +355,7 @@ export default function QuizRunner() {
 
         .quiz-back-arrow {
           align-items: center;
-          background: rgba(255, 255, 255, 0.9);
+          background: rgba(255, 255, 255, 0.5);
           border: 2px solid #080808;
           border-radius: 6px;
           color: #080808;
@@ -352,6 +384,42 @@ export default function QuizRunner() {
         .quiz-back-arrow:focus-visible {
           outline: 3px solid #047857;
           outline-offset: 4px;
+        }
+
+        /* Misma altura/posicion vertical que .quiz-back-arrow pero en espejo (right en vez de
+           left) y forma de pildora en vez de cuadrado, para hacer sitio al slider -- mismo patron
+           de control de volumen que el resto del sitio (ver AGENTS.md: accent-color #047857,
+           112px, step 0.05, "Vol X"). Infraestructura de musica de fondo por modalidad, ver
+           useQuizMusic. */
+        .quiz-music-volume {
+          align-items: center;
+          background: rgba(255, 255, 255, 0.5);
+          border: 2px solid #080808;
+          border-radius: 999px;
+          cursor: pointer;
+          display: inline-flex;
+          gap: 8px;
+          padding: 0 14px;
+          height: clamp(40px, 6vw, 48px);
+          position: absolute;
+          right: clamp(10px, 3vw, 28px);
+          top: clamp(10px, 2vw, 22px);
+          z-index: 80;
+        }
+
+        .quiz-music-volume-label {
+          color: #080808;
+          font-size: 13px;
+          font-weight: 700;
+          min-width: 46px;
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        .quiz-music-volume input[type='range'] {
+          accent-color: #047857;
+          cursor: pointer;
+          width: 112px;
         }
 
         .quiz-content {
@@ -399,7 +467,7 @@ export default function QuizRunner() {
         }
 
         .quiz-mode-button {
-          background: rgba(255, 255, 255, 0.88);
+          background: rgba(255, 255, 255, 0.5);
           border: 2px solid #080808;
           border-radius: 999px;
           color: #080808;
@@ -611,6 +679,8 @@ export default function QuizRunner() {
           font-weight: 950;
           letter-spacing: 0.08em;
           padding: 14px 40px;
+          position: relative;
+          z-index: 1;
         }
 
         .quiz-multijugador-button:hover,

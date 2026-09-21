@@ -22,7 +22,7 @@ const SCALE_LABEL: Record<ScaleId, string> = {
   'la-menor': 'La menor',
 };
 
-const ORDINAL_WORD = ['primera', 'segunda', 'tercera', 'cuarta', 'quinta', 'sexta', 'septima'];
+const ORDINAL_WORD = ['primera', 'segunda', 'tercera', 'cuarta', 'quinta', 'sexta', 'séptima'];
 
 function ordinalForDegree(degree: ScaleDegree): string {
   return ORDINAL_WORD[Number(degree.degree) - 1];
@@ -105,7 +105,7 @@ export function generateSeventhChordByName(entry: QuestionBankEntry, _mode: Quiz
     [
       { texto: correct, correcta: true },
       ...otherDegrees.map((d) => ({ texto: d.seventhNotes.join('-'), correcta: false })),
-      { texto: 'Las que le apetezcan al acorde ese dia', correcta: false },
+      { texto: 'Las que le apetezcan al acorde ese día', correcta: false },
     ],
     rng,
   );
@@ -137,7 +137,7 @@ export function generateChordDegreeNumber(entry: QuestionBankEntry, _mode: QuizM
     [
       { texto: degree.roman, correcta: true },
       ...distractors.map((d) => ({ texto: d.roman, correcta: false })),
-      { texto: 'El numero de la suerte', correcta: false },
+      { texto: 'El número de la suerte', correcta: false },
     ],
     rng,
   );

@@ -24,7 +24,7 @@ export function generateStringRegister(entry: QuestionBankEntry, _mode: QuizMode
       { texto: 'aguda', correcta: correct === 'aguda' },
       { texto: 'media', correcta: correct === 'media' },
       { texto: 'grave', correcta: correct === 'grave' },
-      { texto: 'eso que es?', correcta: false },
+      { texto: '¿Eso qué es?', correcta: false },
       { texto: 'Depende del humor de la cuerda', correcta: false },
     ],
     rng,
