@@ -203,6 +203,36 @@ export function matchRankingFact(text: string): string | null {
   return hit?.text ?? null;
 }
 
+// --- Música de fondo de los quiz (composiciones originales de Ordaz) ---
+// Mismo patrón que RANKING_FACTS: son 4 pistas propias (public/audio/quiz/),
+// nunca publicadas en ningún sitio, así que no hay ninguna base de datos
+// externa (como el oEmbed que sí sirve para los vídeos de YouTube) de donde
+// sacar el dato — ni MAIkael ni ningún modelo puede "reconocerlas" aunque
+// tuviera oído real, y esta web ni siquiera le manda audio (Groq recibe solo
+// texto). La única fuente fiable es que Ordaz las describa él mismo, igual
+// que se cura a mano el resto del índice.
+const QUIZ_MUSIC_FACTS: RankingFact[] = [
+  {
+    triggerWords: [
+      'musica',
+      'cancion',
+      'canciones',
+      'banda sonora',
+      'soundtrack',
+      'black gilmur',
+      'electric warlock',
+      'iron rain',
+    ],
+    text: 'La música de fondo de cada modalidad del quiz se compuso especialmente PARA el quiz, no son canciones que ya existieran antes. Si preguntan por el grupo o autor, son nombres inventados para la ocasión — dilo con naturalidad, no lo ocultes. En fácil suena a blues-rock muy suave, como dos guitarras acústicas improvisando sobre un metrónomo, y la compusiste tú mismo, MAIkael. En difícil suena a hard-rock estilo Black Sabbath con Paul Gilmoure (stoner-space-prog), del grupo (inventado) Black Gilmur, marcando un ritmo poco a poco para improvisar encima. En mini-torneo suena a rock progresivo con toques de heavy metal, una canción ya preparada y ensayada con ambiente de batalla épica (stoner-doom metal), del grupo (inventado) Electric Warlock. Y en campeonato suena a una obra maestra de heavy-power-thrash metal muy detallada y ensayada, del grupo (inventado) Iron Rain. Cuéntalo con naturalidad si preguntan, en frases seguidas, nunca en lista.',
+  },
+];
+
+export function matchQuizMusicFact(text: string): string | null {
+  const normalized = normalizeEs(text);
+  const hit = QUIZ_MUSIC_FACTS.find((f) => f.triggerWords.some((w) => normalized.includes(w)));
+  return hit?.text ?? null;
+}
+
 // --- Vídeos reales del temario (generado, ver maikaelVideoIndex.ts) ---
 // app/lib/maikaelVideoIndex.ts lo regenera scripts/generate-video-index.mjs
 // consultando el oEmbed público de YouTube (título + canal reales) — así no
@@ -261,7 +291,8 @@ export function buildPageContextMessage(
   secrets: string[] = [],
   videos: VideoEntry[] = [],
   currentPage: MaikaelPageEntry | null = null,
-  rankingFact: string | null = null
+  rankingFact: string | null = null,
+  quizMusicFact: string | null = null
 ): string | null {
   const lines: string[] = [];
   if (currentPage) {
@@ -288,6 +319,9 @@ export function buildPageContextMessage(
   }
   if (rankingFact) {
     lines.push(`LOGRO: ${rankingFact}`);
+  }
+  if (quizMusicFact) {
+    lines.push(`MÚSICA: ${quizMusicFact}`);
   }
   if (secrets.length > 0) {
     lines.push(...secrets.map((s) => `SECRETO (el alumno ya preguntó directamente por algo oculto, así que puedes contarlo): ${s}`));
