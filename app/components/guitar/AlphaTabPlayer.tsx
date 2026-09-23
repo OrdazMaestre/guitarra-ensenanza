@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent, ReactNode, UIEvent } from 'react';
 import * as alphaTab from '@coderline/alphatab';
+import {
+  getAudioCurrentTime,
+  playBassNote,
+  playMetronomeClick as playDrumClick,
+  touchAudioContext,
+} from '@/app/lib/guitarAudioEngine';
 
 interface AlphaTabPlayerProps {
   centerHorizontalContent?: boolean;
@@ -22,6 +28,12 @@ interface AlphaTabPlayerProps {
   initialSpeed?: number;
   layout?: 'page' | 'horizontal';
   minHeight?: number;
+  // Opt-in only: when true (and the loaded score has more than one usable
+  // track), shows a track selector with per-track mute/solo that actually
+  // gates the custom audio scheduler. Every other prop/page is unaffected
+  // because this defaults to false and every new code path it triggers is
+  // additive (see "Multipista" in AlphaTabPlayer.NOTES.md).
+  multiTrack?: boolean;
   showHorizontalScrollbar?: boolean;
   source?: string;
   tab?: string;
@@ -34,6 +46,19 @@ const DEFAULT_SPEED = 1;
 const DEFAULT_BPM = 96;
 const MIN_AUDIBLE_NOTE_LEVEL = 0.028;
 const DENSE_CHORD_NOTE_COUNT = 3;
+// +30% requested for the drum track specifically, independent of the shared
+// volumeRef slider it's derived from. Safe headroom-wise: guitarAudioEngine.ts's
+// kick synthesis peaks at 0.58 * volume (see its own file), so even at
+// volumeRef=1.0 this reaches 0.754 — just past the metronome limiter's -3dB
+// (~0.708) threshold, which is exactly what that limiter exists to absorb
+// gracefully (see "Multipista" > drum volume in AlphaTabPlayer.NOTES.md).
+const DRUM_TRACK_VOLUME_BOOST = 1.3;
+// Bass volume relative to the shared volumeRef slider, same pattern as
+// DRUM_TRACK_VOLUME_BOOST above. See AlphaTabPlayer.NOTES.md "Bajo
+// sintetizado" for the measured RMS comparison against the guitar track that
+// the original 1.0 value was based on, and its "-50%" follow-up entry for
+// why this dropped to 0.5.
+const BASS_TRACK_VOLUME_MULTIPLIER = 0.5;
 const TAB_DRAG_THRESHOLD = 8;
 const HORIZONTAL_SCROLL_MIN_EXTRA_WIDTH = 80;
 const MAX_GUITAR_VOICES = 12;
@@ -49,6 +74,18 @@ const GUITAR_STRING_GAINS: Record<number, number> = {
 const GUITAR_SAMPLE_RELEASE = 0.2;
 const GUITAR_SAMPLE_PALM_MUTE_RELEASE = 0.055;
 const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
+// Soft-knee limiter threshold for the shared guitar/metronome-click output
+// bus (getAudioOutput below), in the SAME amplitude units as its final
+// output (post input.gain=0.85 * master.gain=1.35). Chosen from real offline
+// measurement (see tests/guitar-output-limiter.spec.ts and "Volumen por
+// pista... — techo de guitarra" in AlphaTabPlayer.NOTES.md): every
+// trackVolumeMultiplier=1 scenario measured (single notes on every string,
+// dense 3-6 note chords, at volumeRef up to its max of 1.0) peaks at ~0.567
+// — comfortably under this threshold, so the limiter is provably identity
+// (bit-for-bit, floating-point noise only) for every page that doesn't pass
+// a >1 trackVolumeMultiplier. It only engages once trackVolumeMultiplier's
+// new max of 2 (added alongside this constant) pushes a real peak above it.
+const GUITAR_OUTPUT_LIMITER_THRESHOLD = 0.7;
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 const LOOP_VISUAL_X_OFFSET = -31;
@@ -78,6 +115,21 @@ const OPEN_STRING_MIDI_BY_STRING: Record<number, number> = {
   4: 50, // D3
   5: 45, // A2
   6: 40, // E2
+};
+// 4-string bass, standard tuning (E1-A1-D2-G2). Verified against the real
+// bass track's staff.tuning in prueba-master-of-puppets.gp ([43,38,33,28] =
+// G2,D2,A1,E1 high-to-low, same convention as the guitar tuning array above)
+// rather than assumed — see AlphaTabPlayer.NOTES.md "Bajo sintetizado". Not
+// derived from staff.tuning at runtime because classifyTrackKind only checks
+// the string COUNT (4) to decide 'bass'; a track tuned differently than
+// standard EADG would still play through this fixed map (same limitation
+// OPEN_STRING_MIDI_BY_STRING already has for 6-string 'guitar' tracks, see
+// the "Limitación conocida" note).
+const OPEN_STRING_MIDI_BY_STRING_BASS: Record<number, number> = {
+  1: 43, // G2
+  2: 38, // D2
+  3: 33, // A1
+  4: 28, // E1
 };
 
 interface TabNote {
@@ -149,6 +201,50 @@ interface StringLabelGroup {
     y: number;
   }>;
   systemY: number;
+}
+
+// Multipista (opt-in, see AlphaTabPlayerProps.multiTrack): a track is
+// 'guitar' when it's a standard 6-string staff (reuses the same
+// OPEN_STRING_MIDI_BY_STRING/normalizeAlphaTabStringNumber math as the
+// existing single-track engine, so it only works for tracks tuned like a
+// regular guitar), 'bass' when it's a standard 4-string staff (own
+// OPEN_STRING_MIDI_BY_STRING_BASS map + playBassNote synth voice, see
+// AlphaTabPlayer.NOTES.md "Bajo sintetizado"), 'percussion' when the staff is
+// flagged as a drum staff, and 'unsupported' for anything else — there is no
+// audio voice for that category, so it never gets scheduled regardless of
+// its mute/solo state. See AlphaTabPlayer.NOTES.md "Multipista".
+type TrackKind = 'bass' | 'guitar' | 'percussion' | 'unsupported';
+type DrumClickType = 'cymbal' | 'kick' | 'snare';
+
+// Per-drum-element mute/solo/volume UI (see "Volumen por pista y por
+// elemento de batería" in AlphaTabPlayer.NOTES.md). Array order below
+// (kick, snare, cymbal) is also the dropdown's display order — matches how
+// the feature was requested ("bombo, caja, platillo").
+const DRUM_CLICK_TYPES: DrumClickType[] = ['kick', 'snare', 'cymbal'];
+const DRUM_ELEMENT_LABELS: Record<DrumClickType, string> = {
+  cymbal: 'Platillo',
+  kick: 'Bombo',
+  snare: 'Caja',
+};
+
+interface TrackDisplayInfo {
+  index: number;
+  kind: TrackKind;
+  name: string;
+}
+
+interface AuxTrackEvent {
+  bassNotes?: TabNote[];
+  guitarNotes?: TabNote[];
+  percussionHits?: DrumClickType[];
+  quarterNotes: number;
+  quarterStart: number;
+}
+
+interface AuxTrackSchedule {
+  events: AuxTrackEvent[];
+  index: number;
+  kind: 'bass' | 'guitar' | 'percussion';
 }
 
 interface AudioOutputChain {
@@ -223,6 +319,7 @@ class GuitarSampleVoice {
 interface AlphaTabNoteLike {
   fret: number;
   isDead?: boolean;
+  percussionArticulation?: number;
   string: number;
 }
 
@@ -241,6 +338,11 @@ interface AlphaTabBeatLike {
 }
 
 interface AlphaTabScoreLike {
+  // Real initial tempo (BPM) of the loaded file, per AlphaTab's own `Score.tempo`
+  // getter (node_modules/@coderline/alphatab/dist/alphaTab.d.ts). Only read when
+  // multiTrack is true — see the `bpm` useMemo and AlphaTabPlayer.NOTES.md
+  // "Multipista" for why this isn't wired up for every `source` page.
+  tempo?: number;
   masterBars?: Array<{
     displayWidth?: number;
     section?: {
@@ -249,6 +351,13 @@ interface AlphaTabScoreLike {
     } | null;
   }>;
   tracks: Array<{
+    name?: string;
+    // GP7-style articulation table for percussion tracks. When present,
+    // note.percussionArticulation is an index into this array; when absent
+    // (or the index isn't listed), it falls back to being a raw GM drum
+    // number directly (see the SDK's own doc comment on
+    // Note.percussionArticulation). See "Multipista" in the NOTES file.
+    percussionArticulations?: Array<{ outputMidiNumber?: number }>;
     staves: Array<{
       bars: Array<{
         displayWidth?: number;
@@ -264,6 +373,13 @@ interface AlphaTabScoreLike {
           beats: AlphaTabBeatLike[];
         }>;
       }>;
+      isPercussion?: boolean;
+      // Only read/written by the percussion notation preview (see
+      // "Previsualización de partitura de batería" in AlphaTabPlayer.NOTES.md).
+      // Every other code path in this file never touches these two flags.
+      showStandardNotation?: boolean;
+      showTablature?: boolean;
+      tuning?: number[];
     }>;
   }>;
 }
@@ -330,6 +446,33 @@ function MetronomeIcon() {
       <path d="M8 21h8" />
       <path d="M6 21l4-18h4l4 18" />
       <path d="M12 7l4 7" />
+    </svg>
+  );
+}
+
+function TracksIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <circle cx="9" cy="6" r="2" fill="currentColor" stroke="none" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <circle cx="15" cy="12" r="2" fill="currentColor" stroke="none" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+      <circle cx="11" cy="18" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// Opens the per-drum-element (bombo/caja/platillo) mute/solo/volume
+// dropdown — see "Volumen por pista y por elemento de batería" in
+// AlphaTabPlayer.NOTES.md. Purely decorative snare-drum silhouette, same
+// stroke-based style as the other icons in this file.
+function DrumIcon({ size = 32 }: NoteIconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2">
+      <ellipse cx="12" cy="7" rx="8" ry="3" />
+      <path d="M4 7v6c0 1.66 3.58 3 8 3s8-1.34 8-3V7" />
+      <path d="M4 13v4c0 1.66 3.58 3 8 3s8-1.34 8-3v-4" />
     </svg>
   );
 }
@@ -472,8 +615,52 @@ function normalizeAlphaTabStringNumber(stringNumber: number) {
   return 7 - stringNumber;
 }
 
-function buildEventsFromScore(score: AlphaTabScoreLike) {
-  const beatEntries = score.tracks[0]?.staves[0]?.bars
+// Same convention as normalizeAlphaTabStringNumber above, generalized to a
+// 4-string instrument: AlphaTab's note.string counts up from 1 = lowest
+// string, so normalized = (stringCount + 1) - string. Verified against the
+// real file's tuning array — see OPEN_STRING_MIDI_BY_STRING_BASS.
+function normalizeBassStringNumber(stringNumber: number) {
+  return 5 - stringNumber;
+}
+
+function extractGuitarNotesFromBeat(beat: AlphaTabBeatLike): TabNote[] {
+  if (beat.isRest) {
+    return [];
+  }
+
+  return beat.notes
+    .map((note) => ({ ...note, normalizedString: normalizeAlphaTabStringNumber(note.string) }))
+    .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[note.normalizedString] !== undefined)
+    .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString }));
+}
+
+function extractBassNotesFromBeat(beat: AlphaTabBeatLike): TabNote[] {
+  if (beat.isRest) {
+    return [];
+  }
+
+  return beat.notes
+    .map((note) => ({ ...note, normalizedString: normalizeBassStringNumber(note.string) }))
+    .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING_BASS[note.normalizedString] !== undefined)
+    .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString }));
+}
+
+// trackIndex defaults to 0 so every existing call site (there was only one)
+// keeps behaving exactly as before. Multipista mode is the only caller that
+// ever passes something else. The note extractor is picked from the target
+// track's own classifyTrackKind() result ('bass' -> extractBassNotesFromBeat,
+// anything else -> extractGuitarNotesFromBeat, same as before this track was
+// introduced) so the primary-track pipeline (cursor/scroll-follow/playEvent)
+// works for a bass track exactly like it already did for guitar, without a
+// second parallel code path. For every existing non-multiTrack page,
+// trackIndex is always the literal 0 and that track is always classified
+// 'guitar' (lesson tabs are guitar tabs), so this resolves to
+// extractGuitarNotesFromBeat exactly as before — see "Multipista" > "Bajo
+// como pista principal" in AlphaTabPlayer.NOTES.md.
+function buildEventsFromScore(score: AlphaTabScoreLike, trackIndex = 0) {
+  const track = score.tracks[trackIndex];
+  const extractNotes = track && classifyTrackKind(track) === 'bass' ? extractBassNotesFromBeat : extractGuitarNotesFromBeat;
+  const beatEntries = track?.staves[0]?.bars
     .flatMap((bar) => {
       const beats = bar.voices[0]?.beats ?? [];
       const firstPlayableBeatId = beats.find((beat) => !beat.isRest && beat.notes.length > 0)?.id;
@@ -493,14 +680,168 @@ function buildEventsFromScore(score: AlphaTabScoreLike) {
     beatId: beat.id,
     duration: beat.duration,
     isFirstPlayableBeatOfBar,
-    notes: beat.isRest
-      ? []
-      : beat.notes
-          .map((note) => ({ ...note, normalizedString: normalizeAlphaTabStringNumber(note.string) }))
-          .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[note.normalizedString] !== undefined)
-          .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString })),
+    notes: extractNotes(beat),
     quarterNotes: beatQuarterNotes(beat),
   }));
+}
+
+function classifyTrackKind(track: AlphaTabScoreLike['tracks'][number]): TrackKind {
+  const staff = track.staves[0];
+  if (staff?.isPercussion) {
+    return 'percussion';
+  }
+  if (staff?.tuning?.length === 6) {
+    return 'guitar';
+  }
+  if (staff?.tuning?.length === 4) {
+    return 'bass';
+  }
+  return 'unsupported';
+}
+
+function choosePrimaryTrackIndex(score: AlphaTabScoreLike) {
+  const guitarIndex = score.tracks.findIndex((track) => classifyTrackKind(track) === 'guitar');
+  return guitarIndex >= 0 ? guitarIndex : 0;
+}
+
+// GM percussion map, grouped into the 3 drum sounds the metronome engine
+// already knows how to synthesize (playMetronomeClick in guitarAudioEngine.ts).
+// Kick/snare are the notes the user explicitly asked for; toms are folded
+// into whichever of the two they read closer to (low toms -> kick's low
+// thump, mid/high toms -> snare's sharper transient); everything else
+// (hi-hats, crashes, rides, latin percussion, etc.) falls back to 'cymbal'.
+// Not a perfect GM mapping, deliberately — see AlphaTabPlayer.NOTES.md.
+const PERCUSSION_KICK_MIDI = new Set([35, 36, 41, 43, 45]);
+const PERCUSSION_SNARE_MIDI = new Set([31, 33, 34, 37, 38, 40, 47, 48, 50]);
+const PERCUSSION_CYMBAL_MIDI = new Set([26, 27, 28, 29, 30, 39, 42, 44, 46, 49, 51, 52, 53, 54, 55, 56, 57, 58, 59]);
+
+function percussionClickType(midiNumber: number): DrumClickType {
+  if (PERCUSSION_KICK_MIDI.has(midiNumber)) {
+    return 'kick';
+  }
+  if (PERCUSSION_SNARE_MIDI.has(midiNumber)) {
+    return 'snare';
+  }
+  if (PERCUSSION_CYMBAL_MIDI.has(midiNumber)) {
+    return 'cymbal';
+  }
+  // Coarse fallback for anything not explicitly listed above.
+  if (midiNumber < 42) {
+    return 'kick';
+  }
+  return midiNumber < 60 ? 'snare' : 'cymbal';
+}
+
+function resolvePercussionMidi(track: AlphaTabScoreLike['tracks'][number], note: AlphaTabNoteLike) {
+  const index = note.percussionArticulation;
+  if (index === undefined) {
+    return undefined;
+  }
+  const mapped = track.percussionArticulations?.[index]?.outputMidiNumber;
+  return typeof mapped === 'number' ? mapped : index;
+}
+
+function extractPercussionHitsFromBeat(beat: AlphaTabBeatLike, track: AlphaTabScoreLike['tracks'][number]): DrumClickType[] {
+  if (beat.isRest) {
+    return [];
+  }
+
+  return beat.notes
+    .map((note) => resolvePercussionMidi(track, note))
+    .filter((midiNumber): midiNumber is number => midiNumber !== undefined)
+    .map((midiNumber) => percussionClickType(midiNumber));
+}
+
+// One flattened, chronologically-ordered event list per auxiliary track,
+// independent from the primary track's own `events` state. quarterStart is
+// derived the same way playEvent derives eventStartQuarter for the primary
+// track (a running sum of quarterNotes) rather than from
+// beat.absolutePlaybackStart, so both timelines share the same units without
+// needing to know that field's internal (undocumented) unit.
+function buildAuxiliaryTrackSchedule(
+  track: AlphaTabScoreLike['tracks'][number],
+  kind: 'bass' | 'guitar' | 'percussion'
+): AuxTrackEvent[] {
+  const beats = (track.staves[0]?.bars ?? []).flatMap((bar) => bar.voices[0]?.beats ?? []);
+  const events: AuxTrackEvent[] = [];
+  let quarterCursor = 0;
+
+  for (const beat of beats) {
+    const quarterNotes = beatQuarterNotes(beat);
+    if (kind === 'guitar') {
+      const guitarNotes = extractGuitarNotesFromBeat(beat);
+      if (guitarNotes.length > 0) {
+        events.push({ guitarNotes, quarterNotes, quarterStart: quarterCursor });
+      }
+    } else if (kind === 'bass') {
+      const bassNotes = extractBassNotesFromBeat(beat);
+      if (bassNotes.length > 0) {
+        events.push({ bassNotes, quarterNotes, quarterStart: quarterCursor });
+      }
+    } else {
+      const percussionHits = extractPercussionHitsFromBeat(beat, track);
+      if (percussionHits.length > 0) {
+        events.push({ percussionHits, quarterNotes, quarterStart: quarterCursor });
+      }
+    }
+    quarterCursor += quarterNotes;
+  }
+
+  return events;
+}
+
+function buildAuxiliaryTrackSchedules(
+  score: AlphaTabScoreLike,
+  trackInfos: TrackDisplayInfo[],
+  primaryTrackIndex: number
+): AuxTrackSchedule[] {
+  const schedules: AuxTrackSchedule[] = [];
+  for (const info of trackInfos) {
+    if (info.index === primaryTrackIndex || info.kind === 'unsupported') {
+      continue;
+    }
+    const track = score.tracks[info.index];
+    const events = buildAuxiliaryTrackSchedule(track, info.kind);
+    if (events.length > 0) {
+      schedules.push({ events, index: info.index, kind: info.kind });
+    }
+  }
+  return schedules;
+}
+
+// Percussion notation preview (opt-in, multiTrack only — see
+// "Previsualización de partitura de batería" in AlphaTabPlayer.NOTES.md).
+// A drum beat has no fret/string model at all, so this deliberately does NOT
+// reuse TabEvent (whose `notes: TabNote[]` would always be empty and
+// misleading) — it only carries what playEvent's preview hook needs to find
+// "which drum beat is happening right now" while the primary track plays.
+interface PercussionPreviewEvent {
+  beat: AlphaTabBeatLike;
+  quarterNotes: number;
+  quarterStart: number;
+}
+
+// Sibling of buildEventsFromScore/buildAuxiliaryTrackSchedule, used only by
+// the percussion preview. quarterStart is a running sum of quarterNotes,
+// same convention buildAuxiliaryTrackSchedule already uses for drum AUDIO
+// scheduling, so both share the same "negras desde el inicio" timeline as
+// playEvent's own eventStartQuarter without depending on
+// beat.absolutePlaybackStart's undocumented unit.
+function buildPercussionEventsFromScore(score: AlphaTabScoreLike, trackIndex: number): PercussionPreviewEvent[] {
+  const track = score.tracks[trackIndex];
+  const beats = (track?.staves[0]?.bars ?? []).flatMap((bar) => bar.voices[0]?.beats ?? []);
+  const events: PercussionPreviewEvent[] = [];
+  let quarterCursor = 0;
+
+  for (const beat of beats) {
+    const quarterNotes = beatQuarterNotes(beat);
+    if (!beat.isRest && beat.notes.length > 0) {
+      events.push({ beat, quarterNotes, quarterStart: quarterCursor });
+    }
+    quarterCursor += quarterNotes;
+  }
+
+  return events;
 }
 
 function parseTempo(tab: string) {
@@ -511,12 +852,50 @@ function noteMidi(note: TabNote) {
   return OPEN_STRING_MIDI_BY_STRING[note.stringNumber] + note.fret;
 }
 
+function bassNoteMidi(note: TabNote) {
+  return OPEN_STRING_MIDI_BY_STRING_BASS[note.stringNumber] + note.fret;
+}
+
 function stringArrayIndex(note: TabNote) {
   return clamp(6 - note.stringNumber, 0, GUITAR_SAMPLE_CUTOFFS.length - 1);
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+let guitarOutputLimiterCurve: Float32Array<ArrayBuffer> | null = null;
+
+// Identity below GUITAR_OUTPUT_LIMITER_THRESHOLD, a tanh knee above it —
+// same shape/reasoning as guitarAudioEngine.ts's getBassSoftClipCurve (a
+// WaveShaperNode reacts per-sample with no lookahead, so unlike a
+// DynamicsCompressorNode it never mis-fires on this engine's fast note
+// attacks), except this one has an explicit linear region instead of a pure
+// tanh(x): the guitar bus's normal levels (~0.4-0.57) are much closer to 1.0
+// than the bass's (~0.19), so a plain tanh over the whole domain would
+// audibly compress today's normal playback — see GUITAR_OUTPUT_LIMITER_THRESHOLD's
+// comment for the measured numbers that set the threshold. Cached at module
+// level (pure function of no runtime state, safe to share across every
+// AlphaTabPlayer instance on a page) same pattern as guitarAudioEngine.ts's
+// curve caches.
+function getGuitarOutputLimiterCurve(): Float32Array<ArrayBuffer> {
+  if (guitarOutputLimiterCurve) return guitarOutputLimiterCurve;
+  const n = 4096;
+  const curve = new Float32Array(n);
+  const t = GUITAR_OUTPUT_LIMITER_THRESHOLD;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const ax = Math.abs(x);
+    if (ax <= t) {
+      curve[i] = x;
+    } else {
+      const sign = x < 0 ? -1 : 1;
+      const knee = (ax - t) / (1 - t);
+      curve[i] = sign * (t + (1 - t) * Math.tanh(knee));
+    }
+  }
+  guitarOutputLimiterCurve = curve;
+  return curve;
 }
 
 function eventDurationSeconds(event: TabEvent, speed: number, bpm: number) {
@@ -614,6 +993,7 @@ export default function AlphaTabPlayer({
   initialSpeed = DEFAULT_SPEED,
   layout = 'page',
   minHeight,
+  multiTrack = false,
   showHorizontalScrollbar = true,
   source,
   tab = '',
@@ -626,6 +1006,66 @@ export default function AlphaTabPlayer({
   const audioOutputRef = useRef<AudioOutputChain | null>(null);
   const activeSourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const activeVoicesRef = useRef<GuitarSampleVoice[]>([]);
+  const auxiliaryTrackScheduleRef = useRef<AuxTrackSchedule[]>([]);
+  const mutedTrackIndexesRef = useRef<Set<number>>(new Set());
+  // Per-track volume multiplier (see "Volumen por pista..." in
+  // AlphaTabPlayer.NOTES.md), [0, 1], default 1 (no change) — an ADDITIONAL
+  // multiplier on top of volumeRef, never a replacement for it or for the
+  // already-tuned BASS_TRACK_VOLUME_MULTIPLIER/DRUM_TRACK_VOLUME_BOOST
+  // constants. Same twin-ref/state pattern as mutedTrackIndexesRef above.
+  const trackVolumesRef = useRef<Map<number, number>>(new Map());
+  // Same idea as trackVolumesRef/mutedTrackIndexesRef/soloTrackIndexRef, but
+  // keyed by DrumClickType instead of track index — per-hit-type (bombo/
+  // caja/platillo) mute/solo/volume, independent of which track is muted/
+  // soloed. See "Volumen por pista..." in AlphaTabPlayer.NOTES.md.
+  const drumElementMutedRef = useRef<Set<DrumClickType>>(new Set());
+  const drumElementSoloRef = useRef<DrumClickType | null>(null);
+  const drumElementVolumesRef = useRef<Map<DrumClickType, number>>(new Map());
+  const primaryTrackIndexRef = useRef(0);
+  // Kind of the current primary track (see applyPrimaryTrack), read by
+  // playEvent to decide which synth to use for the primary track's own
+  // notes: 'bass' -> playBassNote (guitarAudioEngine.ts's own AudioContext),
+  // anything else -> playPluckedNote (this component's sample engine, same
+  // as always). Defaults to 'guitar' and playEvent additionally gates this
+  // dispatch on `multiTrack` so non-multiTrack pages never take the bass
+  // branch even if this were ever miscomputed. See "Multipista" in
+  // AlphaTabPlayer.NOTES.md.
+  const primaryTrackKindRef = useRef<TrackKind>('guitar');
+  // The score object currently loaded (identity check to tell a genuinely new
+  // score apart from the reentrant scoreLoaded fire caused by our own
+  // api.renderTracks() call below — see applyPrimaryTrack).
+  const scoreRef = useRef<AlphaTabScoreLike | null>(null);
+  // Which track index AlphaTab is actually rendering right now. null until the
+  // first scoreLoaded fire so applyPrimaryTrack always runs at least once.
+  const renderedTrackIndexRef = useRef<number | null>(null);
+  // Set only when the user manually picks a track from the dropdown; overrides
+  // choosePrimaryTrackIndex's auto-pick for the rest of this score's lifetime.
+  const selectedTrackIndexOverrideRef = useRef<number | null>(null);
+  const soloTrackIndexRef = useRef<number | null>(null);
+  // Percussion notation preview (multiTrack only — see "Previsualización de
+  // partitura de batería" in AlphaTabPlayer.NOTES.md). null = normal view
+  // (whatever primaryTrackIndexRef points at). Set synchronously, before the
+  // api.renderTracks() call that shows the drum track, so the reentrant
+  // scoreLoaded fire that call triggers can tell "we're mid-preview" apart
+  // from a genuine track change and skip applyPrimaryTrack.
+  const previewedTrackIndexRef = useRef<number | null>(null);
+  // Beat list for the currently previewed drum track, built once when the
+  // preview starts (see buildPercussionEventsFromScore). Read every tick by
+  // playEvent while a preview is active, matched against eventStartQuarter.
+  const percussionPreviewEventsRef = useRef<PercussionPreviewEvent[]>([]);
+  // Per-staff showTablature/showStandardNotation captured right before
+  // previewPercussionTrack overwrites them, keyed `${trackIndex}-${staffIndex}`,
+  // so exitPercussionPreview restores exactly what was there instead of
+  // assuming a fixed value (every non-multiTrack page never touches these two
+  // fields at all, so this stays an empty Map for them).
+  const originalStaveVisibilityRef = useRef<Map<string, { showStandardNotation: boolean; showTablature: boolean }>>(
+    new Map()
+  );
+  // api.settings.display.staveProfile as it was before previewPercussionTrack
+  // forced StaveProfile.Score. Captured (not hardcoded to StaveProfile.Tab,
+  // the value this file's own AlphaTabApi config sets — see scoreLoaded)
+  // so this stays correct even if that config value ever changes.
+  const originalStaveProfileRef = useRef<alphaTab.StaveProfile | null>(null);
   const beatToEventIndexRef = useRef(new Map<number, number>());
   const finishTimerRef = useRef<number | null>(null);
   const guitarSamplesLoadingRef = useRef<Promise<LoadedGuitarSample[]> | null>(null);
@@ -662,11 +1102,41 @@ export default function AlphaTabPlayer({
   const volumeRef = useRef(DEFAULT_VOLUME);
   const voiceIdRef = useRef(0);
   const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
-  const bpm = useMemo(() => (tab ? parseTempo(tab) : DEFAULT_BPM), [tab]);
+  // detectedScoreTempo is the real score.tempo (BPM) read off the loaded file,
+  // only populated when multiTrack is true (see the scoreLoaded handler and
+  // "Multipista" > tempo in AlphaTabPlayer.NOTES.md for why this isn't
+  // wired up for every `source` page — it would silently change the playback
+  // speed of existing, already-tuned lesson pages).
+  const [detectedScoreTempo, setDetectedScoreTempo] = useState<number | null>(null);
+  const bpm = useMemo(() => {
+    if (multiTrack && detectedScoreTempo) {
+      return detectedScoreTempo;
+    }
+    return tab ? parseTempo(tab) : DEFAULT_BPM;
+  }, [tab, multiTrack, detectedScoreTempo]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [metronome, setMetronome] = useState(DEFAULT_METRONOME);
   const [metronomeMenuOpen, setMetronomeMenuOpen] = useState(false);
   const [metronomeSubdivision, setMetronomeSubdivision] = useState<MetronomeSubdivision>(DEFAULT_METRONOME_SUBDIVISION);
+  const [scoreTracks, setScoreTracks] = useState<TrackDisplayInfo[]>([]);
+  const [primaryTrackIndex, setPrimaryTrackIndex] = useState(0);
+  // React-visible twin of previewedTrackIndexRef (same pattern as
+  // primaryTrackIndex/primaryTrackIndexRef above) — drives the dropdown's
+  // "Volver a tablatura" pill and the JSX that hides string labels/loop boxes
+  // while a drum preview is active. See "Previsualización de partitura de
+  // batería" in AlphaTabPlayer.NOTES.md.
+  const [previewedTrackIndex, setPreviewedTrackIndex] = useState<number | null>(null);
+  const [mutedTrackIndexes, setMutedTrackIndexes] = useState<Set<number>>(new Set());
+  const [soloTrackIndex, setSoloTrackIndex] = useState<number | null>(null);
+  // React-visible twin of trackVolumesRef — see that ref's comment above.
+  const [trackVolumes, setTrackVolumes] = useState<Map<number, number>>(new Map());
+  const [trackMenuOpen, setTrackMenuOpen] = useState(false);
+  // React-visible twins of drumElementMutedRef/drumElementSoloRef/
+  // drumElementVolumesRef — see those refs' comments above.
+  const [drumElementMuted, setDrumElementMuted] = useState<Set<DrumClickType>>(new Set());
+  const [drumElementSolo, setDrumElementSolo] = useState<DrumClickType | null>(null);
+  const [drumElementVolumes, setDrumElementVolumes] = useState<Map<DrumClickType, number>>(new Map());
+  const [drumMenuOpen, setDrumMenuOpen] = useState(false);
   const [volume, setVolume] = useState(DEFAULT_VOLUME);
   const [speed, setSpeed] = useState(initialSpeed);
   const [startEventIndex, setStartEventIndex] = useState(0);
@@ -781,12 +1251,26 @@ export default function AlphaTabPlayer({
   }
 
   function selectKeyboardPlayer() {
+    // Intentional module-singleton reassignment — see "Global singletons" in
+    // AlphaTabPlayer.NOTES.md. react-hooks/globals is a false positive here:
+    // this reassignment already existed before the percussion-preview work
+    // in this file and was previously unflagged; it started firing once this
+    // file's total size crossed some internal complexity threshold in the
+    // react-compiler ESLint plugin (confirmed by bisection — removing
+    // unrelated new code elsewhere in this file makes it disappear again,
+    // with zero change to this line). See "Previsualización de partitura de
+    // batería" in AlphaTabPlayer.NOTES.md for the full account.
+    // eslint-disable-next-line react-hooks/globals
     selectedKeyboardPlayerId = playerIdRef.current;
   }
 
   function clearGlobalPlaybackIfCurrent(playerId = playerIdRef.current) {
     if (currentPlayingPlayerId === playerId) {
+      // Same false positive as selectKeyboardPlayer above (react-hooks/globals
+      // on a pre-existing, intentional module-singleton reassignment).
+      // eslint-disable-next-line react-hooks/globals
       currentPlayingPlayerId = null;
+      // eslint-disable-next-line react-hooks/globals
       stopCurrentPlayingPlayer = null;
     }
   }
@@ -1186,6 +1670,33 @@ export default function AlphaTabPlayer({
     setMetronomeSubdivision(DEFAULT_METRONOME_SUBDIVISION);
     metronomeSubdivisionRef.current = DEFAULT_METRONOME_SUBDIVISION;
     metronomeRef.current = DEFAULT_METRONOME;
+    setScoreTracks([]);
+    setMutedTrackIndexes(new Set());
+    mutedTrackIndexesRef.current = new Set();
+    setSoloTrackIndex(null);
+    soloTrackIndexRef.current = null;
+    setTrackVolumes(new Map());
+    trackVolumesRef.current = new Map();
+    setTrackMenuOpen(false);
+    setDrumElementMuted(new Set());
+    drumElementMutedRef.current = new Set();
+    setDrumElementSolo(null);
+    drumElementSoloRef.current = null;
+    setDrumElementVolumes(new Map());
+    drumElementVolumesRef.current = new Map();
+    setDrumMenuOpen(false);
+    primaryTrackIndexRef.current = 0;
+    setPrimaryTrackIndex(0);
+    scoreRef.current = null;
+    renderedTrackIndexRef.current = null;
+    selectedTrackIndexOverrideRef.current = null;
+    previewedTrackIndexRef.current = null;
+    setPreviewedTrackIndex(null);
+    percussionPreviewEventsRef.current = [];
+    originalStaveVisibilityRef.current = new Map();
+    originalStaveProfileRef.current = null;
+    setDetectedScoreTempo(null);
+    auxiliaryTrackScheduleRef.current = [];
     setVolume(DEFAULT_VOLUME);
     volumeRef.current = DEFAULT_VOLUME;
     setSpeed(initialSpeed);
@@ -1249,53 +1760,104 @@ export default function AlphaTabPlayer({
 
     apiRef.current = api;
     const offScoreLoaded = api.scoreLoaded.on((score) => {
-      if (layout === 'horizontal') {
-        applyAnnotatedHorizontalBarWidths(score as AlphaTabScoreLike);
+      const typedScore = score as AlphaTabScoreLike;
+      // multiTrack calls api.renderTracks() below (to make AlphaTab actually
+      // render the chosen track instead of always defaulting to tracks[0] —
+      // see "Multipista" > scroll-follow fix in AlphaTabPlayer.NOTES.md),
+      // which re-fires this same scoreLoaded event with the same score
+      // object. isNewScore tells a genuinely new file apart from that
+      // reentrant fire so the one-time-per-file setup below (bar widths,
+      // track list, mute defaults, detected tempo) never runs twice.
+      const isNewScore = scoreRef.current !== typedScore;
+      scoreRef.current = typedScore;
 
-        if (horizontalBarWidth) {
-          for (const masterBar of (score as AlphaTabScoreLike).masterBars ?? []) {
-            masterBar.displayWidth = Math.max(masterBar.displayWidth ?? 0, horizontalBarWidth);
-          }
+      if (isNewScore) {
+        if (layout === 'horizontal') {
+          applyAnnotatedHorizontalBarWidths(typedScore);
 
-          for (const track of (score as AlphaTabScoreLike).tracks) {
-            for (const staff of track.staves) {
-              for (const bar of staff.bars) {
-                bar.displayWidth = Math.max(bar.displayWidth ?? 0, horizontalBarWidth);
-                if (bar.masterBar) {
-                  bar.masterBar.displayWidth = Math.max(bar.masterBar.displayWidth ?? 0, horizontalBarWidth);
+          if (horizontalBarWidth) {
+            for (const masterBar of typedScore.masterBars ?? []) {
+              masterBar.displayWidth = Math.max(masterBar.displayWidth ?? 0, horizontalBarWidth);
+            }
+
+            for (const track of typedScore.tracks) {
+              for (const staff of track.staves) {
+                for (const bar of staff.bars) {
+                  bar.displayWidth = Math.max(bar.displayWidth ?? 0, horizontalBarWidth);
+                  if (bar.masterBar) {
+                    bar.masterBar.displayWidth = Math.max(bar.masterBar.displayWidth ?? 0, horizontalBarWidth);
+                  }
                 }
               }
             }
           }
+
+          if (effectiveHorizontalBarWidths?.length) {
+            applyExplicitHorizontalBarWidths(typedScore, effectiveHorizontalBarWidths);
+          }
         }
 
-        if (effectiveHorizontalBarWidths?.length) {
-          applyExplicitHorizontalBarWidths(score as AlphaTabScoreLike, effectiveHorizontalBarWidths);
+        if (multiTrack) {
+          const trackInfos: TrackDisplayInfo[] = typedScore.tracks.map((track, index) => ({
+            index,
+            kind: classifyTrackKind(track),
+            name: track.name || `Pista ${index + 1}`,
+          }));
+          const initialMutedTracks = new Set(
+            trackInfos.filter((info) => info.kind === 'unsupported').map((info) => info.index)
+          );
+          setScoreTracks(trackInfos);
+          setMutedTrackIndexes(initialMutedTracks);
+          mutedTrackIndexesRef.current = initialMutedTracks;
+          setSoloTrackIndex(null);
+          soloTrackIndexRef.current = null;
+          // New score: per-track/per-drum-element volume overrides and drum
+          // mute/solo don't carry meaning across a different file, so they
+          // reset to defaults here too, same as mute/solo above.
+          setTrackVolumes(new Map());
+          trackVolumesRef.current = new Map();
+          setDrumElementMuted(new Set());
+          drumElementMutedRef.current = new Set();
+          setDrumElementSolo(null);
+          drumElementSoloRef.current = null;
+          setDrumElementVolumes(new Map());
+          drumElementVolumesRef.current = new Map();
+
+          // Real tempo (BPM) is only trusted for multiTrack — see the `bpm`
+          // useMemo and AlphaTabPlayer.NOTES.md.
+          if (typeof typedScore.tempo === 'number' && typedScore.tempo > 0) {
+            setDetectedScoreTempo(typedScore.tempo);
+          }
+        } else {
+          setScoreTracks([]);
+          auxiliaryTrackScheduleRef.current = [];
         }
       }
 
-      const scoreEvents = buildEventsFromScore(score as AlphaTabScoreLike);
-      if (scoreEvents.length === 0) {
-        return;
-      }
-
-      setEvents(scoreEvents);
-      beatToEventIndexRef.current = new Map(
-        scoreEvents
-          .map((event, index) => (event.beatId === undefined ? null : ([event.beatId, index] as const)))
-          .filter((entry): entry is readonly [number, number] => entry !== null)
-      );
-      setStartEventIndex(0);
-      setLoopEndIndex(null);
-      setLoopStartIndex(null);
-      setLoopHighlightBoxes([]);
-      setLoopHandleBoxes([]);
-      window.setTimeout(() => {
-        placeCursorForBeat(scoreEvents[0]?.beat);
-        bindTabScrollElement();
-      }, 0);
-      if (!compact) {
-        scheduleStringLabelRefresh(scoreEvents);
+      const desiredTrackIndex = multiTrack
+        ? selectedTrackIndexOverrideRef.current ?? choosePrimaryTrackIndex(typedScore)
+        : 0;
+      // Skip while a percussion preview is active: previewPercussionTrack's
+      // own api.renderTracks() call re-fires this same scoreLoaded event
+      // (isNewScore is false by then, same score object), and
+      // previewedTrackIndexRef is set synchronously before that call
+      // specifically so this check can tell the two apart — without it,
+      // applyPrimaryTrack would immediately re-render the primary track and
+      // undo the drum notation that call was trying to show. See
+      // "Previsualización de partitura de batería" in AlphaTabPlayer.NOTES.md.
+      //
+      // applyPrimaryTrack is declared further down in this component and
+      // called here before its declaration (function hoisting — an
+      // already-established, working pattern in this file, e.g. the
+      // spacebar handler below calls startLocalPlayback the same way).
+      // react-hooks/immutability started flagging that as an error only
+      // once this file's total size crossed some internal complexity
+      // threshold in the react-compiler ESLint plugin — confirmed by
+      // bisection, see "Previsualización de partitura de batería" in
+      // AlphaTabPlayer.NOTES.md for the full account.
+      if (previewedTrackIndexRef.current === null) {
+        // eslint-disable-next-line react-hooks/immutability
+        applyPrimaryTrack(typedScore, desiredTrackIndex);
       }
     });
     if (source) {
@@ -1417,12 +1979,21 @@ export default function AlphaTabPlayer({
   }, []);
 
   useEffect(() => {
+    // stopLocalPlayback/startLocalPlayback are declared further down in this
+    // component and called here before their declaration — function
+    // hoisting, an already-established pattern in this file. Flagged by
+    // react-hooks/immutability only once this file's total size crossed some
+    // internal complexity threshold in the react-compiler ESLint plugin;
+    // confirmed a false positive by bisection (see "Previsualización de
+    // partitura de batería" in AlphaTabPlayer.NOTES.md).
     keyboardActionRef.current = () => {
       if (isPlayingRef.current) {
+        // eslint-disable-next-line react-hooks/immutability
         stopLocalPlayback();
         return;
       }
 
+      // eslint-disable-next-line react-hooks/immutability
       void startLocalPlayback();
     };
   });
@@ -1508,12 +2079,19 @@ export default function AlphaTabPlayer({
 
     const input = context.createGain();
     const master = context.createGain();
+    // Soft-knee limiter, see GUITAR_OUTPUT_LIMITER_THRESHOLD/
+    // getGuitarOutputLimiterCurve above — identity at every level this bus
+    // reached before trackVolumeMultiplier could exceed 1.
+    const limiter = context.createWaveShaper();
 
     input.gain.setValueAtTime(0.85, context.currentTime);
     master.gain.setValueAtTime(1.35, context.currentTime);
+    limiter.curve = getGuitarOutputLimiterCurve();
+    limiter.oversample = '2x';
 
     input.connect(master);
-    master.connect(context.destination);
+    master.connect(limiter);
+    limiter.connect(context.destination);
 
     audioOutputRef.current = { input, master };
     return audioOutputRef.current;
@@ -1743,6 +2321,117 @@ export default function AlphaTabPlayer({
         }
       }, delay);
     }
+  }
+
+  // Makes `trackIndex` both the "primary" track (the one that drives the
+  // sequential setTimeout scheduler, the events list, the cursor and
+  // boundsLookup-based scroll-follow/click-to-select/loop-selection — see
+  // "Arquitectura general" in AlphaTabPlayer.NOTES.md) and, when multiTrack,
+  // the track AlphaTab is actually rendering on screen via api.renderTracks().
+  // Root cause this fixes: AlphaTabApi.load()/scoreLoaded always renders
+  // tracks[0] by default, but the chosen "primary" track can be a different
+  // index (choosePrimaryTrackIndex skips non-guitar tracks) — boundsLookup
+  // only has bounds for beats that are actually rendered, so every bounds
+  // lookup for the primary track's beats silently failed (cursor never
+  // moved, scroll-follow never triggered, tap-to-select never matched).
+  // See "Multipista" > scroll-follow fix in AlphaTabPlayer.NOTES.md.
+  //
+  // No-ops if `trackIndex` is already the rendered track (renderedTrackIndexRef),
+  // which both (a) keeps this safe to call from every scoreLoaded fire,
+  // including the reentrant one caused by this function's own
+  // api.renderTracks() call, and (b) is what makes calling it from the track
+  // selector UI (selectVisibleTrack) a no-op when clicking the already-visible
+  // track.
+  function applyPrimaryTrack(typedScore: AlphaTabScoreLike, trackIndex: number) {
+    if (renderedTrackIndexRef.current === trackIndex) {
+      return;
+    }
+    renderedTrackIndexRef.current = trackIndex;
+    primaryTrackIndexRef.current = trackIndex;
+    setPrimaryTrackIndex(trackIndex);
+    primaryTrackKindRef.current = typedScore.tracks[trackIndex] ? classifyTrackKind(typedScore.tracks[trackIndex]) : 'guitar';
+
+    if (multiTrack) {
+      const trackInfos: TrackDisplayInfo[] = typedScore.tracks.map((track, index) => ({
+        index,
+        kind: classifyTrackKind(track),
+        name: track.name || `Pista ${index + 1}`,
+      }));
+      auxiliaryTrackScheduleRef.current = buildAuxiliaryTrackSchedules(typedScore, trackInfos, trackIndex);
+    }
+
+    const scoreEvents = buildEventsFromScore(typedScore, trackIndex);
+    if (scoreEvents.length === 0) {
+      return;
+    }
+
+    setEvents(scoreEvents);
+    beatToEventIndexRef.current = new Map(
+      scoreEvents
+        .map((event, index) => (event.beatId === undefined ? null : ([event.beatId, index] as const)))
+        .filter((entry): entry is readonly [number, number] => entry !== null)
+    );
+    setStartEventIndex(0);
+    setLoopEndIndex(null);
+    setLoopStartIndex(null);
+    setLoopHighlightBoxes([]);
+    setLoopHandleBoxes([]);
+    window.setTimeout(() => {
+      placeCursorForBeat(scoreEvents[0]?.beat);
+      bindTabScrollElement();
+    }, 0);
+    if (!compact) {
+      scheduleStringLabelRefresh(scoreEvents);
+    }
+
+    // Only multiTrack ever renders anything other than the default
+    // tracks[0], so this is a no-op call for every other page (trackIndex is
+    // always 0 there, which AlphaTab already shows by default).
+    if (multiTrack) {
+      // AlphaTabScoreLike only declares the subset of Track's fields this
+      // file actually reads (see its definition above); the real object
+      // passed in via scoreLoaded is a full alphaTab.Track, so this cast is
+      // safe — same pattern as the `score as AlphaTabScoreLike` casts already
+      // used throughout this handler.
+      apiRef.current?.renderTracks([typedScore.tracks[trackIndex] as unknown as alphaTab.model.Track]);
+    }
+  }
+
+  // User-driven track switch from the dropdown (see selectVisibleTrack's
+  // call site in the track menu JSX). Stops playback first because the
+  // scheduler's already-queued setTimeout closures capture the *old* events
+  // array (see playEvent) — letting it keep running against a swapped-out
+  // events list could desync the cursor/audio from what's on screen.
+  function selectVisibleTrack(trackIndex: number) {
+    if (!multiTrack || !scoreRef.current) {
+      return;
+    }
+    // Picking any guitar/bass track from the dropdown always means "leave
+    // the drum preview" first, even if trackIndex is already the primary
+    // track (that row's own button is `disabled` in that case — see the JSX
+    // — so this mainly matters when switching to a DIFFERENT guitar/bass
+    // track while a preview is active). See "Previsualización de partitura
+    // de batería" in AlphaTabPlayer.NOTES.md.
+    if (previewedTrackIndexRef.current !== null) {
+      exitPercussionPreview();
+    }
+    if (trackIndex === primaryTrackIndexRef.current) {
+      return;
+    }
+    // Defense in depth: the track menu only renders a clickable "view" button
+    // for 'guitar'/'bass'-kind tracks (see canView in the JSX), but guard
+    // here too — renderTracks() on a standalone percussion staff throws
+    // inside AlphaTab, and 'unsupported' tracks have no note-extraction
+    // pipeline at all.
+    const targetKind = classifyTrackKind(scoreRef.current.tracks[trackIndex]);
+    if (targetKind !== 'guitar' && targetKind !== 'bass') {
+      return;
+    }
+    if (isPlayingRef.current) {
+      stopLocalPlayback();
+    }
+    selectedTrackIndexOverrideRef.current = trackIndex;
+    applyPrimaryTrack(scoreRef.current, trackIndex);
   }
 
   function getEventIndexFromPointer(event: PointerEvent<HTMLElement>) {
@@ -2003,7 +2692,14 @@ export default function AlphaTabPlayer({
     note: TabNote,
     startTime: number,
     duration: number,
-    eventNoteCount: number
+    eventNoteCount: number,
+    // Additional per-track multiplier, [0, 1], on top of the shared
+    // volumeRef slider — only ever non-1 when multiTrack passes a real
+    // per-track override from getTrackVolume(). Every non-multiTrack call
+    // site omits this argument, so it defaults to 1 and this is a pure
+    // no-op for the rest of the site. See "Volumen por pista..." in
+    // AlphaTabPlayer.NOTES.md.
+    trackVolumeMultiplier: number = 1
   ) {
     const midi = noteMidi(note);
     const isPalmMuted = note.palmMuted ?? false;
@@ -2020,7 +2716,7 @@ export default function AlphaTabPlayer({
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
     const stringBalance = eventNoteCount >= DENSE_CHORD_NOTE_COUNT ? GUITAR_STRING_GAINS[note.stringNumber] ?? 1 : 1;
     const articulationLevel = isPalmMuted ? 0.34 : 0.58;
-    const currentVolume = volumeRef.current;
+    const currentVolume = volumeRef.current * trackVolumeMultiplier;
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
     const level =
       currentVolume <= 0
@@ -2091,12 +2787,21 @@ export default function AlphaTabPlayer({
     const bodyBuffer = context.createBuffer(1, bodyLength, context.sampleRate);
     const noise = noiseBuffer.getChannelData(0);
     const body = bodyBuffer.getChannelData(0);
+    // This whole function only ever runs from an event handler (Play button/
+    // spacebar), never during React's render phase, so Math.random() here is
+    // safe despite react-hooks/purity's "impure function during render"
+    // wording — that rule started flagging it only once this file's total
+    // size crossed some internal complexity threshold in the react-compiler
+    // ESLint plugin; confirmed a false positive by bisection (see
+    // "Previsualización de partitura de batería" in AlphaTabPlayer.NOTES.md).
     for (let index = 0; index < noiseLength; index++) {
       const progress = index / noiseLength;
+      // eslint-disable-next-line react-hooks/purity
       noise[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.4;
     }
     for (let index = 0; index < bodyLength; index++) {
       const progress = index / bodyLength;
+      // eslint-disable-next-line react-hooks/purity
       body[index] = (Math.random() * 2 - 1) * (1 - progress) ** 2.8;
     }
 
@@ -2161,6 +2866,101 @@ export default function AlphaTabPlayer({
     }
   }
 
+  // Multipista mute/solo (see AlphaTabPlayerProps.multiTrack). Solo is
+  // exclusive: while any track is soloed, every other track (primary
+  // included) is silent regardless of its own mute flag.
+  function isTrackAudible(trackIndex: number) {
+    if (soloTrackIndexRef.current !== null) {
+      return trackIndex === soloTrackIndexRef.current;
+    }
+    return !mutedTrackIndexesRef.current.has(trackIndex);
+  }
+
+  // Per-track volume multiplier read by every place that actually plays a
+  // note for a given track (primary or auxiliary) — see trackVolumesRef's
+  // comment for what it does and doesn't affect.
+  function getTrackVolume(trackIndex: number) {
+    return trackVolumesRef.current.get(trackIndex) ?? 1;
+  }
+
+  // Same idea as isTrackAudible/getTrackVolume above, but per drum hit type
+  // (bombo/caja/platillo) instead of per track — see drumElementMutedRef's
+  // comment. Only ever consulted from the 'percussion' branch of
+  // scheduleAuxiliaryTracks below.
+  function isDrumElementAudible(type: DrumClickType) {
+    if (drumElementSoloRef.current !== null) {
+      return type === drumElementSoloRef.current;
+    }
+    return !drumElementMutedRef.current.has(type);
+  }
+
+  function getDrumElementVolume(type: DrumClickType) {
+    return drumElementVolumesRef.current.get(type) ?? 1;
+  }
+
+  // Reuses playPluckedNote (guitar tracks, same engine/context as the
+  // primary track) and guitarAudioEngine.ts's playMetronomeClick/playBassNote
+  // (drum and bass tracks). Those two live on their own separate AudioContext
+  // (app/lib/guitarAudioEngine.ts has its own module-level singleton, never
+  // shared with this component's audioContextRef), so their schedule times
+  // must be derived from getAudioCurrentTime() (that engine's own clock)
+  // sampled at the same instant as `startTime`, not from `context.currentTime`
+  // — see "Multipista" in AlphaTabPlayer.NOTES.md for why.
+  function scheduleAuxiliaryTracks(context: AudioContext, eventStartQuarter: number, startTime: number, eventQuarterNotes: number) {
+    const schedules = auxiliaryTrackScheduleRef.current;
+    if (!schedules.length) return;
+
+    const eventEndQuarter = eventStartQuarter + eventQuarterNotes;
+    const secondsPerQuarter = (60 / bpm) / speedRef.current;
+    // Shared by drums AND bass — both play through guitarAudioEngine.ts's own
+    // AudioContext, sampled once here at the same instant as `startTime`.
+    const auxEngineNow = getAudioCurrentTime();
+
+    for (const track of schedules) {
+      if (!isTrackAudible(track.index)) continue;
+
+      for (const auxEvent of track.events) {
+        if (auxEvent.quarterStart < eventStartQuarter - TIMING_EPSILON) continue;
+        if (auxEvent.quarterStart >= eventEndQuarter - TIMING_EPSILON) break;
+
+        const offsetSeconds = Math.max(0, (auxEvent.quarterStart - eventStartQuarter) * secondsPerQuarter);
+        const auxDurationSeconds = secondsPerQuarter * auxEvent.quarterNotes;
+
+        if (track.kind === 'guitar' && auxEvent.guitarNotes) {
+          const notes = auxEvent.guitarNotes;
+          const trackVolume = getTrackVolume(track.index);
+          for (const note of notes) {
+            const chordDelay = notes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
+            playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, auxDurationSeconds, notes.length, trackVolume);
+          }
+        } else if (track.kind === 'bass' && auxEvent.bassNotes) {
+          const bassStartTime = auxEngineNow + 0.045 + offsetSeconds;
+          const trackVolume = getTrackVolume(track.index);
+          for (const note of auxEvent.bassNotes) {
+            playBassNote(
+              bassStartTime,
+              bassNoteMidi(note),
+              auxDurationSeconds,
+              volumeRef.current * BASS_TRACK_VOLUME_MULTIPLIER * trackVolume,
+              note.palmMuted
+            );
+          }
+        } else if (track.kind === 'percussion' && auxEvent.percussionHits) {
+          const drumStartTime = auxEngineNow + 0.045 + offsetSeconds;
+          const trackVolume = getTrackVolume(track.index);
+          for (const clickType of auxEvent.percussionHits) {
+            if (!isDrumElementAudible(clickType)) continue;
+            playDrumClick(
+              drumStartTime,
+              volumeRef.current * DRUM_TRACK_VOLUME_BOOST * trackVolume * getDrumElementVolume(clickType),
+              clickType
+            );
+          }
+        }
+      }
+    }
+  }
+
   async function startLocalPlayback() {
     if (events.length === 0) {
       return;
@@ -2175,10 +2975,25 @@ export default function AlphaTabPlayer({
     const context = getAudioContext();
     await context.resume();
     await loadGuitarSamples(context);
+    if (multiTrack) {
+      // Warms up guitarAudioEngine.ts's own AudioContext (used for drum-track
+      // hits) inside this same user-gesture call stack, same reason
+      // context.resume() above is awaited before playback starts.
+      touchAudioContext();
+    }
 
     const firstIndex = Math.min(startEventIndex, events.length - 1);
     isPlayingRef.current = true;
+    // Intentional module-singleton reassignment — see "Global singletons" in
+    // AlphaTabPlayer.NOTES.md. Same false positive as selectKeyboardPlayer/
+    // clearGlobalPlaybackIfCurrent above (react-hooks/globals only started
+    // flagging this once this file's total size crossed some internal
+    // complexity threshold in the react-compiler ESLint plugin — confirmed
+    // by bisection, see "Previsualización de partitura de batería" in
+    // AlphaTabPlayer.NOTES.md).
+    // eslint-disable-next-line react-hooks/globals
     currentPlayingPlayerId = playerIdRef.current;
+    // eslint-disable-next-line react-hooks/globals
     stopCurrentPlayingPlayer = stopLocalPlayback;
     playbackScrollUserOverrideRef.current = false;
     playbackScrollPendingRef.current = true;
@@ -2205,13 +3020,62 @@ export default function AlphaTabPlayer({
     placeCursorForEvent(index, playbackScrollPendingRef.current);
     playbackScrollPendingRef.current = false;
 
+    // Percussion notation preview (see "Previsualización de partitura de
+    // batería" in AlphaTabPlayer.NOTES.md). While a drum track is being
+    // previewed, AlphaTab is rendering that track instead of the primary
+    // one, so the placeCursorForEvent call just above — which looks up the
+    // PRIMARY track's beat in boundsLookup — silently finds nothing and is a
+    // no-op. This repositions the cursor against whichever drum beat falls
+    // inside this tick's time window instead, reusing placeCursorForBeat
+    // exactly as-is (it only needs a real beat object + boundsLookup, both
+    // valid here — no change to that function was needed).
+    if (multiTrack && previewedTrackIndexRef.current !== null) {
+      const previewMatch = percussionPreviewEventsRef.current.find(
+        (candidate) =>
+          candidate.quarterStart >= eventStartQuarter - TIMING_EPSILON &&
+          candidate.quarterStart < eventStartQuarter + event.quarterNotes - TIMING_EPSILON
+      );
+      if (previewMatch) {
+        placeCursorForBeat(previewMatch.beat, false);
+      }
+    }
+
     scheduleMetronomeClicks(context, eventStartQuarter, startTime, eventDuration, event.quarterNotes);
 
-    const audibleNotes = event.notes;
+    const primaryTrackAudible = !multiTrack || isTrackAudible(primaryTrackIndexRef.current);
+    const audibleNotes = primaryTrackAudible ? event.notes : [];
 
-    for (const note of audibleNotes) {
-      const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
-      playPluckedNote(context, note, startTime + chordDelay, eventDuration, audibleNotes.length);
+    // Primary track's own notes: 'bass' (only reachable when multiTrack picks
+    // a bass track as primary via selectVisibleTrack) plays through
+    // guitarAudioEngine.ts's playBassNote instead of the sample engine — same
+    // dispatch playEvent already does for auxiliary tracks in
+    // scheduleAuxiliaryTracks below, and same clock-sampling pattern (that
+    // engine's own getAudioCurrentTime(), not this context's currentTime; no
+    // chordDelay/STRUM_OFFSETS, bass doesn't need guitar-strum compensation).
+    // Gated on `multiTrack` so non-multiTrack pages never take this branch
+    // regardless of primaryTrackKindRef's value.
+    if (multiTrack && primaryTrackKindRef.current === 'bass') {
+      const bassEngineNow = getAudioCurrentTime();
+      const trackVolume = getTrackVolume(primaryTrackIndexRef.current);
+      for (const note of audibleNotes) {
+        playBassNote(
+          bassEngineNow + 0.045,
+          bassNoteMidi(note),
+          eventDuration,
+          volumeRef.current * BASS_TRACK_VOLUME_MULTIPLIER * trackVolume,
+          note.palmMuted
+        );
+      }
+    } else {
+      const trackVolume = multiTrack ? getTrackVolume(primaryTrackIndexRef.current) : 1;
+      for (const note of audibleNotes) {
+        const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
+        playPluckedNote(context, note, startTime + chordDelay, eventDuration, audibleNotes.length, trackVolume);
+      }
+    }
+
+    if (multiTrack) {
+      scheduleAuxiliaryTracks(context, eventStartQuarter, startTime, event.quarterNotes);
     }
 
     const nextIndex =
@@ -2257,6 +3121,103 @@ export default function AlphaTabPlayer({
     setMetronomeMenuOpen(false);
   }
 
+  // Mutually exclusive with the "Batería" dropdown (toggleDrumMenu below):
+  // both are ~256px wide and, with "Pistas" now the toolbar's leftmost
+  // button (see "Botón Pistas a la izquierda de Play" in
+  // AlphaTabPlayer.NOTES.md), there isn't enough horizontal gap between the
+  // two trigger buttons for both panels to be open at once without
+  // overlapping, regardless of which side either one opens toward or how
+  // wide the viewport is (verified at 480-1280px) — opening one now closes
+  // the other instead of trying to out-position around it.
+  function toggleTrackMenu() {
+    setTrackMenuOpen((isOpen) => {
+      const next = !isOpen;
+      if (next) setDrumMenuOpen(false);
+      return next;
+    });
+  }
+
+  function toggleTrackMute(trackIndex: number) {
+    setMutedTrackIndexes((current) => {
+      const next = new Set(current);
+      if (next.has(trackIndex)) {
+        next.delete(trackIndex);
+      } else {
+        next.add(trackIndex);
+      }
+      mutedTrackIndexesRef.current = next;
+      return next;
+    });
+  }
+
+  function toggleTrackSolo(trackIndex: number) {
+    setSoloTrackIndex((current) => {
+      const next = current === trackIndex ? null : trackIndex;
+      soloTrackIndexRef.current = next;
+      return next;
+    });
+  }
+
+  // Per-track volume slider in the "Pistas" dropdown — see trackVolumesRef's
+  // comment. Clamped to [0, 2]: the stored value is still a plain multiplier
+  // on top of already-tuned levels (1 = unchanged from before this slider
+  // existed), but the slider's own range was doubled on request so its
+  // midpoint (1, "50" displayed) is today's old max and its new max (2,
+  // "100" displayed) reaches double that. GUITAR_OUTPUT_LIMITER_THRESHOLD/
+  // getGuitarOutputLimiterCurve above is what keeps that doubled range from
+  // clipping the guitar's shared output bus — see AlphaTabPlayer.NOTES.md
+  // "Volumen por pista... — rango x2" for the measured numbers.
+  function updateTrackVolume(trackIndex: number, value: number) {
+    const clamped = clamp(value, 0, 2);
+    setTrackVolumes((current) => {
+      const next = new Map(current);
+      next.set(trackIndex, clamped);
+      trackVolumesRef.current = next;
+      return next;
+    });
+  }
+
+  // See toggleTrackMenu's comment above — mutually exclusive with it.
+  function toggleDrumMenu() {
+    setDrumMenuOpen((isOpen) => {
+      const next = !isOpen;
+      if (next) setTrackMenuOpen(false);
+      return next;
+    });
+  }
+
+  function toggleDrumElementMute(type: DrumClickType) {
+    setDrumElementMuted((current) => {
+      const next = new Set(current);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      drumElementMutedRef.current = next;
+      return next;
+    });
+  }
+
+  function toggleDrumElementSolo(type: DrumClickType) {
+    setDrumElementSolo((current) => {
+      const next = current === type ? null : type;
+      drumElementSoloRef.current = next;
+      return next;
+    });
+  }
+
+  // Same clamp/range rationale as updateTrackVolume above.
+  function updateDrumElementVolume(type: DrumClickType, value: number) {
+    const clamped = clamp(value, 0, 2);
+    setDrumElementVolumes((current) => {
+      const next = new Map(current);
+      next.set(type, clamped);
+      drumElementVolumesRef.current = next;
+      return next;
+    });
+  }
+
   function updateVolume(value: number) {
     volumeRef.current = value;
     setVolume(value);
@@ -2267,11 +3228,320 @@ export default function AlphaTabPlayer({
     setSpeed(value);
   }
 
+  // Forces every staff in the score to notation-without-tab (Score, i.e.
+  // "Only standard music notation") — the only combination this AlphaTab
+  // version (1.8.2) can render a standalone percussion staff with, see
+  // "Investigación de partitura de batería" > ACTUALIZACIÓN in
+  // AlphaTabPlayer.NOTES.md. It's global (every staff, not just the drum
+  // one) because AlphaTab silently drops the drum staff from the layout
+  // otherwise — verified empirically, not a guess. Captures the real
+  // per-staff flags and the real staveProfile before mutating them so
+  // restorePercussionPreviewStaveSettings can put back exactly what was
+  // there, not an assumed default.
+  function applyPercussionPreviewStaveSettings(score: AlphaTabScoreLike) {
+    const api = apiRef.current;
+    if (!api) {
+      return;
+    }
+
+    const captured = new Map<string, { showStandardNotation: boolean; showTablature: boolean }>();
+    score.tracks.forEach((track, trackIndex) => {
+      track.staves.forEach((staff, staffIndex) => {
+        captured.set(`${trackIndex}-${staffIndex}`, {
+          showStandardNotation: staff.showStandardNotation ?? true,
+          showTablature: staff.showTablature ?? true,
+        });
+        staff.showTablature = false;
+        staff.showStandardNotation = true;
+      });
+    });
+    originalStaveVisibilityRef.current = captured;
+
+    originalStaveProfileRef.current = api.settings.display.staveProfile;
+    api.settings.display.staveProfile = alphaTab.StaveProfile.Score;
+    api.updateSettings();
+  }
+
+  // Inverse of applyPercussionPreviewStaveSettings above.
+  function restorePercussionPreviewStaveSettings(score: AlphaTabScoreLike) {
+    const api = apiRef.current;
+    if (!api) {
+      return;
+    }
+
+    originalStaveVisibilityRef.current.forEach((flags, key) => {
+      const [trackIndexText, staffIndexText] = key.split('-');
+      const staff = score.tracks[Number(trackIndexText)]?.staves[Number(staffIndexText)];
+      if (staff) {
+        staff.showStandardNotation = flags.showStandardNotation;
+        staff.showTablature = flags.showTablature;
+      }
+    });
+    originalStaveVisibilityRef.current = new Map();
+
+    if (originalStaveProfileRef.current !== null) {
+      api.settings.display.staveProfile = originalStaveProfileRef.current;
+    }
+    originalStaveProfileRef.current = null;
+    api.updateSettings();
+  }
+
+  // Enters the drum notation preview: a temporary, read-only view that swaps
+  // the ENTIRE render to notation-without-tab and shows ONLY the percussion
+  // track (this AlphaTab version can't render a percussion staff alongside
+  // any other track — see applyPercussionPreviewStaveSettings above). The
+  // primary track keeps playing/scheduling audio completely independently
+  // the whole time (scheduleAuxiliaryTracks never depended on what's
+  // rendered on screen) — only the notation changes, and playEvent's own
+  // preview hook repositions the cursor against the drum track's beats
+  // instead of the primary track's while this is active. See
+  // "Previsualización de partitura de batería" in AlphaTabPlayer.NOTES.md.
+  function previewPercussionTrack(trackIndex: number) {
+    const score = scoreRef.current;
+    const api = apiRef.current;
+    if (!multiTrack || !score || !api) {
+      return;
+    }
+    const track = score.tracks[trackIndex];
+    if (!track || classifyTrackKind(track) !== 'percussion' || previewedTrackIndexRef.current === trackIndex) {
+      return;
+    }
+
+    applyPercussionPreviewStaveSettings(score);
+    // Set BEFORE calling renderTracks() below: that call re-fires
+    // scoreLoaded synchronously-or-not, and this ref is exactly what that
+    // handler checks to skip applyPrimaryTrack (see the scoreLoaded handler
+    // above) — setting it any later would race that reentrant fire.
+    previewedTrackIndexRef.current = trackIndex;
+    setPreviewedTrackIndex(trackIndex);
+    percussionPreviewEventsRef.current = buildPercussionEventsFromScore(score, trackIndex);
+    // loopHighlightBoxes/loopHandleBoxes/stringLabelGroups are deliberately
+    // NOT cleared here — their pixel bounds were computed against the
+    // primary track's own layout, which is deterministic and doesn't change
+    // just because a different track is rendered in between, so they're
+    // still correct once exitPercussionPreview brings the primary track
+    // back. Instead the JSX gates rendering these three on
+    // `previewedTrackIndex === null` (see Fase 5 in
+    // AlphaTabPlayer.NOTES.md) — hidden while previewing, reappear
+    // untouched afterward.
+
+    api.renderTracks([track as unknown as alphaTab.model.Track]);
+
+    window.setTimeout(() => {
+      placeCursorForBeat(percussionPreviewEventsRef.current[0]?.beat);
+      bindTabScrollElement();
+    }, 0);
+  }
+
+  // Restores the normal primary-track view. Calls api.renderTracks()
+  // directly instead of going through applyPrimaryTrack: applyPrimaryTrack's
+  // reentry guard (renderedTrackIndexRef) still points at the primary track
+  // index the whole time (previewPercussionTrack above never touches it), so
+  // routing through applyPrimaryTrack here would see "already the rendered
+  // track" and no-op, leaving drum notation on screen.
+  function exitPercussionPreview() {
+    const score = scoreRef.current;
+    const api = apiRef.current;
+    if (previewedTrackIndexRef.current === null || !score || !api) {
+      return;
+    }
+
+    restorePercussionPreviewStaveSettings(score);
+    previewedTrackIndexRef.current = null;
+    setPreviewedTrackIndex(null);
+    percussionPreviewEventsRef.current = [];
+
+    const primaryTrack = score.tracks[primaryTrackIndexRef.current];
+    if (primaryTrack) {
+      api.renderTracks([primaryTrack as unknown as alphaTab.model.Track]);
+    }
+
+    window.setTimeout(() => {
+      placeCursorForEvent(Math.min(startEventIndex, Math.max(0, events.length - 1)));
+      bindTabScrollElement();
+      if (!compact) {
+        scheduleStringLabelRefresh(events);
+      }
+    }, 0);
+  }
+
   return (
     <div ref={frameRef} className={`max-w-full overflow-visible border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
       <div className={`${compact ? 'flex justify-center px-1 pb-2' : 'sticky top-3 z-[100] flex justify-center px-1 pb-4'}`}>
         <div className={`flex flex-wrap items-center justify-center border border-zinc-700 bg-zinc-950/95 shadow-xl backdrop-blur ${compact ? 'gap-2 px-2 py-2' : 'gap-4 px-4 py-3'}`}>
           <div className="flex items-center justify-center gap-2">
+            {multiTrack && scoreTracks.length > 1 && (
+              <div className="relative flex items-center gap-2">
+                <IconButton label="Pistas" active={trackMenuOpen || soloTrackIndex !== null} onClick={toggleTrackMenu}>
+                  <TracksIcon />
+                </IconButton>
+                {trackMenuOpen && (
+                  // Colors here are inline `style` (not Tailwind color classNames) on purpose,
+                  // matching IconButton above: this project's compiled CSS never emits
+                  // Tailwind's named color-scale utilities (bg-zinc-900, text-zinc-200, etc. —
+                  // same root cause as the documented bg-white gotcha), which was previously
+                  // masked because every other themed control in this file already used inline
+                  // styles. Layout/spacing classNames (flex, gap-1, absolute, z-[130]...) are
+                  // unaffected and kept as Tailwind classes. See "Multipista" in
+                  // AlphaTabPlayer.NOTES.md.
+                  //
+                  // `right`/`width` moved into inline `style` (not `right-0`/`w-64`
+                  // classNames, which this dropdown used to have): confirmed via
+                  // computed style + document.styleSheets that this project's
+                  // compiled CSS never emitted `.right-0`/`.left-0`/`.w-64` either
+                  // (same "spacing-scale Tailwind utility doesn't compile" gotcha
+                  // already documented for `h-5`, just not noticed on THIS
+                  // dropdown before) — the classes were silently a no-op and the
+                  // browser fell back to `left: 0` "static position" by chance,
+                  // which is why moving this button to be leftmost in the toolbar
+                  // made it newly overlap the "Batería" dropdown (both were
+                  // effectively opening rightward). An inline `right: 0` briefly
+                  // made it open LEFTWARD instead — but with "Pistas" now the
+                  // toolbar's leftmost button, that pushed the menu off the left
+                  // edge of the player/viewport (reported by the user with a
+                  // screenshot on a narrower window, spilling over the sidebar).
+                  // Switched to inline `left: 0` so it opens RIGHTWARD instead,
+                  // like every other dropdown in this toolbar — verified this
+                  // still clears "Batería" (there's a real horizontal gap: Play +
+                  // Metronome sit between the two buttons). See "Botón Pistas a
+                  // la izquierda de Play" in AlphaTabPlayer.NOTES.md for the
+                  // measured numbers. Deliberately NOT touching the "Batería"
+                  // dropdown below, which keeps its own (equally non-functional)
+                  // `right-0` className unchanged, per instruction.
+                  <div
+                    className="absolute top-[calc(100%+0.5rem)] z-[130] flex flex-col items-stretch gap-1 p-2 shadow-2xl"
+                    style={{ background: '#09090b', border: '1px solid #52525b', left: 0, width: 256 }}
+                    role="menu"
+                    aria-label="Selector de pistas"
+                  >
+                    {scoreTracks.map((track) => {
+                      const isMuted = mutedTrackIndexes.has(track.index);
+                      const isSolo = soloTrackIndex === track.index;
+                      const isVisible = track.index === primaryTrackIndex && previewedTrackIndex === null;
+                      const isPreviewed = track.index === previewedTrackIndex;
+                      // 'guitar' and 'bass' tracks can become the rendered/primary track —
+                      // both have a standard notation+tab staff AlphaTab can render solo and
+                      // a note-extraction pipeline (buildEventsFromScore) that understands
+                      // their string/fret model. 'percussion' can't become the PRIMARY track
+                      // (AlphaTab's renderTracks() throws internally on a standalone
+                      // percussion staff rendered next to nothing else — StaffSystem.addBars
+                      // reads undefined.staves, verified live), but it CAN be shown read-only
+                      // via previewPercussionTrack, which works around that by also forcing
+                      // every staff to notation-without-tab first — see "Previsualización de
+                      // partitura de batería" in AlphaTabPlayer.NOTES.md. 'unsupported' has no
+                      // note-extraction pipeline at all and no way to render standalone.
+                      const canView = track.kind === 'guitar' || track.kind === 'bass';
+                      const canPreview = track.kind === 'percussion';
+                      return (
+                        <div
+                          key={track.index}
+                          className="flex flex-col gap-1 px-2 py-1.5"
+                          style={{
+                            background: '#18181b',
+                            border: isVisible ? '1px solid #60a5fa' : isPreviewed ? '1px solid #c4b5fd' : '1px solid #3f3f46',
+                          }}
+                        >
+                        <div className="flex items-center gap-2">
+                          {canView ? (
+                            <button
+                              type="button"
+                              aria-label={`Mostrar partitura de ${track.name}`}
+                              title="Ver la notación de esta pista"
+                              className="flex-1 truncate text-left text-sm font-medium"
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: isVisible ? '#93c5fd' : '#e4e4e7',
+                                cursor: isVisible ? 'default' : 'pointer',
+                                padding: 0,
+                              }}
+                              disabled={isVisible}
+                              onClick={() => selectVisibleTrack(track.index)}
+                            >
+                              {isVisible && <span aria-hidden="true">&#128065; </span>}
+                              {track.name}
+                            </button>
+                          ) : canPreview ? (
+                            <button
+                              type="button"
+                              aria-label={`Mostrar partitura de ${track.name}`}
+                              title="Ver la notación de esta pista (modo lectura, sin cursor propio de selección)"
+                              className="flex-1 truncate text-left text-sm font-medium"
+                              style={{
+                                background: 'transparent',
+                                border: 'none',
+                                color: isPreviewed ? '#c4b5fd' : '#e4e4e7',
+                                cursor: isPreviewed ? 'default' : 'pointer',
+                                padding: 0,
+                              }}
+                              disabled={isPreviewed}
+                              onClick={() => previewPercussionTrack(track.index)}
+                            >
+                              {isPreviewed && <span aria-hidden="true">&#128065; </span>}
+                              {track.name}
+                            </button>
+                          ) : (
+                            <span className="flex-1 truncate text-sm font-medium" style={{ color: '#e4e4e7' }}>
+                              {track.name}
+                              <span className="ml-1 text-xs" style={{ color: '#71717a' }}>
+                                (sin sonido)
+                              </span>
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            aria-label={`Silenciar ${track.name}`}
+                            title="Mute"
+                            className="px-2 py-1 text-xs font-bold"
+                            style={
+                              isMuted
+                                ? { background: '#f87171', border: '1px solid #f87171', color: '#09090b' }
+                                : { background: '#27272a', border: '1px solid #52525b', color: '#e4e4e7' }
+                            }
+                            onClick={() => toggleTrackMute(track.index)}
+                          >
+                            M
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Solo ${track.name}`}
+                            title="Solo"
+                            className="px-2 py-1 text-xs font-bold"
+                            style={
+                              isSolo
+                                ? { background: '#6ee7b7', border: '1px solid #6ee7b7', color: '#09090b' }
+                                : { background: '#27272a', border: '1px solid #52525b', color: '#e4e4e7' }
+                            }
+                            onClick={() => toggleTrackSolo(track.index)}
+                          >
+                            S
+                          </button>
+                        </div>
+                          <label
+                            className="flex items-center gap-2 text-xs font-medium"
+                            style={{ color: '#a1a1aa' }}
+                          >
+                            <span style={{ textAlign: 'right', width: 28 }}>
+                              {Math.round((trackVolumes.get(track.index) ?? 1) * 50)}
+                            </span>
+                            <input
+                              aria-label={`Volumen de ${track.name}`}
+                              type="range"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={trackVolumes.get(track.index) ?? 1}
+                              style={{ accentColor: '#047857', height: 8, width: 112 }}
+                              onChange={(event) => updateTrackVolume(track.index, Number(event.target.value))}
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
             <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
               {isPlaying ? <StopIcon /> : <PlayIcon />}
             </IconButton>
@@ -2345,6 +3615,92 @@ export default function AlphaTabPlayer({
                 </div>
               )}
             </div>
+            {multiTrack && scoreTracks.some((track) => track.kind === 'percussion') && (
+              // Independent of whether a drum preview is currently being
+              // shown (previewedTrackIndex) — these per-hit-type
+              // mute/solo/volume controls affect AUDIO, which plays the same
+              // whether or not the drum notation happens to be on screen
+              // right now, exactly like track mute/solo above. Replaces the
+              // old purple "Viendo: Drums (solo lectura)" pill that used to
+              // live in this exact spot — exiting a drum preview still works
+              // via selectVisibleTrack (picking any guitar/bass track from
+              // the "Pistas" dropdown), unchanged.
+              <div className="relative flex items-center gap-2">
+                <IconButton label="Batería" active={drumMenuOpen || drumElementSolo !== null} onClick={toggleDrumMenu}>
+                  <DrumIcon />
+                </IconButton>
+                {drumMenuOpen && (
+                  <div
+                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[130] flex w-64 flex-col items-stretch gap-1 p-2 shadow-2xl"
+                    style={{ background: '#09090b', border: '1px solid #52525b' }}
+                    role="menu"
+                    aria-label="Volumen por elemento de batería"
+                  >
+                    {DRUM_CLICK_TYPES.map((type) => {
+                      const isMuted = drumElementMuted.has(type);
+                      const isSolo = drumElementSolo === type;
+                      const label = DRUM_ELEMENT_LABELS[type];
+                      return (
+                        <div
+                          key={type}
+                          className="flex flex-col gap-1 px-2 py-1.5"
+                          style={{ background: '#18181b', border: '1px solid #3f3f46' }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 truncate text-sm font-medium" style={{ color: '#e4e4e7' }}>
+                              {label}
+                            </span>
+                            <button
+                              type="button"
+                              aria-label={`Silenciar ${label}`}
+                              title="Mute"
+                              className="px-2 py-1 text-xs font-bold"
+                              style={
+                                isMuted
+                                  ? { background: '#f87171', border: '1px solid #f87171', color: '#09090b' }
+                                  : { background: '#27272a', border: '1px solid #52525b', color: '#e4e4e7' }
+                              }
+                              onClick={() => toggleDrumElementMute(type)}
+                            >
+                              M
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Solo ${label}`}
+                              title="Solo"
+                              className="px-2 py-1 text-xs font-bold"
+                              style={
+                                isSolo
+                                  ? { background: '#6ee7b7', border: '1px solid #6ee7b7', color: '#09090b' }
+                                  : { background: '#27272a', border: '1px solid #52525b', color: '#e4e4e7' }
+                              }
+                              onClick={() => toggleDrumElementSolo(type)}
+                            >
+                              S
+                            </button>
+                          </div>
+                          <label className="flex items-center gap-2 text-xs font-medium" style={{ color: '#a1a1aa' }}>
+                            <span style={{ textAlign: 'right', width: 28 }}>
+                              {Math.round((drumElementVolumes.get(type) ?? 1) * 50)}
+                            </span>
+                            <input
+                              aria-label={`Volumen de ${label}`}
+                              type="range"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={drumElementVolumes.get(type) ?? 1}
+                              style={{ accentColor: '#047857', height: 8, width: 112 }}
+                              onChange={(event) => updateDrumElementVolume(type, Number(event.target.value))}
+                            />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <label className="flex items-center gap-2 text-sm font-medium text-zinc-200">
@@ -2381,7 +3737,13 @@ export default function AlphaTabPlayer({
           <div
             ref={tabScrollbarRef}
             aria-label="Desplazamiento horizontal de la tablatura"
-            className="relative z-[95] h-5 overflow-x-auto overflow-y-hidden border-b border-zinc-200 bg-white"
+            className="relative overflow-x-auto overflow-y-hidden"
+            style={{
+              background: '#ffffff',
+              borderBottom: '1px solid #e4e4e7',
+              height: 20,
+              zIndex: 95,
+            }}
             onScroll={syncTabScrollFromScrollbar}
           >
             <div
@@ -2392,7 +3754,7 @@ export default function AlphaTabPlayer({
             />
           </div>
         )}
-        {loopHighlightBoxes.map((box, index) => (
+        {previewedTrackIndex === null && loopHighlightBoxes.map((box, index) => (
           <div
             key={`${box.x}-${box.y}-${index}`}
             aria-hidden="true"
@@ -2408,7 +3770,7 @@ export default function AlphaTabPlayer({
             }}
           />
         ))}
-        {loopHandleBoxes.map((handle) => (
+        {previewedTrackIndex === null && loopHandleBoxes.map((handle) => (
           <button
             key={handle.side}
             type="button"
@@ -2484,7 +3846,7 @@ export default function AlphaTabPlayer({
             syncVisibleScrollbar(event.currentTarget.scrollLeft);
           }}
         />
-        {!compact && stringLabelGroups.map((group) =>
+        {!compact && previewedTrackIndex === null && stringLabelGroups.map((group) =>
           group.labels.map((label, index) => (
             <div
               key={`${group.systemY}-${label.note}-${index}`}

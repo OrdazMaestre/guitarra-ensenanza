@@ -2,6 +2,7 @@ import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
 import { extensionPages, lessonBlocks } from '../temarioData';
 import SecondaryPaths from './SecondaryPaths';
+import TestRoomButton from './TestRoomButton';
 
 type BranchItem = {
   title: string;
@@ -107,6 +108,8 @@ export default function PasosPage() {
         previous={{ href: '/lecciones/temario', label: 'Portada' }}
         next={{ href: '/lecciones/temario/conceptos-basicos', label: 'Conceptos básicos' }}
       />
+
+      <TestRoomButton />
 
       <style>{`
         .steps-page {

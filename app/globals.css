@@ -62,7 +62,7 @@ video {
   background: #6b7280;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow) {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link) {
   animation: link-tilt 2.4s ease-in-out infinite !important;
   color: #047857 !important;
   display: inline-block;
@@ -76,12 +76,12 @@ a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz
   will-change: transform;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):hover,
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):hover,
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):focus-visible {
   color: #dc2626 !important;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 4px;
 }
