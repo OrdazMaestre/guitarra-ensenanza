@@ -2,7 +2,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent, ReactNode, UIEvent } from 'react';
+import type { MutableRefObject, PointerEvent, ReactNode, UIEvent } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 import {
   getAudioCurrentTime,
@@ -844,6 +844,83 @@ function buildPercussionEventsFromScore(score: AlphaTabScoreLike, trackIndex: nu
   return events;
 }
 
+// Drum-notation-only bar notice (opt-in multiTrack + percussion preview only
+// — see "Aviso de compás cada 10 en la partitura de batería" in
+// AlphaTabPlayer.NOTES.md). AlphaTab's MasterBar.section is SHARED by every
+// track at that bar index (verified empirically with a live dump of
+// prueba-master-of-puppets.gp: score.tracks[i].staves[0].bars[j].masterBar
+// === score.tracks[k].staves[0].bars[j].masterBar for any two tracks i/k, and
+// both are the exact same object as score.masterBars[j]), so writing into it
+// permanently would also show up in the guitar/bass tablature. It's therefore
+// applied/restored with the exact same save-then-mutate-then-restore pattern
+// applyPercussionPreviewStaveSettings/restorePercussionPreviewStaveSettings
+// already use for showTablature/showStandardNotation/staveProfile.
+const PERCUSSION_PREVIEW_NOTICE_TEXT =
+  'DE MOMENTO todos los platos suenan igual y los tombs se sustituyen por más caja+bombo';
+// Bar index (0-based, i.e. bar 10 in AlphaTab's own 1-based bar numbering),
+// then every PERCUSSION_PREVIEW_NOTICE_INTERVAL_BARS bars after that:
+// 9, 19, 29, 39, 49, 59, 69, 79, 89, 99 for prueba-master-of-puppets.gp (103
+// bars total). Chosen over starting at index 0 (bar 1) specifically because
+// that would land on index 60, which collides with a real "Verse III"
+// section marker already in the file; index 9 doesn't collide with any of
+// that file's 4 real markers (idx 8, 60, 77, 91). See
+// applyPercussionPreviewNotice below for what happens if a future file DOES
+// have a collision (the occurrence is skipped, not combined/shifted).
+const PERCUSSION_PREVIEW_NOTICE_START_BAR_INDEX = 9;
+const PERCUSSION_PREVIEW_NOTICE_INTERVAL_BARS = 10;
+
+type MasterBarSection = { marker?: string; text?: string } | null | undefined;
+
+// Forces the every-10-bars notice text into score.masterBars, saving each
+// overwritten bar's original section first so restorePercussionPreviewNotice
+// can put it back exactly. Skips (does not overwrite or combine with) any bar
+// that already carries a real section marker/text from the file itself —
+// this keeps the notice text always rendering byte-for-byte exact with
+// nothing appended, and never touches content the file's own author put
+// there. With PERCUSSION_PREVIEW_NOTICE_START_BAR_INDEX chosen as above, this
+// never actually triggers for prueba-master-of-puppets.gp today.
+function applyPercussionPreviewNotice(
+  score: AlphaTabScoreLike,
+  originalSectionsRef: MutableRefObject<Map<number, MasterBarSection>>
+) {
+  const masterBars = score.masterBars ?? [];
+  const captured = new Map<number, MasterBarSection>();
+
+  masterBars.forEach((masterBar, index) => {
+    if (
+      index < PERCUSSION_PREVIEW_NOTICE_START_BAR_INDEX ||
+      (index - PERCUSSION_PREVIEW_NOTICE_START_BAR_INDEX) % PERCUSSION_PREVIEW_NOTICE_INTERVAL_BARS !== 0
+    ) {
+      return;
+    }
+    if (masterBar.section?.text || masterBar.section?.marker) {
+      return;
+    }
+
+    captured.set(index, masterBar.section);
+    masterBar.section = { marker: '', text: PERCUSSION_PREVIEW_NOTICE_TEXT };
+  });
+
+  originalSectionsRef.current = captured;
+}
+
+// Inverse of applyPercussionPreviewNotice above.
+function restorePercussionPreviewNotice(
+  score: AlphaTabScoreLike,
+  originalSectionsRef: MutableRefObject<Map<number, MasterBarSection>>
+) {
+  const masterBars = score.masterBars ?? [];
+
+  originalSectionsRef.current.forEach((originalSection, index) => {
+    const masterBar = masterBars[index];
+    if (masterBar) {
+      masterBar.section = originalSection;
+    }
+  });
+
+  originalSectionsRef.current = new Map();
+}
+
 function parseTempo(tab: string) {
   return Number(tab.match(/\\tempo\s*\(\s*(\d+)/)?.[1]) || DEFAULT_BPM;
 }
@@ -1066,6 +1143,16 @@ export default function AlphaTabPlayer({
   // the value this file's own AlphaTabApi config sets — see scoreLoaded)
   // so this stays correct even if that config value ever changes.
   const originalStaveProfileRef = useRef<alphaTab.StaveProfile | null>(null);
+  // Bar-index (score.masterBars index, 0-based) -> original MasterBar.section
+  // captured right before applyPercussionPreviewNotice overwrites some bars
+  // with the drum-preview notice text. Keyed by masterBars index rather than
+  // by trackIndex because MasterBar.section is shared by every track at that
+  // bar index — there's only one array to restore, regardless of which track
+  // is being previewed. See "Aviso de compás cada 10..." in
+  // AlphaTabPlayer.NOTES.md.
+  const originalPercussionNoticeSectionsRef = useRef<Map<number, { marker?: string; text?: string } | null | undefined>>(
+    new Map()
+  );
   const beatToEventIndexRef = useRef(new Map<number, number>());
   const finishTimerRef = useRef<number | null>(null);
   const guitarSamplesLoadingRef = useRef<Promise<LoadedGuitarSample[]> | null>(null);
@@ -1695,6 +1782,7 @@ export default function AlphaTabPlayer({
     percussionPreviewEventsRef.current = [];
     originalStaveVisibilityRef.current = new Map();
     originalStaveProfileRef.current = null;
+    originalPercussionNoticeSectionsRef.current = new Map();
     setDetectedScoreTempo(null);
     auxiliaryTrackScheduleRef.current = [];
     setVolume(DEFAULT_VOLUME);
@@ -3308,6 +3396,11 @@ export default function AlphaTabPlayer({
     }
 
     applyPercussionPreviewStaveSettings(score);
+    // Drum-notation-only bar notice (every 10 bars) — see
+    // applyPercussionPreviewNotice above and "Aviso de compás cada 10..." in
+    // AlphaTabPlayer.NOTES.md. Purely a notation overlay (MasterBar.section),
+    // same restore-on-exit guarantee as the stave settings above.
+    applyPercussionPreviewNotice(score, originalPercussionNoticeSectionsRef);
     // Set BEFORE calling renderTracks() below: that call re-fires
     // scoreLoaded synchronously-or-not, and this ref is exactly what that
     // handler checks to skip applyPrimaryTrack (see the scoreLoaded handler
@@ -3347,6 +3440,7 @@ export default function AlphaTabPlayer({
     }
 
     restorePercussionPreviewStaveSettings(score);
+    restorePercussionPreviewNotice(score, originalPercussionNoticeSectionsRef);
     previewedTrackIndexRef.current = null;
     setPreviewedTrackIndex(null);
     percussionPreviewEventsRef.current = [];

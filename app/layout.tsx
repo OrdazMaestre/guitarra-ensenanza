@@ -7,6 +7,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import RenderIdleWarning from "./components/RenderIdleWarning";
 import VercelLimitWarning from "./components/VercelLimitWarning";
 import MaikaelWidget from "./components/maikael/MaikaelWidget";
+import MixingConsole from "./components/mixingConsole/MixingConsole";
 import { DEPLOY_TARGET } from "./lib/deployTarget";
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({
           } catch (e) {}`}
         </Script>
         <ThemeToggle />
+        <MixingConsole />
         <RenderIdleWarning deployTarget={DEPLOY_TARGET} />
         <VercelLimitWarning
           deployTarget={DEPLOY_TARGET}
