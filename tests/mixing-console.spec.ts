@@ -17,6 +17,78 @@ async function openPanel(page: Page) {
   await expect(page.getByRole('region', { name: 'Mesa de mezclas' })).toBeVisible();
 }
 
+// Arrastra el botón de la mesa `deltaX` px a partir de su centro y lo suelta -- .click() no sirve
+// para esto, hace falta un gesto de puntero real (mouse.move/down/move/up), igual que los tests de
+// Knob.tsx. `holdMs` simula mantenerlo pulsado antes de arrastrar (para el gesto de desbloqueo).
+async function dragToggleButton(page: Page, deltaX: number, holdMs = 0) {
+  const box = await page.locator('.mixing-console-toggle-button').boundingBox();
+  if (!box) throw new Error('toggle button not found');
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  if (holdMs > 0) await page.waitForTimeout(holdMs);
+  if (deltaX !== 0) await page.mouse.move(cx + deltaX, cy, { steps: 5 });
+  await page.mouse.up();
+  await page.mouse.move(cx, cy - 200); // move away so :hover doesn't skew a later color/position read
+}
+
+// Bloqueo infantil del botón: arrastrar a la derecha bloquea; una vez bloqueado, mantenerlo pulsado
+// UNLOCK_HOLD_MS (3s) antes de volver a arrastrar lo desbloquea -- a petición explícita del usuario
+// ("que mis niños no toquen la mesa durante la clase sin mi permiso"). Ver "Bloqueo infantil" en
+// app/lib/mixingConsole/NOTES.md.
+test.describe('child lock', () => {
+  test('dragging the toggle button right locks it, and a plain tap no longer opens the panel', async ({
+    page,
+  }) => {
+    await page.goto('/lecciones/temario/sala-de-pruebas');
+    const toggle = page.locator('.mixing-console-toggle-button');
+
+    await dragToggleButton(page, 60);
+    await expect(toggle).toHaveClass(/is-locked/);
+    expect(await page.evaluate(() => localStorage.getItem('mixing-console-locked'))).toBe('true');
+
+    await dragToggleButton(page, 0); // plain tap
+    await expect(page.getByRole('region', { name: 'Mesa de mezclas' })).not.toBeVisible();
+  });
+
+  test('a short drag right while locked, without first holding 3s, does NOT unlock it', async ({
+    page,
+  }) => {
+    await page.goto('/lecciones/temario/sala-de-pruebas');
+    await dragToggleButton(page, 60); // lock it
+    await dragToggleButton(page, 60); // immediate drag, no hold
+    await expect(page.locator('.mixing-console-toggle-button')).toHaveClass(/is-locked/);
+  });
+
+  test('holding 3s then dragging right unlocks it again', async ({ page }) => {
+    await page.goto('/lecciones/temario/sala-de-pruebas');
+    const toggle = page.locator('.mixing-console-toggle-button');
+    await dragToggleButton(page, 60); // lock it
+    await expect(toggle).toHaveClass(/is-locked/);
+
+    await dragToggleButton(page, 60, 3200); // hold past the 3s threshold, then drag
+    await expect(toggle).not.toHaveClass(/is-locked/);
+    expect(await page.evaluate(() => localStorage.getItem('mixing-console-locked'))).toBe('false');
+
+    await dragToggleButton(page, 0); // plain tap works again
+    await expect(page.getByRole('region', { name: 'Mesa de mezclas' })).toBeVisible();
+  });
+
+  test('locking while the panel is open force-closes it', async ({ page }) => {
+    await openPanel(page);
+    await dragToggleButton(page, 60);
+    await expect(page.getByRole('region', { name: 'Mesa de mezclas' })).not.toBeVisible();
+  });
+
+  test('the lock survives a page reload', async ({ page }) => {
+    await page.goto('/lecciones/temario/sala-de-pruebas');
+    await dragToggleButton(page, 60);
+    await page.reload();
+    await expect(page.locator('.mixing-console-toggle-button')).toHaveClass(/is-locked/);
+  });
+});
+
 // Regresión de dos bugs reales encontrados con el enfoque anterior (mantener el botón/panel
 // DENTRO de .site-shell, confiando en su filtro `invert(1) hue-rotate(180deg)` para el color):
 // (1) el color quedaba invertido dos veces si se le daba una paleta oscura propia, y (2) al ser

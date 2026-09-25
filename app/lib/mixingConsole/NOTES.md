@@ -201,6 +201,35 @@ en `QuizRunner.tsx`) para retrasar el portal un tick hasta que el componente est
 cliente. El hook `useMixingConsole()` (que posee el `AudioContext`) se sigue llamando siempre en el
 primer render, sin condicionar -- solo el JSX portado espera a `mounted`, nunca el motor de audio.
 
+## Bloqueo infantil (a petición explícita del usuario)
+
+"Que mis niños no toquen la mesa durante la clase sin mi permiso": arrastrar el botón 🎚️ a la
+derecha lo bloquea; una vez bloqueado, hay que MANTENERLO PULSADO `UNLOCK_HOLD_MS` (3s) ANTES de
+volver a arrastrar para desbloquearlo. El orden importa a propósito -- un arrastre inmediato (sin
+esperar los 3s) estando bloqueado no hace nada, así que un niño impaciente tocando/arrastrando el
+botón no lo desbloquea por accidente, mientras que un adulto que ya conoce el gesto lo repite sin
+esfuerzo. Persistido en `localStorage` (`mixing-console-locked`) para que el bloqueo hecho antes de
+clase siga activo aunque se recargue la página o se navegue a otra lección (el motor de audio
+sigue funcionando igual estando bloqueado -- el bloqueo solo gatea la UI de apertura del panel, no
+el audio en sí).
+
+Implementación en `MixingConsole.tsx`: `onPointerDown`/`onPointerMove`/`onPointerUp`/
+`onPointerCancel` en el propio botón, mismo patrón de `setPointerCapture` que `Knob.tsx`/
+`HorizontalScrollbar.tsx`. `dragRef`/`armedRef` (refs) guardan el estado que los handlers necesitan
+leer de forma síncrona dentro de un mismo gesto; `dragX`/`dragging`/`armed`/`locked` (estado) son
+sus contrapartidas para renderizar. Sin arrastre (estando desbloqueada) un toque simple sigue
+abriendo/cerrando el panel como siempre -- se distingue de un arrastre real por `CLICK_SLOP_PX`
+(6px de margen). No hay atajo de teclado para bloquear/desbloquear (a propósito, sería un bypass
+fácil de encontrar); `Enter`/`Espacio` solo abren/cierran el panel cuando ya está desbloqueado.
+
+Bloquear mientras el panel está abierto lo cierra a la fuerza (`lockConsole()` llama a
+`setOpen(false)`) -- bloquear a media sesión no debe dejar el panel ya desplegado accesible.
+
+Estados visuales del botón (clases `is-locked`/`is-holding`/`is-armed`, con una insignia 🔒/🔓
+superpuesta vía `.mc-lock-badge`): ámbar en reposo bloqueado Y mientras se cuenta el hold (para no
+revelar si falta poco o mucho, que facilitaría cronometrarlo), verde (mismo acento que el resto de
+la mesa) una vez armado y listo para el arrastre de desbloqueo.
+
 ## Estilos
 
 Todo color y todo tamaño/espaciado de este componente usa CSS literal (`<style>{...}</style>` con
@@ -214,3 +243,16 @@ afecta el bug — es CSS normal.
 El botón de apertura (`.mixing-console-toggle-button`) copia exactamente el patrón geométrico de
 `.theme-toggle-button` (`app/globals.css`) pero en la esquina superior izquierda, con su propio
 icono (🎚️, mismo patrón de icono-emoji que `ThemeToggle.tsx`).
+
+**Gotcha real, ya corregido**: un comentario CSS que menciona nombres de constantes como
+`LOCK_*/UNLOCK_*` (con un guion bajo seguido de asterisco justo antes de la barra) contiene, sin
+querer, la secuencia literal `*/` -- el cierre de comentario CSS -- en mitad del texto. Eso cierra
+el comentario ahí mismo; todo lo que sigue (el resto de la frase, y silenciosamente las reglas
+`.is-locked`/`.is-holding`/`.is-armed` que venían después, ver sección anterior) se parseaba como
+CSS real e inválido, y el navegador simplemente lo descartaba sin ningún error visible ni en
+consola ni en build -- `document.styleSheets[].cssRules` confirmó que esas reglas no existían en
+absoluto pese a que el texto SÍ estaba en el `<style>` (`getComputedStyle` seguía devolviendo el
+color por defecto). Cualquier comentario dentro de un `<style>{...}</style>` que necesite escribir
+un nombre con guion bajo seguido de asterisco (p.ej. citar dos constantes `ALGO_*`/`OTRA_*` juntas)
+debe separarlas con una palabra o espacio en vez de una barra pegada (`ALGO_ y OTRA_`, no
+`ALGO_*/OTRA_*`).

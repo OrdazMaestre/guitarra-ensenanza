@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 
 export default function SalaDePruebasPage() {
   return (
@@ -13,6 +14,14 @@ export default function SalaDePruebasPage() {
         <p>Es un espacio libre para probar cosas.</p>
         <p>Tienes un mástil, un teclado y un trozo de tablatura.</p>
       </header>
+
+      <section className="test-room-tuning">
+        <p className="test-room-kicker">Minijuego (en construcción)</p>
+        <h2>Afinar a oído</h2>
+        <p>Gira cada clavija para cambiar el tono de esa cuerda.</p>
+        <p>Una vuelta entera cambia un tono. Media vuelta cambia un semitono.</p>
+        <TuningBoard />
+      </section>
 
       <section className="test-room-instruments">
         <div className="test-room-fretboard">
@@ -37,6 +46,7 @@ export default function SalaDePruebasPage() {
       </Link>
 
       <ReducedFretboardStyles />
+      <TuningBoardStyles />
       <style>{`
         .test-room-page {
           background: #ffffff;
@@ -77,6 +87,33 @@ export default function SalaDePruebasPage() {
           font-weight: 600;
           line-height: 1.5;
           margin: 12px 0 0;
+        }
+
+        .test-room-tuning {
+          margin: 0 auto clamp(36px, 6vw, 64px);
+          max-width: 1080px;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .test-room-tuning h2 {
+          font-size: clamp(24px, 3.4vw, 34px);
+          font-weight: 950;
+          letter-spacing: 0;
+          line-height: 1.05;
+          margin: 0;
+        }
+
+        .test-room-tuning p:not(.test-room-kicker) {
+          color: #303030;
+          font-size: clamp(15px, 1.6vw, 17px);
+          font-weight: 600;
+          line-height: 1.5;
+          margin: 8px 0 0;
+        }
+
+        .test-room-tuning .tuning-board-host {
+          margin-top: clamp(16px, 2.4vw, 24px);
         }
 
         .test-room-instruments {
