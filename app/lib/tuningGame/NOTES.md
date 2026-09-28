@@ -1,10 +1,70 @@
 # Afinar a oído (sala-de-pruebas) — notas de diseño
 
 Minijuego nuevo, en construcción, visible solo en `sala-de-pruebas` (encima del mástil interactivo
-existente). Todavía sin objetivo/puntuación -- eso es la siguiente iteración, cuando se decida el
-resto de la mecánica del juego. Esta segunda iteración convirtió el tablero de la primera (solo
-visual, matemática en Hz) en un instrumento MIDI de verdad: interactivo, con sonido real, y con
-clavijas cuantizadas a una unidad mínima funcional -- las tres peticiones explícitas del usuario.
+existente). Todavía sin detección de "afinado correctamente" ni puntuación -- eso es la siguiente
+iteración. Historial: la 1ª iteración fue el tablero solo visual (matemática en Hz); la 2ª lo
+convirtió en instrumento MIDI de verdad (interactivo, con sonido real, clavijas cuantizadas) y
+añadió arrastre-cambia-de-nota y entrada por teclado; esta 3ª iteración añadió las REGLAS del
+juego: selector de dificultad, desafinado aleatorio, ocultar nombres de nota, cronómetro, y el
+botón de diapasón de referencia (EXPERTO).
+
+## Reglas del juego (selector de dificultad)
+
+A petición explícita del usuario, el texto instructivo de la sección se sustituyó por un selector
+de 3 botones (Fácil/Difícil/Experto, `DIFFICULTIES`/`DIFFICULTY_LABELS` en `TuningBoard.tsx`).
+Elegir una dificultad (o volver a elegir la misma, para "otra ronda") reinicia las 6 cuerdas a
+afinación estándar y luego aplica:
+
+| Dificultad | Cuerdas desafinadas | Desafinado (por cuerda) | Nombres de nota | Botón diapasón |
+|---|---|---|---|---|
+| Fácil    | 1 al azar | 1-3 semitonos | visibles | no |
+| Difícil  | 1 al azar | 1-4 semitonos | ocultos (aire y al pulsar un traste) | no |
+| Experto  | las 6     | 1-6 semitonos | ocultos | sí ("Diapasón La 440Hz") |
+
+`randomDetuneCents(maxSemitones)` genera un desplazamiento entero en cents (signo al azar) entre
+`MIN_DETUNE_SEMITONES` (1 semitono = 100 cents) y `MAX_DETUNE_SEMITONES[dificultad]` (`3`/`4`/`6`
+semitonos respectivamente) -- la magnitud SÍ escala con la dificultad, ajustado tras el primer
+intento (15-45 cents fijos, sin variar por dificultad) resultar "muy poco" desafinado en la
+práctica según el propio usuario. Verificado con 40 rondas por dificultad (240 muestras en
+Experto): mínimos y máximos observados dentro de los límites exactos en los tres niveles, sin
+ninguna muestra fuera de rango. `hideNoteNames` (Difícil/Experto) es un único
+booleano derivado que condiciona DOS sitios de render: la etiqueta siempre-visible junto al
+clavijero (traste 0) y el `<text>` del marcador que aparece al pulsar cualquier otro traste -- en
+ambos casos solo se oculta el TEXTO, el círculo del marcador se sigue mostrando (confirmación
+táctil/visual de qué se está pulsando, sin regalar el nombre de la nota).
+
+**Cronómetro**: "el juego siempre inicia un cronómetro al seleccionar la dificultad" -- un
+`setInterval` de 1s que solo corre mientras `difficulty !== null` (arranca en la primera selección,
+se detiene si el componente se desmonta). Re-seleccionar cualquier dificultad reinicia
+`elapsedSeconds` a 0 pero NO reinicia el intervalo en sí (no hace falta: si la dependencia del
+efecto -- `difficulty` -- no cambia de valor porque se re-eligió la misma cadena, el intervalo ya
+en marcha sigue tickeando bien sobre el contador recién puesto a 0). Formato `M:SS` sin ceros a la
+izquierda en los minutos (`formatElapsed`).
+
+**Parada automática al afinar (`solved`)**: a petición explícita del usuario, el cronómetro para
+solo y se pone en verde cuando detecta 1 segundo SEGUIDO con las 6 cuerdas afinadas. "Afinada
+correctamente" usa una tolerancia de `IN_TUNE_TOLERANCE_CENTS = 2` cents en vez de exigir 0 exacto
+-- igual que cualquier afinador electrónico real, que también da un pequeño margen "en verde" en
+vez de un único valor exacto (clavar 0 cents arrastrando con el dedo/ratón sería frustrante de
+más). `allInTune` se deriva de `cents` en cada render y es la dependencia de un `useEffect` que
+arma un `setTimeout(SOLVED_HOLD_MS)` en cuanto se vuelve `true`; si `cents` cambia otra vez antes
+de que cumpla el segundo (`allInTune` vuelve a `false`), la limpieza del efecto CANCELA ese
+timeout, así que solo cuenta un segundo seguido dentro del margen, no acumulado a trozos --
+verificado corrigiendo una cuerda a medias (nunca se resuelve) y luego clavándola en 0 exacto (se
+resuelve a los ~1s, ni antes). Un segundo `useEffect` separado para el propio intervalo del
+cronómetro se detiene en cuanto `solved` pasa a `true` (dependencia añadida a su array) -- parada
+real, no solo visual, verificado comprobando que el texto no cambia aunque pasen varios segundos
+más. Una vez resuelto, `solved` se queda en `true` el resto de la ronda aunque se vuelva a tocar
+una clavija después (no se "des-resuelve") hasta la siguiente llamada a `startDifficulty`. Además
+del color (`.tuning-timer.is-solved`, verde `#047857`), el icono cambia de ⏱ a ✅.
+
+**Diapasón La 440Hz (solo Experto)**: botón sobre el mástil, mantener pulsado para oír un La2 de
+referencia (`STANDARD_TUNING_MIDI[5]`, MIDI 45) -- SIN aplicar el desafinado de ninguna cuerda, es
+un tono de referencia fijo, no "la cuerda 5". Usa `playNote(45, true, volumen)` -- el `true`
+(`forKeyboard`) elige el motor de oscilador en vez de la muestra de guitarra: suena mientras se
+mantiene pulsado y se corta limpio al soltar (como un diapasón real al que se para la mano encima),
+cosa que la muestra de guitarra no hace bien porque decae sola sin importar cuánto se mantenga
+pulsada. Mismo patrón de pointer-capture que el resto de controles arrastrables del sitio.
 
 ## Ficheros
 

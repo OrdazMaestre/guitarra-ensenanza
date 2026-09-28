@@ -39,6 +39,41 @@ const OPEN_HIT_MARGIN = 36;
 // NOTES.md.
 const MAX_VOICES = 3;
 
+type Difficulty = 'facil' | 'dificil' | 'experto';
+const DIFFICULTIES: Difficulty[] = ['facil', 'dificil', 'experto'];
+const DIFFICULTY_LABELS: Record<Difficulty, string> = { facil: 'Fácil', dificil: 'Difícil', experto: 'Experto' };
+
+// Rango del desafinado aleatorio al empezar una ronda -- en SEMITONOS (100 cents cada uno, la
+// rejilla de 1 cent que usan las clavijas sigue siendo la unidad interna, ver DEGREES_PER_STEP en
+// pitch.ts), siempre entre 1 semitono y el máximo de cada dificultad, con signo al azar. Escala
+// con la dificultad a petición explícita del usuario -- el primer intento (15-45 cents fijos,
+// sin variar por dificultad) resultaba "muy poco" desafinado en la práctica.
+const MIN_DETUNE_SEMITONES = 1;
+const MAX_DETUNE_SEMITONES: Record<Difficulty, number> = { facil: 3, dificil: 4, experto: 6 };
+
+function randomDetuneCents(maxSemitones: number): number {
+  const minCents = MIN_DETUNE_SEMITONES * 100;
+  const maxCents = maxSemitones * 100;
+  const magnitude = minCents + Math.floor(Math.random() * (maxCents - minCents + 1));
+  return Math.random() < 0.5 ? -magnitude : magnitude;
+}
+
+// Margen para considerar una cuerda "afinada correctamente" -- ver el comentario junto a
+// `allInTune` en el componente. También es el tiempo que debe mantenerse el margen seguido antes
+// de parar el cronómetro (SOLVED_HOLD_MS).
+const IN_TUNE_TOLERANCE_CENTS = 2;
+const SOLVED_HOLD_MS = 1000;
+
+function pickRandomString(): StringNumber {
+  return STRINGS[Math.floor(Math.random() * STRINGS.length)];
+}
+
+function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 function stringY(rowIndex: number): number {
   return BOARD_Y + rowIndex * STRING_GAP;
 }
@@ -81,10 +116,27 @@ export default function TuningBoard() {
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const [kbPositions, setKbPositions] = useState<{ string: StringNumber; fret: number }[]>([]);
+  const [difficulty, setDifficulty] = useState<Difficulty | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [diapasonSounding, setDiapasonSounding] = useState(false);
+  const [solved, setSolved] = useState(false);
+
+  // FÁCIL: una cuerda al azar desafinada, nombres de nota siempre visibles.
+  // DIFÍCIL: igual, pero sin nombres de nota (ni al aire ni al pulsar un traste).
+  // EXPERTO: TODAS las cuerdas desafinadas, sin nombres de nota, y aparece el botón de referencia.
+  const hideNoteNames = difficulty === 'dificil' || difficulty === 'experto';
+  const showDiapason = difficulty === 'experto';
+  // "Afinadas correctamente" con una pequeña tolerancia (±2 cents) en vez de exigir 0 exacto --
+  // igual que cualquier afinador electrónico real, que también da un margen "en verde" en vez de
+  // solo un único valor exacto (llegar a 0 cents clavado arrastrando con el dedo/ratón sería
+  // frustrante de más). Solo puede ser true habiendo ya elegido dificultad -- si no, las 6 cuerdas
+  // empiezan en 0 cents por defecto y "estaría resuelto" desde antes de jugar.
+  const allInTune = difficulty !== null && STRINGS.every(s => Math.abs(cents[s]) <= IN_TUNE_TOLERANCE_CENTS);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const ptVoicesRef = useRef(new Map<number, { string: StringNumber; fret: number; voiceId: number }>());
   const kbKeysHeldRef = useRef(new Map<string, FretKeyEntry & { voiceId: number }>());
+  const diapasonVoiceRef = useRef(-1);
   const volumeRef = useRef(volume);
   useEffect(() => {
     volumeRef.current = volume;
@@ -113,9 +165,78 @@ export default function TuningBoard() {
         if (voiceId >= 0) releaseNote(voiceId);
       });
       kbKeysHeldRef.current.clear();
+      if (diapasonVoiceRef.current >= 0) releaseNote(diapasonVoiceRef.current);
     },
     [],
   );
+
+  // El cronómetro arranca al elegir una dificultad (incluida la primera vez, null -> una
+  // dificultad real) y sigue corriendo aunque se re-seleccione la misma -- startDifficulty ya
+  // pone elapsedSeconds a 0 en ese caso, así que no hace falta reiniciar el intervalo en sí. Para
+  // en seco en cuanto `solved` se pone a true (ver el efecto de abajo) -- ese es el "parar
+  // automáticamente" pedido por el usuario.
+  useEffect(() => {
+    if (!difficulty || solved) return;
+    const id = window.setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [difficulty, solved]);
+
+  // "Para automáticamente y cambia a verde cuando lleva 1s con todas las cuerdas afinadas" -- el
+  // propio `allInTune` (derivado de `cents` en cada render) es la dependencia del efecto: cada vez
+  // que CAMBIA de valor (no solo cuando `cents` cambia sin afectarlo) se dispara este efecto de
+  // nuevo. Si se vuelve true, arranca un setTimeout de SOLVED_HOLD_MS; si `cents` cambia otra vez
+  // antes de que cumpla el segundo (allInTune vuelve a false), el efecto se limpia y CANCELA ese
+  // timeout -- así solo cuenta un segundo SEGUIDO en el margen de tolerancia, no acumulado a
+  // trozos. Una vez `solved` es true se queda así el resto de la ronda (no se "des-resuelve" si
+  // luego se vuelve a tocar una clavija) hasta la siguiente llamada a startDifficulty.
+  useEffect(() => {
+    if (!allInTune || solved) return;
+    const id = window.setTimeout(() => setSolved(true), SOLVED_HOLD_MS);
+    return () => window.clearTimeout(id);
+  }, [allInTune, solved]);
+
+  // Empezar/reiniciar una ronda: vuelve las 6 cuerdas a afinación estándar y desafina según la
+  // dificultad -- FÁCIL/DIFÍCIL una cuerda al azar, EXPERTO las 6 -- antes de aplicar el nuevo
+  // estado. Re-seleccionar la MISMA dificultad genera un desafinado nuevo cada vez (útil como
+  // "otra ronda"), no repite el anterior.
+  function startDifficulty(next: Difficulty) {
+    setDifficulty(next);
+    setElapsedSeconds(0);
+    setSolved(false);
+    const maxSemitones = MAX_DETUNE_SEMITONES[next];
+    const fresh: Record<StringNumber, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    if (next === 'experto') {
+      for (const s of STRINGS) fresh[s] = randomDetuneCents(maxSemitones);
+    } else {
+      fresh[pickRandomString()] = randomDetuneCents(maxSemitones);
+    }
+    setCents(fresh);
+  }
+
+  // Diapasón (solo EXPERTO): La2 de referencia, SIN el desafinado de ninguna cuerda -- es un tono
+  // de referencia fijo, no una cuerda de la guitarra. forKeyboard=true (motor de osciloscopio, no
+  // la muestra de guitarra) porque suena mientras se mantiene pulsado y se corta al soltar, como
+  // un diapasón real al que se pone la mano encima -- la muestra de guitarra decae sola y no sirve
+  // para eso.
+  async function onDiapasonPointerDown(e: PointerEvent<HTMLButtonElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDiapasonSounding(true);
+    const id = await playNote(STANDARD_TUNING_MIDI[5], true, volumeRef.current);
+    diapasonVoiceRef.current = id;
+  }
+
+  function onDiapasonPointerUp(e: PointerEvent<HTMLButtonElement>) {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // el navegador puede haber liberado ya la captura; se puede ignorar con seguridad
+    }
+    setDiapasonSounding(false);
+    if (diapasonVoiceRef.current >= 0) {
+      releaseNote(diapasonVoiceRef.current);
+      diapasonVoiceRef.current = -1;
+    }
+  }
 
   function syncPointerPositions() {
     setPointerPositions([...ptVoicesRef.current.values()].map(({ string, fret }) => ({ string, fret })));
@@ -260,6 +381,41 @@ export default function TuningBoard() {
 
   return (
     <div className="midi-instrument-host">
+      <div className="tuning-game-controls" role="group" aria-label="Dificultad del juego de afinar a oído">
+        {DIFFICULTIES.map(d => (
+          <button
+            key={d}
+            type="button"
+            className={`tuning-difficulty-button${difficulty === d ? ' is-active' : ''}`}
+            aria-pressed={difficulty === d}
+            onClick={() => startDifficulty(d)}
+          >
+            {DIFFICULTY_LABELS[d]}
+          </button>
+        ))}
+        {difficulty && (
+          <span
+            className={`tuning-timer${solved ? ' is-solved' : ''}`}
+            aria-label={solved ? 'Tiempo final: todas las cuerdas afinadas' : 'Tiempo transcurrido'}
+          >
+            {solved ? '✅' : '⏱'} {formatElapsed(elapsedSeconds)}
+          </span>
+        )}
+      </div>
+
+      {showDiapason && (
+        <button
+          type="button"
+          className={`tuning-diapason-button${diapasonSounding ? ' is-sounding' : ''}`}
+          onPointerDown={onDiapasonPointerDown}
+          onPointerUp={onDiapasonPointerUp}
+          onPointerCancel={onDiapasonPointerUp}
+          style={{ touchAction: 'none' }}
+        >
+          🎵 Diapasón La 440Hz
+        </button>
+      )}
+
       <svg
         ref={svgRef}
         className="tuning-board-svg"
@@ -329,9 +485,11 @@ export default function TuningBoard() {
                 onStepChange={next => setCents(c => ({ ...c, [s]: next }))}
                 ariaLabel={`Clavija de la cuerda ${s}`}
               />
-              <text className="tuning-open-note" x={BOARD_X - 12} y={y + 5}>
-                {noteName}
-              </text>
+              {!hideNoteNames && (
+                <text className="tuning-open-note" x={BOARD_X - 12} y={y + 5}>
+                  {noteName}
+                </text>
+              )}
             </g>
           );
         })}
@@ -347,9 +505,11 @@ export default function TuningBoard() {
               style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
             >
               <circle className="tuning-note-marker" cx={markerX} cy={y} r={16} />
-              <text className="tuning-note-marker-label" x={markerX} y={y + 4}>
-                {noteName}
-              </text>
+              {!hideNoteNames && (
+                <text className="tuning-note-marker-label" x={markerX} y={y + 4}>
+                  {noteName}
+                </text>
+              )}
             </g>
           );
         })}
@@ -403,6 +563,62 @@ export default function TuningBoard() {
 export function TuningBoardStyles() {
   return (
     <style>{`
+      .tuning-game-controls {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+
+      .tuning-difficulty-button {
+        background: #f4f4f5;
+        border: 1.5px solid #a1a1aa;
+        border-radius: 999px;
+        color: #52525b;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 800;
+        padding: 7px 16px;
+      }
+
+      .tuning-difficulty-button.is-active {
+        background: #047857;
+        border-color: #047857;
+        color: #ffffff;
+      }
+
+      .tuning-timer {
+        color: #080808;
+        font-size: 14px;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        margin-left: 4px;
+      }
+
+      .tuning-timer.is-solved {
+        color: #047857;
+      }
+
+      .tuning-diapason-button {
+        background: #fef3c7;
+        border: 1.5px solid #f59e0b;
+        border-radius: 8px;
+        color: #92400e;
+        cursor: pointer;
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 800;
+        margin-bottom: 14px;
+        padding: 8px 16px;
+        user-select: none;
+      }
+
+      .tuning-diapason-button.is-sounding {
+        background: #f59e0b;
+        color: #ffffff;
+      }
+
       .tuning-board-svg {
         display: block;
         height: auto;

@@ -18,8 +18,6 @@ export default function SalaDePruebasPage() {
       <section className="test-room-tuning">
         <p className="test-room-kicker">Minijuego (en construcción)</p>
         <h2>Afinar a oído</h2>
-        <p>Gira cada clavija para cambiar el tono de esa cuerda.</p>
-        <p>Una vuelta entera cambia un tono. Media vuelta cambia un semitono.</p>
         <TuningBoard />
       </section>
 
@@ -104,15 +102,7 @@ export default function SalaDePruebasPage() {
           margin: 0;
         }
 
-        .test-room-tuning p:not(.test-room-kicker) {
-          color: #303030;
-          font-size: clamp(15px, 1.6vw, 17px);
-          font-weight: 600;
-          line-height: 1.5;
-          margin: 8px 0 0;
-        }
-
-        .test-room-tuning .tuning-board-host {
+        .test-room-tuning .midi-instrument-host {
           margin-top: clamp(16px, 2.4vw, 24px);
         }
 
