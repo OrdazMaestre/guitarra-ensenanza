@@ -42,6 +42,13 @@ const MAX_VOICES = 3;
 type Difficulty = 'facil' | 'dificil' | 'experto';
 const DIFFICULTIES: Difficulty[] = ['facil', 'dificil', 'experto'];
 const DIFFICULTY_LABELS: Record<Difficulty, string> = { facil: 'Fácil', dificil: 'Difícil', experto: 'Experto' };
+// Descripción breve del objetivo de cada modo -- EDITAR AQUÍ para cambiar el texto. Se muestra
+// bajo el selector de dificultad, una línea por modo (ver DIFFICULTIES.map más abajo en el JSX).
+const DIFFICULTY_DESCRIPTIONS: Record<Difficulty, string> = {
+  facil: 'Se desafina 1 cuerda al azar. Vuelve a afinarla girando su clavija.',
+  dificil: 'Se desafina 1 cuerda al azar. No ves el nombre de las notas: afínala solo de oído.',
+  experto: 'Se desafinan las 6 cuerdas y no ves los nombres. Usa el diapasón de referencia para afinarlas todas de oído.',
+};
 
 // Rango del desafinado aleatorio al empezar una ronda -- en SEMITONOS (100 cents cada uno, la
 // rejilla de 1 cent que usan las clavijas sigue siendo la unidad interna, ver DEGREES_PER_STEP en
@@ -63,6 +70,10 @@ function randomDetuneCents(maxSemitones: number): number {
 // de parar el cronómetro (SOLVED_HOLD_MS).
 const IN_TUNE_TOLERANCE_CENTS = 2;
 const SOLVED_HOLD_MS = 1000;
+
+// Diapasón (solo Experto): una pulsación cada 2s mientras se mantiene pulsado -- a petición
+// explícita del usuario.
+const DIAPASON_PLUCK_INTERVAL_MS = 2000;
 
 function pickRandomString(): StringNumber {
   return STRINGS[Math.floor(Math.random() * STRINGS.length)];
@@ -137,6 +148,7 @@ export default function TuningBoard() {
   const ptVoicesRef = useRef(new Map<number, { string: StringNumber; fret: number; voiceId: number }>());
   const kbKeysHeldRef = useRef(new Map<string, FretKeyEntry & { voiceId: number }>());
   const diapasonVoiceRef = useRef(-1);
+  const diapasonIntervalRef = useRef<number | null>(null);
   const volumeRef = useRef(volume);
   useEffect(() => {
     volumeRef.current = volume;
@@ -166,6 +178,7 @@ export default function TuningBoard() {
       });
       kbKeysHeldRef.current.clear();
       if (diapasonVoiceRef.current >= 0) releaseNote(diapasonVoiceRef.current);
+      if (diapasonIntervalRef.current !== null) window.clearInterval(diapasonIntervalRef.current);
     },
     [],
   );
@@ -214,15 +227,27 @@ export default function TuningBoard() {
   }
 
   // Diapasón (solo EXPERTO): La2 de referencia, SIN el desafinado de ninguna cuerda -- es un tono
-  // de referencia fijo, no una cuerda de la guitarra. forKeyboard=true (motor de osciloscopio, no
-  // la muestra de guitarra) porque suena mientras se mantiene pulsado y se corta al soltar, como
-  // un diapasón real al que se pone la mano encima -- la muestra de guitarra decae sola y no sirve
-  // para eso.
-  async function onDiapasonPointerDown(e: PointerEvent<HTMLButtonElement>) {
+  // de referencia fijo, no una cuerda de la guitarra. forKeyboard=false a propósito: debe sonar
+  // exactamente como el La2 de la guitarra MIDI (la misma muestra que suena al pulsar la cuerda 5
+  // al aire), no el oscilador del teclado. Una pulsación nueva cada DIAPASON_PLUCK_INTERVAL_MS
+  // mientras se mantiene pulsado -- no un tono sostenido -- así que cada tick suelta la pulsación
+  // anterior (un pellizco real amortigua el anterior al volver a tocar la cuerda) antes de lanzar
+  // la siguiente.
+  function triggerDiapasonPluck() {
+    if (diapasonVoiceRef.current >= 0) {
+      releaseNote(diapasonVoiceRef.current);
+      diapasonVoiceRef.current = -1;
+    }
+    playNote(STANDARD_TUNING_MIDI[5], false, volumeRef.current).then(id => {
+      diapasonVoiceRef.current = id;
+    });
+  }
+
+  function onDiapasonPointerDown(e: PointerEvent<HTMLButtonElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
     setDiapasonSounding(true);
-    const id = await playNote(STANDARD_TUNING_MIDI[5], true, volumeRef.current);
-    diapasonVoiceRef.current = id;
+    triggerDiapasonPluck();
+    diapasonIntervalRef.current = window.setInterval(triggerDiapasonPluck, DIAPASON_PLUCK_INTERVAL_MS);
   }
 
   function onDiapasonPointerUp(e: PointerEvent<HTMLButtonElement>) {
@@ -232,6 +257,10 @@ export default function TuningBoard() {
       // el navegador puede haber liberado ya la captura; se puede ignorar con seguridad
     }
     setDiapasonSounding(false);
+    if (diapasonIntervalRef.current !== null) {
+      window.clearInterval(diapasonIntervalRef.current);
+      diapasonIntervalRef.current = null;
+    }
     if (diapasonVoiceRef.current >= 0) {
       releaseNote(diapasonVoiceRef.current);
       diapasonVoiceRef.current = -1;
@@ -402,6 +431,12 @@ export default function TuningBoard() {
           </span>
         )}
       </div>
+
+      {difficulty && (
+        <p className="tuning-difficulty-description">
+          <strong>{DIFFICULTY_LABELS[difficulty]}:</strong> {DIFFICULTY_DESCRIPTIONS[difficulty]}
+        </p>
+      )}
 
       {showDiapason && (
         <button
@@ -597,6 +632,17 @@ export function TuningBoardStyles() {
       }
 
       .tuning-timer.is-solved {
+        color: #047857;
+      }
+
+      .tuning-difficulty-description {
+        color: #080808;
+        font-size: 13px;
+        line-height: 1.4;
+        margin: 0 0 14px;
+      }
+
+      .tuning-difficulty-description strong {
         color: #047857;
       }
 

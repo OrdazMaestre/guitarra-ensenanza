@@ -12,8 +12,12 @@ botón de diapasón de referencia (EXPERTO).
 
 A petición explícita del usuario, el texto instructivo de la sección se sustituyó por un selector
 de 3 botones (Fácil/Difícil/Experto, `DIFFICULTIES`/`DIFFICULTY_LABELS` en `TuningBoard.tsx`).
-Elegir una dificultad (o volver a elegir la misma, para "otra ronda") reinicia las 6 cuerdas a
-afinación estándar y luego aplica:
+Bajo el selector se muestra una lista con una línea de objetivo por modo -- el texto vive en
+`DIFFICULTY_DESCRIPTIONS` (`Record<Difficulty, string>`), justo debajo de `DIFFICULTY_LABELS` en
+`TuningBoard.tsx` (hay un comentario "EDITAR AQUÍ" en esa misma constante); para cambiar la
+redacción de cualquier modo basta con editar esa cadena, no hace falta tocar el JSX. Elegir una
+dificultad (o volver a elegir la misma, para "otra ronda") reinicia las 6 cuerdas a afinación
+estándar y luego aplica:
 
 | Dificultad | Cuerdas desafinadas | Desafinado (por cuerda) | Nombres de nota | Botón diapasón |
 |---|---|---|---|---|
@@ -60,11 +64,17 @@ del color (`.tuning-timer.is-solved`, verde `#047857`), el icono cambia de ⏱ a
 
 **Diapasón La 440Hz (solo Experto)**: botón sobre el mástil, mantener pulsado para oír un La2 de
 referencia (`STANDARD_TUNING_MIDI[5]`, MIDI 45) -- SIN aplicar el desafinado de ninguna cuerda, es
-un tono de referencia fijo, no "la cuerda 5". Usa `playNote(45, true, volumen)` -- el `true`
-(`forKeyboard`) elige el motor de oscilador en vez de la muestra de guitarra: suena mientras se
-mantiene pulsado y se corta limpio al soltar (como un diapasón real al que se para la mano encima),
-cosa que la muestra de guitarra no hace bien porque decae sola sin importar cuánto se mantenga
-pulsada. Mismo patrón de pointer-capture que el resto de controles arrastrables del sitio.
+un tono de referencia fijo, no "la cuerda 5". A petición explícita del usuario usa
+`playNote(45, false, volumen)` -- el `false` (`forKeyboard`) elige la MISMA muestra de guitarra que
+suena al pulsar la cuerda 5 al aire (no el oscilador del teclado, como en un primer intento), y
+repite la pulsación cada `DIAPASON_PLUCK_INTERVAL_MS` (2000ms) mientras se mantiene pulsado, en vez
+de sonar como un tono sostenido -- verificado instrumentando `AudioContext.prototype
+.createBufferSource` (la muestra de guitarra, no `createOscillator`) con `page.addInitScript`:
+exactamente 3 pulsaciones en ~4.5s mantenido, con huecos de 1992ms/2000ms entre ellas, y ninguna
+pulsación más tras soltar. Cada pulsación suelta (`releaseNote`) la anterior antes de lanzar la
+siguiente -- como un pellizco real amortigua el anterior al volver a tocar la cuerda -- y al
+soltar el botón también se suelta la última con el mismo patrón de pointer-capture que el resto de
+controles arrastrables del sitio.
 
 ## Ficheros
 
