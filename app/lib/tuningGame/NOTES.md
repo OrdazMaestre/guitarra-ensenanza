@@ -1,29 +1,33 @@
 # Afinar a oído (sala-de-pruebas) — notas de diseño
 
-Minijuego nuevo, en construcción, visible solo en `sala-de-pruebas` (encima del mástil interactivo
-existente). Todavía sin detección de "afinado correctamente" ni puntuación -- eso es la siguiente
-iteración. Historial: la 1ª iteración fue el tablero solo visual (matemática en Hz); la 2ª lo
-convirtió en instrumento MIDI de verdad (interactivo, con sonido real, clavijas cuantizadas) y
-añadió arrastre-cambia-de-nota y entrada por teclado; esta 3ª iteración añadió las REGLAS del
-juego: selector de dificultad, desafinado aleatorio, ocultar nombres de nota, cronómetro, y el
-botón de diapasón de referencia (EXPERTO).
+Minijuego nuevo, visible solo en `sala-de-pruebas` (encima del mástil interactivo existente).
+Historial: la 1ª iteración fue el tablero solo visual (matemática en Hz); la 2ª lo convirtió en
+instrumento MIDI de verdad (interactivo, con sonido real, clavijas cuantizadas) y añadió
+arrastre-cambia-de-nota y entrada por teclado; la 3ª añadió las REGLAS del juego: selector de
+dificultad, desafinado aleatorio, ocultar nombres de nota, cronómetro, y el botón de diapasón de
+referencia (EXPERTO); esta 4ª iteración ajustó el margen de "afinado" a GRADOS progresivos por
+dificultad y añadió un 4º nivel, **Profesional**, con una secuencia de preparación animada.
 
 ## Reglas del juego (selector de dificultad)
 
 A petición explícita del usuario, el texto instructivo de la sección se sustituyó por un selector
-de 3 botones (Fácil/Difícil/Experto, `DIFFICULTIES`/`DIFFICULTY_LABELS` en `TuningBoard.tsx`).
-Bajo el selector se muestra una lista con una línea de objetivo por modo -- el texto vive en
-`DIFFICULTY_DESCRIPTIONS` (`Record<Difficulty, string>`), justo debajo de `DIFFICULTY_LABELS` en
-`TuningBoard.tsx` (hay un comentario "EDITAR AQUÍ" en esa misma constante); para cambiar la
-redacción de cualquier modo basta con editar esa cadena, no hace falta tocar el JSX. Elegir una
-dificultad (o volver a elegir la misma, para "otra ronda") reinicia las 6 cuerdas a afinación
-estándar y luego aplica:
+de 4 botones (Fácil/Difícil/Experto/Profesional, `DIFFICULTIES`/`DIFFICULTY_LABELS` en
+`TuningBoard.tsx`). Bajo el selector se muestra una lista con una línea de objetivo por modo -- el
+texto vive en `DIFFICULTY_DESCRIPTIONS` (`Record<Difficulty, string>`), justo debajo de
+`DIFFICULTY_LABELS` en `TuningBoard.tsx` (hay un comentario "EDITAR AQUÍ" en esa misma constante);
+para cambiar la redacción de cualquier modo basta con editar esa cadena, no hace falta tocar el
+JSX. Elegir Fácil/Difícil/Experto (o volver a elegir el mismo, para "otra ronda") reinicia las 6
+cuerdas a afinación estándar y luego aplica:
 
 | Dificultad | Cuerdas desafinadas | Desafinado (por cuerda) | Nombres de nota | Botón diapasón |
 |---|---|---|---|---|
-| Fácil    | 1 al azar | 1-3 semitonos | visibles | no |
-| Difícil  | 1 al azar | 1-4 semitonos | ocultos (aire y al pulsar un traste) | no |
-| Experto  | las 6     | 1-6 semitonos | ocultos | sí ("Diapasón La 440Hz") |
+| Fácil       | 1 al azar | 1-3 semitonos | visibles | no |
+| Difícil     | 1 al azar | 1-4 semitonos | ocultos (aire y al pulsar un traste) | no |
+| Experto     | las 6     | 1-6 semitonos | ocultos | sí ("Diapasón La 440Hz") |
+| Profesional | las 6     | secuencia animada, ver más abajo | ocultos (a media secuencia) | sí |
+
+Profesional NO usa `startDifficulty`/`randomDetuneCents` -- tiene su propio arranque asíncrono,
+`startProfessionalRound` (ver "Modo Profesional" más abajo).
 
 `randomDetuneCents(maxSemitones)` genera un desplazamiento entero en cents (signo al azar) entre
 `MIN_DETUNE_SEMITONES` (1 semitono = 100 cents) y `MAX_DETUNE_SEMITONES[dificultad]` (`3`/`4`/`6`
@@ -47,22 +51,39 @@ izquierda en los minutos (`formatElapsed`).
 
 **Parada automática al afinar (`solved`)**: a petición explícita del usuario, el cronómetro para
 solo y se pone en verde cuando detecta 1 segundo SEGUIDO con las 6 cuerdas afinadas. "Afinada
-correctamente" usa una tolerancia de `IN_TUNE_TOLERANCE_CENTS = 2` cents en vez de exigir 0 exacto
--- igual que cualquier afinador electrónico real, que también da un pequeño margen "en verde" en
-vez de un único valor exacto (clavar 0 cents arrastrando con el dedo/ratón sería frustrante de
-más). `allInTune` se deriva de `cents` en cada render y es la dependencia de un `useEffect` que
-arma un `setTimeout(SOLVED_HOLD_MS)` en cuanto se vuelve `true`; si `cents` cambia otra vez antes
-de que cumpla el segundo (`allInTune` vuelve a `false`), la limpieza del efecto CANCELA ese
-timeout, así que solo cuenta un segundo seguido dentro del margen, no acumulado a trozos --
-verificado corrigiendo una cuerda a medias (nunca se resuelve) y luego clavándola en 0 exacto (se
-resuelve a los ~1s, ni antes). Un segundo `useEffect` separado para el propio intervalo del
-cronómetro se detiene en cuanto `solved` pasa a `true` (dependencia añadida a su array) -- parada
-real, no solo visual, verificado comprobando que el texto no cambia aunque pasen varios segundos
-más. Una vez resuelto, `solved` se queda en `true` el resto de la ronda aunque se vuelva a tocar
-una clavija después (no se "des-resuelve") hasta la siguiente llamada a `startDifficulty`. Además
-del color (`.tuning-timer.is-solved`, verde `#047857`), el icono cambia de ⏱ a ✅.
+correctamente" usa un margen EN GRADOS de la propia clavija (no en cents) -- igual que cualquier
+afinador electrónico real, que también da un pequeño margen "en verde" en vez de un único valor
+exacto (clavar el giro perfecto arrastrando con el dedo/ratón sería frustrante de más) -- y
+PROGRESIVO con la dificultad, ajustado dos veces a petición explícita del usuario: primero de un
+margen fijo de 2 cents (~3.6°, igual de exigente en los tres niveles) a `{facil: 20, dificil: 10,
+experto: 5}`, y más tarde, tras confirmar la sensibilidad real del arrastre (1 cent cada 1.8°, más
+fino que octavos de tono) y añadir Profesional, a los valores actuales:
+`IN_TUNE_TOLERANCE_DEGREES = { facil: 30, dificil: 20, experto: 10, profesional: 30 }`. Profesional
+vuelve a un margen amplio (igual que Fácil) a propósito, palabras del propio usuario: su
+preparación (clavijas en posición aleatoria + desafinado en cadena, ver más abajo) ya es bastante
+más dura que Experto por sí sola, así que exigir además precisión de Experto haría el modo
+injusto/imposible. La comprobación reconstruye el ángulo exacto de cada clavija multiplicando
+`cents[cuerda] * DEGREES_PER_STEP` (1.8°/cent, la misma constante de `pitch.ts` con la que
+`TuningPeg.tsx` convirtió el arrastre original a cents, así que la vuelta es exacta, sin redondeo
+extra) y lo compara contra el margen del modo activo -- el giro puramente visual de Profesional
+(`baselineAngles`, ver más abajo) NUNCA entra en esta cuenta, "afinado" siempre se mide sobre el
+tono real. Verificado arrastrando cada clavija a un valor exacto en cents justo dentro y justo
+fuera de cada margen en los cuatro niveles -- en Experto/Profesional, además, llevando las 6
+cuerdas a la vez al mismo valor, porque ahí las 6 deben cumplir el margen a la vez, no solo una.
+`allInTune` se deriva de `cents` en cada render (y es `false` mientras `introRunning` -- ver más
+abajo -- para que Profesional no se dé por resuelto durante su propia preparación) y es la
+dependencia de un `useEffect` que arma un `setTimeout(SOLVED_HOLD_MS)` en cuanto se vuelve `true`;
+si `cents` cambia otra vez antes de que cumpla el segundo (`allInTune` vuelve a `false`), la
+limpieza del efecto CANCELA ese timeout, así que solo cuenta un segundo seguido dentro del margen,
+no acumulado a trozos -- verificado corrigiendo una cuerda a medias (nunca se resuelve) y luego
+clavándola en 0 exacto (se resuelve a los ~1s, ni antes). Un segundo `useEffect` separado para el
+propio intervalo del cronómetro se detiene en cuanto `solved` pasa a `true` (dependencia añadida a
+su array) -- parada real, no solo visual, verificado comprobando que el texto no cambia aunque
+pasen varios segundos más. Una vez resuelto, `solved` se queda en `true` el resto de la ronda
+aunque se vuelva a tocar una clavija después (no se "des-resuelve") hasta la siguiente ronda.
+Además del color (`.tuning-timer.is-solved`, verde `#047857`), el icono cambia de ⏱ a ✅.
 
-**Diapasón La 440Hz (solo Experto)**: botón sobre el mástil, mantener pulsado para oír un La2 de
+**Diapasón La 440Hz (Experto y Profesional)**: botón sobre el mástil, mantener pulsado para oír un La2 de
 referencia (`STANDARD_TUNING_MIDI[5]`, MIDI 45) -- SIN aplicar el desafinado de ninguna cuerda, es
 un tono de referencia fijo, no "la cuerda 5". A petición explícita del usuario usa
 `playNote(45, false, volumen)` -- el `false` (`forKeyboard`) elige la MISMA muestra de guitarra que
@@ -76,6 +97,100 @@ siguiente -- como un pellizco real amortigua el anterior al volver a tocar la cu
 soltar el botón también se suelta la última con el mismo patrón de pointer-capture que el resto de
 controles arrastrables del sitio.
 
+## Modo Profesional: secuencia de preparación animada
+
+A petición explícita del usuario, incluye una animación de 4 fases antes de empezar la ronda (y
+antes de que arranque el cronómetro), pensada para simular un clavijero real: "cada clavija
+descansa en un ángulo arbitrario según cuántas vueltas lleve dadas en su historia, sin que eso
+signifique nada sobre si la cuerda está afinada o no". Orquestada por `startProfessionalRound`
+(función async, `TuningBoard.tsx`):
+
+1. **Reposo** (`PHASE1_SHOW_MS` = 1000ms): mástil en afinación estándar, nombres de nota visibles,
+   tal cual empiezan Fácil/Difícil/Experto -- una pausa para que se vea el estado "normal" antes de
+   que nada se mueva.
+2. **Giro de clavijero, SIN desafinar** (`PHASE2_BASELINE_SPIN_MS` = 900ms): cada clavija gira a una
+   orientación visual aleatoria (`randomBaselineDeg()`, una por cuerda) mientras el tono real se
+   queda exactamente en 0 cents -- verificado con Playwright leyendo `aria-valuenow` de las 6
+   clavijas durante esta fase en 8 rondas seguidas (48 lecturas): siempre `'0'`. Esto se consigue
+   con una prop nueva en `TuningPeg.tsx`, `baselineDeg`, que se SUMA al ángulo visual
+   (`(stepValue * DEGREES_PER_STEP + baselineDeg) % 360`) pero nunca se lee en ningún sitio que
+   calcule tono (`effectiveMidi`, `allInTune`) -- desacoplo total entre "dónde apunta la clavija" y
+   "qué nota suena", igual que en una guitarra real. La rotación se anima con una transición CSS
+   (`.tuning-peg.is-animating .tuning-peg-indicator { transition: transform 400ms ease-in-out }`)
+   en vez de saltar de golpe.
+3. **Ocultar nombres** (`PHASE3_HIDE_NAMES_MS` = 500ms): a diferencia de Difícil/Experto (que
+   ocultan los nombres desde el principio), Profesional los oculta a MEDIA secuencia --
+   `profesionalNamesHidden` (inicia en `false`, este paso lo pone a `true`) es la pieza que
+   `hideNoteNames` sustituye por la del resto de modos cuando `difficulty === 'profesional'`.
+4. **Desafinado en cadena** (`PROFESIONAL_SUBROTATIONS` = 3 tandas de `PHASE4_SUBROTATION_STEP_MS` =
+   500ms cada una): esta vez SÍ cambia el tono. Cada tanda suma a cada cuerda un giro aleatorio de
+   entre `PROFESIONAL_MIN_TURN` (0.1) y `PROFESIONAL_MAX_TURN` (1.2) vueltas
+   (`CENTS_PER_TURN` = 200, la misma norma "1 vuelta = 1 tono" del resto del juego), en sentido
+   aleatorio, y las 6 cuerdas giran A LA VEZ en cada tanda (no una detrás de otra) para que se vea
+   caótico en vez de una revelación lenta y ordenada. Cents finales observados tras 3 tandas en una
+   ronda real: `[-140, 71, 7, -82, 58, -26]` -- magnitudes plausibles para 3 giros de 20-240 cents
+   cada uno con signo al azar.
+
+**Bug real encontrado y corregido: re-pulsar "Profesional" durante su propia intro la reiniciaba
+en bucle infinito.** Reportado por el propio usuario ("no funciona el modo Profesional, ni
+siquiera empieza su animación") tras verificar que la secuencia SÍ completaba correctamente en
+pruebas automatizadas aisladas -- la pista real estuvo en que la Fase 1 (1000ms) no cambia NADA
+visualmente (mástil en reposo), así que a un usuario real que pulsa "Profesional" y no ve pasar
+nada en ese primer segundo le resulta natural volver a pulsar el mismo botón, pensando que el
+primer clic no funcionó. Como el botón de dificultad seguía activo/clicable durante toda la
+secuencia, y `startProfessionalRound` reinicia su propio `roundTokenRef` en cada llamada
+(el mecanismo de cancelación descrito más abajo), cada re-clic cancelaba la ronda en curso y la
+reiniciaba desde la Fase 1 -- si el usuario repite esto cada vez que no ve movimiento (patrón
+natural: clic, ~0.5s sin cambios, clic de nuevo), la secuencia NUNCA llega a completarse, atrapada
+en un bucle de reinicios. Reproducido con Playwright: 5 clics seguidos sobre "Profesional"
+espaciados ~400-500ms (justo el patrón de un usuario impaciente dentro de la ventana de silencio
+de la Fase 1) dejan las 6 cuerdas en `cents = [0,0,0,0,0,0]` indefinidamente, exactamente como
+reportó el usuario. Arreglado deshabilitando los 4 botones de dificultad (`disabled={introRunning}`
+más una comprobación equivalente al principio del `onClick`, por si acaso) mientras dura la
+secuencia automática -- coherente con que el resto del tablero (clavijas, mástil) ya estaba
+bloqueado durante ese mismo tramo. Además de arreglar el bucle, el estado `:disabled` (opacidad
+reducida, cursor `not-allowed`) da una señal visual inmediata de "algo está pasando, espera" que
+mitiga la falta de feedback de la Fase 1. Reverificado con Playwright: el mismo patrón de 5 clics
+ahora deja pasar automáticamente ~4s entre cada clic real (Playwright espera a que el botón vuelva
+a ser clicable antes de intentar el siguiente), y la secuencia completa una única vez con el
+cronómetro arrancando correctamente al final.
+
+Solo entonces `introRunning` pasa a `false`, momento en el que el `useEffect` del cronómetro (que
+ya comprobaba `introRunning` como dependencia adicional) arranca el conteo por primera vez --
+verificado con Playwright: el texto del cronómetro marca `0:00` justo al terminar la secuencia y
+`0:01` 1.5s después, nunca antes. Mientras `introRunning` es `true`: las clavijas no responden a
+gestos ni a teclado (`TuningPeg` recibe `animating={introRunning}`, con guardas al principio de
+`onPointerDown`/`onKeyDown` y `tabIndex={-1}`) y el propio mástil tampoco reproduce notas al pulsar
+un traste (`introRunning` comprobado al principio de `onPointerDown` del `<svg>`, y su equivalente
+por teclado vía un `introRunningRef` -- necesario porque el `useEffect` del modo teclado tiene
+`[kbMode, kbRange]` como dependencias y leer `introRunning` directamente ahí cerraría sobre un
+valor obsoleto, mismo motivo que ya justifica `volumeRef`/`centsRef` junto a sus estados) --
+verificado arrastrando una clavija durante la fase 1 y comprobando que su `aria-valuenow` no
+cambia.
+
+**"Que la solución no caiga en 90 grados"**: `randomBaselineDeg()` sortea un ángulo entre 0° y 360°
+pero repite el sorteo si cae dentro de `BASELINE_EXCLUDE_DEGREES` (15°) de 90° o de 270° --
+decisión de diseño no especificada al detalle por el usuario (solo pidió "que la solución no caiga
+en 90 grados"), interpretada como una franja de exclusión alrededor de las dos orientaciones donde
+la clavija queda "de lado" (90° y 270° son equivalentes en ese sentido, vista de perfil) porque una
+clavija justo de lado es ambigua de leer de un vistazo. Verificado con Playwright: 48 muestras de
+`randomBaselineDeg()` a través de 8 rondas, 0 caen dentro de 90°±15° o 270°±15°.
+
+**Bug real encontrado y corregido: cancelación de la ronda en curso.** La primera versión solo
+comprobaba `mountedRef.current` (para no seguir llamando a `setState` tras desmontar el
+componente) tras cada `await sleep(...)`, pero NADA impedía que la secuencia async siguiera
+corriendo si el usuario elegía OTRA dificultad (o volvía a pulsar Profesional) mientras
+`startProfessionalRound` seguía en marcha -- confirmado con Playwright: pulsar Profesional y, a los
+150ms, pulsar Fácil, dejaba el tablero en apariencia correcto al instante, pero ~3.5s después las 6
+cuerdas aparecían desafinadas otra vez (la fase 4 de la ronda Profesional vieja, todavía viva,
+seguía escribiendo sobre el `cents` de la ronda Fácil nueva). Arreglado con un token de cancelación
+(`roundTokenRef`, incrementado al arrancar cualquier ronda -- `startDifficulty` o
+`startProfessionalRound`): `startProfessionalRound` captura su propio token al empezar
+(`const myToken = ++roundTokenRef.current`) y comprueba `roundTokenRef.current === myToken` junto
+a `mountedRef.current` tras cada `await sleep(...)`, abortando en silencio si alguna otra ronda
+empezó mientras tanto. Reverificado el mismo escenario tras el arreglo: las cuerdas de Fácil se
+mantienen estables (`[0, -219, 0, 0, 0, 0]`) 3.5s después del cambio.
+
 ## Ficheros
 
 - `app/lib/tuningGame/pitch.ts` — matemática pura (sin React), ahora TODO en MIDI (fraccionario),
@@ -83,8 +198,10 @@ controles arrastrables del sitio.
   cuerda que `OPEN_STRING_MIDI` en `ReducedFretboardDiagram.tsx`, cuerda 1 = Mi agudo),
   `midiToNoteName`, `centsToMidiOffset`, `DEGREES_PER_SEMITONE`/`DEGREES_PER_CENT`/
   `DEGREES_PER_STEP`/`MIN_STEP_CENTS`.
-- `app/components/tuningGame/TuningPeg.tsx` — la clavija: arrastre circular sin límite, ahora en
-  pasos cuantizados de 1 cent (ver más abajo) en vez de grados continuos.
+- `app/components/tuningGame/TuningPeg.tsx` — la clavija: arrastre circular sin límite, en pasos
+  cuantizados de 1 cent (ver más abajo) en vez de grados continuos. Props `baselineDeg`/`animating`
+  (solo las usa Profesional, ver esa sección) desacoplan el ángulo visual del tono real y
+  deshabilitan la clavija durante la secuencia automática.
 - `app/components/tuningGame/TuningBoard.tsx` — el tablero, ahora interactivo: pulsar cualquier
   traste (0-5) de cualquier cuerda reproduce esa nota de verdad vía `guitarAudioEngine.playNote()`,
   con el desafinado de esa cuerda ya aplicado.

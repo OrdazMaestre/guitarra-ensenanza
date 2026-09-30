@@ -16,8 +16,8 @@ export default function SalaDePruebasPage() {
       </header>
 
       <section className="test-room-tuning">
-        <p className="test-room-kicker">Minijuego (en construcción)</p>
-        <h2>Afinar a oído</h2>
+        <h2>APRENDIENDO A AFINAR CON EL OIDO</h2>
+        <p className="test-room-kicker">Minijuego</p>
         <TuningBoard />
       </section>
 

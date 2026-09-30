@@ -6,6 +6,7 @@ import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting, type Fre
 import MidiInstrumentChrome from '../guitar/MidiInstrumentChrome';
 import TuningPeg from './TuningPeg';
 import {
+  DEGREES_PER_STEP,
   STANDARD_TUNING_MIDI,
   centsToMidiOffset,
   midiToNoteName,
@@ -39,24 +40,32 @@ const OPEN_HIT_MARGIN = 36;
 // NOTES.md.
 const MAX_VOICES = 3;
 
-type Difficulty = 'facil' | 'dificil' | 'experto';
-const DIFFICULTIES: Difficulty[] = ['facil', 'dificil', 'experto'];
-const DIFFICULTY_LABELS: Record<Difficulty, string> = { facil: 'Fácil', dificil: 'Difícil', experto: 'Experto' };
+type Difficulty = 'facil' | 'dificil' | 'experto' | 'profesional';
+const DIFFICULTIES: Difficulty[] = ['facil', 'dificil', 'experto', 'profesional'];
+const DIFFICULTY_LABELS: Record<Difficulty, string> = {
+  facil: 'Fácil',
+  dificil: 'Difícil',
+  experto: 'Experto',
+  profesional: 'Profesional',
+};
 // Descripción breve del objetivo de cada modo -- EDITAR AQUÍ para cambiar el texto. Se muestra
 // bajo el selector de dificultad, una línea por modo (ver DIFFICULTIES.map más abajo en el JSX).
 const DIFFICULTY_DESCRIPTIONS: Record<Difficulty, string> = {
-  facil: 'Se desafina 1 cuerda al azar. Vuelve a afinarla girando su clavija.',
-  dificil: 'Se desafina 1 cuerda al azar. No ves el nombre de las notas: afínala solo de oído.',
-  experto: 'Se desafinan las 6 cuerdas y no ves los nombres. Usa el diapasón de referencia para afinarlas todas de oído.',
+  facil: 'Una cuerda se desajustó. Afinala girando su clavija.',
+  dificil: 'Ahora no ves el nombre pero sabemos que la mayoría de cuerdas son como la anterior + 5 semitonos.',
+  experto: 'Ahora afina todo usando la referencia del DIAPASÓN: "LA" es cuerda 5.',
+  profesional:
+    'Así te encontrarás una guitarra de verdad. Usa el diapasón, tu oído y tu cerebro.',
 };
 
 // Rango del desafinado aleatorio al empezar una ronda -- en SEMITONOS (100 cents cada uno, la
 // rejilla de 1 cent que usan las clavijas sigue siendo la unidad interna, ver DEGREES_PER_STEP en
 // pitch.ts), siempre entre 1 semitono y el máximo de cada dificultad, con signo al azar. Escala
 // con la dificultad a petición explícita del usuario -- el primer intento (15-45 cents fijos,
-// sin variar por dificultad) resultaba "muy poco" desafinado en la práctica.
+// sin variar por dificultad) resultaba "muy poco" desafinado en la práctica. Profesional no usa
+// esto -- tiene su propio mecanismo de desafinado, ver PROFESIONAL_* más abajo.
 const MIN_DETUNE_SEMITONES = 1;
-const MAX_DETUNE_SEMITONES: Record<Difficulty, number> = { facil: 3, dificil: 4, experto: 6 };
+const MAX_DETUNE_SEMITONES: Record<'facil' | 'dificil' | 'experto', number> = { facil: 3, dificil: 4, experto: 6 };
 
 function randomDetuneCents(maxSemitones: number): number {
   const minCents = MIN_DETUNE_SEMITONES * 100;
@@ -65,18 +74,73 @@ function randomDetuneCents(maxSemitones: number): number {
   return Math.random() < 0.5 ? -magnitude : magnitude;
 }
 
-// Margen para considerar una cuerda "afinada correctamente" -- ver el comentario junto a
-// `allInTune` en el componente. También es el tiempo que debe mantenerse el margen seguido antes
-// de parar el cronómetro (SOLVED_HOLD_MS).
-const IN_TUNE_TOLERANCE_CENTS = 2;
+// Margen para considerar una cuerda "afinada correctamente" -- en GRADOS de la propia clavija
+// (no en cents), a petición explícita del usuario, y progresivo con la dificultad: más permisivo
+// en Fácil, más exigente en Experto. Profesional vuelve a un margen amplio (igual que Fácil) a
+// propósito -- su preparación (clavijas en posición aleatoria + desafinado caótico en cadena) ya
+// es bastante más dura que Experto por sí sola, así que exigir además precisión de Experto haría
+// el modo injusto/imposible (razón dada explícitamente por el usuario). Ver el comentario junto a
+// `allInTune` en el componente para cómo se compara. También es el tiempo que debe mantenerse el
+// margen seguido antes de parar el cronómetro (SOLVED_HOLD_MS).
+const IN_TUNE_TOLERANCE_DEGREES: Record<Difficulty, number> = { facil: 30, dificil: 20, experto: 10, profesional: 30 };
 const SOLVED_HOLD_MS = 1000;
 
-// Diapasón (solo Experto): una pulsación cada 2s mientras se mantiene pulsado -- a petición
-// explícita del usuario.
+// Diapasón (Experto y Profesional): una pulsación cada 2s mientras se mantiene pulsado -- a
+// petición explícita del usuario.
 const DIAPASON_PLUCK_INTERVAL_MS = 2000;
 
 function pickRandomString(): StringNumber {
   return STRINGS[Math.floor(Math.random() * STRINGS.length)];
+}
+
+// --- Modo Profesional: secuencia automática -- ver "Animación de Profesional" en NOTES.md. -------
+//
+// 1) Se ve el mástil normal, con nombres.
+// 2) Cada clavija GIRA a una orientación visual aleatoria, pero el tono real NO cambia (sigue
+//    afinado de fábrica) -- simula un clavijero real, donde cada clavija descansa en un ángulo
+//    arbitrario según cuántas vueltas lleve dadas en su historia, sin que eso signifique nada
+//    sobre si la cuerda está afinada o no.
+// 3) Desaparecen los nombres de las notas.
+// 4) Cada cuerda gira "de verdad" (esta vez SÍ cambia el tono) en PROFESIONAL_SUBROTATIONS tandas
+//    simultáneas para las 6 cuerdas a la vez, cada tanda un giro aleatorio de entre
+//    PROFESIONAL_MIN_TURN y PROFESIONAL_MAX_TURN vueltas, en sentido aleatorio.
+// Solo entonces arranca el cronómetro.
+const CENTS_PER_TURN = 200; // 1 vuelta completa = 1 tono = 200 cents, ver pitch.ts
+const PROFESIONAL_SUBROTATIONS = 3;
+const PROFESIONAL_MIN_TURN = 0.1;
+const PROFESIONAL_MAX_TURN = 1.2;
+// "Que la solución no caiga en 90 grados" -- a petición explícita del usuario: la orientación
+// visual aleatoria del paso 2 (el ángulo al que hay que volver para estar afinado) nunca se elige
+// dentro de este margen alrededor de 90°/270° (clavija "de lado"), para que ninguna cuerda tenga
+// que acabar apuntando justo a esa posición, ambigua de leer de un vistazo.
+const BASELINE_EXCLUDE_DEGREES = 15;
+// Duración de cada fase de la animación (ms) -- elección propia, sin pedir nada exacto el usuario;
+// fácil de retocar aquí si se quiere más rápido/lento.
+const PHASE1_SHOW_MS = 1000;
+const PHASE2_BASELINE_SPIN_MS = 900;
+const PHASE3_HIDE_NAMES_MS = 500;
+const PHASE4_SUBROTATION_STEP_MS = 500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function randomBaselineDeg(): number {
+  let deg: number;
+  do {
+    deg = Math.floor(Math.random() * 360);
+  } while (Math.abs(deg - 90) < BASELINE_EXCLUDE_DEGREES || Math.abs(deg - 270) < BASELINE_EXCLUDE_DEGREES);
+  return deg;
+}
+
+function randomSubrotationCents(): number {
+  const turns = PROFESIONAL_MIN_TURN + Math.random() * (PROFESIONAL_MAX_TURN - PROFESIONAL_MIN_TURN);
+  const magnitude = Math.round(turns * CENTS_PER_TURN);
+  return Math.random() < 0.5 ? -magnitude : magnitude;
+}
+
+function zeroedRecord(): Record<StringNumber, number> {
+  return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
 }
 
 function formatElapsed(totalSeconds: number): string {
@@ -113,14 +177,7 @@ function getSvgCoords(e: PointerEvent<SVGSVGElement>, svg: SVGSVGElement): { x: 
 // esa cuerda (en cents) a la nota de ese traste, así que lo que se oye coincide exactamente con lo
 // que dice la etiqueta. Ver app/lib/tuningGame/NOTES.md para el porqué de cada decisión.
 export default function TuningBoard() {
-  const [cents, setCents] = useState<Record<StringNumber, number>>({
-    1: 0,
-    2: 0,
-    3: 0,
-    4: 0,
-    5: 0,
-    6: 0,
-  });
+  const [cents, setCents] = useState<Record<StringNumber, number>>(zeroedRecord());
   const [volume, setVolume] = useState(1.0);
   const [pointerPositions, setPointerPositions] = useState<{ string: StringNumber; fret: number }[]>([]);
   const [kbMode, setKbMode] = useState(false);
@@ -131,18 +188,40 @@ export default function TuningBoard() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [diapasonSounding, setDiapasonSounding] = useState(false);
   const [solved, setSolved] = useState(false);
+  // Solo usados por Profesional -- ver "Animación de Profesional" en NOTES.md. baselineAngles es
+  // puramente visual (se SUMA al ángulo que ya da cents, nunca toca el tono); introRunning
+  // deshabilita las clavijas y bloquea el cronómetro/la detección de "afinado" mientras dura la
+  // secuencia automática; profesionalNamesHidden es la versión de hideNoteNames propia de este
+  // modo (empieza visible, se oculta a media secuencia, a diferencia de Difícil/Experto que
+  // siempre ocultan desde el principio).
+  const [baselineAngles, setBaselineAngles] = useState<Record<StringNumber, number>>(zeroedRecord());
+  const [introRunning, setIntroRunning] = useState(false);
+  const [profesionalNamesHidden, setProfesionalNamesHidden] = useState(false);
 
   // FÁCIL: una cuerda al azar desafinada, nombres de nota siempre visibles.
   // DIFÍCIL: igual, pero sin nombres de nota (ni al aire ni al pulsar un traste).
   // EXPERTO: TODAS las cuerdas desafinadas, sin nombres de nota, y aparece el botón de referencia.
-  const hideNoteNames = difficulty === 'dificil' || difficulty === 'experto';
-  const showDiapason = difficulty === 'experto';
-  // "Afinadas correctamente" con una pequeña tolerancia (±2 cents) en vez de exigir 0 exacto --
-  // igual que cualquier afinador electrónico real, que también da un margen "en verde" en vez de
-  // solo un único valor exacto (llegar a 0 cents clavado arrastrando con el dedo/ratón sería
-  // frustrante de más). Solo puede ser true habiendo ya elegido dificultad -- si no, las 6 cuerdas
-  // empiezan en 0 cents por defecto y "estaría resuelto" desde antes de jugar.
-  const allInTune = difficulty !== null && STRINGS.every(s => Math.abs(cents[s]) <= IN_TUNE_TOLERANCE_CENTS);
+  // PROFESIONAL: clavijas en posición aleatoria + desafinado en cadena (ver startProfessionalRound
+  // más abajo); los nombres empiezan visibles y se ocultan a media secuencia automática
+  // (profesionalNamesHidden), no desde el principio como Difícil/Experto.
+  const hideNoteNames = difficulty === 'dificil' || difficulty === 'experto' || (difficulty === 'profesional' && profesionalNamesHidden);
+  const showDiapason = difficulty === 'experto' || difficulty === 'profesional';
+  // "Afinadas correctamente" con un margen en GRADOS de clavija en vez de exigir 0 exacto -- igual
+  // que cualquier afinador electrónico real, que también da un margen "en verde" en vez de un
+  // único valor exacto (llegar a 0 grados clavado arrastrando con el dedo/ratón sería frustrante
+  // de más), y progresivo con la dificultad (ver IN_TUNE_TOLERANCE_DEGREES). `cents[s] *
+  // DEGREES_PER_STEP` reconstruye el ángulo exacto de esa clavija (sin redondeo: cents ya es
+  // entero, DEGREES_PER_STEP es la MISMA constante -1.8- con la que TuningPeg.tsx convirtió el
+  // ángulo original a cents, así que la vuelta es exacta) -- baselineAngles (el giro puramente
+  // visual de Profesional) NUNCA entra aquí a propósito, "afinado" siempre se mide sobre el tono
+  // real, no sobre dónde apunta la clavija. Solo puede ser true habiendo ya elegido dificultad Y
+  // fuera de la secuencia automática de Profesional (si no, las cuerdas siguen en 0 cents durante
+  // las fases 1-3 de esa secuencia -- antes de que la fase 4 las desafine de verdad -- y
+  // "estaría resuelto" antes incluso de que empiece el reto).
+  const allInTune =
+    difficulty !== null &&
+    !introRunning &&
+    STRINGS.every(s => Math.abs(cents[s] * DEGREES_PER_STEP) <= IN_TUNE_TOLERANCE_DEGREES[difficulty]);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const ptVoicesRef = useRef(new Map<number, { string: StringNumber; fret: number; voiceId: number }>());
@@ -157,6 +236,14 @@ export default function TuningBoard() {
   useEffect(() => {
     centsRef.current = cents;
   }, [cents]);
+  // El handler de teclado (más abajo) vive en un useEffect con deps [kbMode, kbRange] -- leer
+  // `introRunning` directamente ahí cerraría sobre un valor obsoleto en cuanto empezara/terminara
+  // la secuencia automática de Profesional sin que kbMode/kbRange cambiaran (mismo motivo que
+  // volumeRef/centsRef ya existen al lado de sus estados).
+  const introRunningRef = useRef(introRunning);
+  useEffect(() => {
+    introRunningRef.current = introRunning;
+  }, [introRunning]);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -166,6 +253,26 @@ export default function TuningBoard() {
     const id = window.setTimeout(() => preloadSamples(), 300);
     return () => window.clearTimeout(id);
   }, []);
+
+  // Solo lo lee startProfessionalRound -- su secuencia de fases hace varios `await sleep(...)`, y
+  // si el componente se desmonta a media secuencia (el usuario navega fuera de sala-de-pruebas)
+  // hay que dejar de llamar a los setState de las fases siguientes en vez de seguir como si nada.
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
+  // Token de cancelación para la secuencia async de Profesional: sin esto, elegir OTRA dificultad
+  // (o volver a pulsar Profesional) MIENTRAS startProfessionalRound sigue corriendo no la detiene --
+  // solo detiene sus setState futuros si el componente se desmonta, pero la ronda sigue viva y
+  // acaba pisando el `cents` de la ronda nueva con su fase 4 (confirmado con Playwright: cambiar a
+  // Fácil a media Profesional dejaba las 6 cuerdas desafinadas por la ronda vieja segundos después).
+  // startDifficulty/startProfessionalRound incrementan este contador al arrancar; cada `await
+  // sleep(...)` de la secuencia comprueba que su propio token capturado sigue siendo el vigente.
+  const roundTokenRef = useRef(0);
 
   useEffect(
     () => () => {
@@ -187,12 +294,14 @@ export default function TuningBoard() {
   // dificultad real) y sigue corriendo aunque se re-seleccione la misma -- startDifficulty ya
   // pone elapsedSeconds a 0 en ese caso, así que no hace falta reiniciar el intervalo en sí. Para
   // en seco en cuanto `solved` se pone a true (ver el efecto de abajo) -- ese es el "parar
-  // automáticamente" pedido por el usuario.
+  // automáticamente" pedido por el usuario. En Profesional, además, NO arranca mientras
+  // `introRunning` sea true -- "tras todo esto comienza el cronómetro", pedido explícitamente por
+  // el usuario para que la secuencia automática de preparación no cuente como tiempo de juego.
   useEffect(() => {
-    if (!difficulty || solved) return;
+    if (!difficulty || solved || introRunning) return;
     const id = window.setInterval(() => setElapsedSeconds(s => s + 1), 1000);
     return () => window.clearInterval(id);
-  }, [difficulty, solved]);
+  }, [difficulty, solved, introRunning]);
 
   // "Para automáticamente y cambia a verde cuando lleva 1s con todas las cuerdas afinadas" -- el
   // propio `allInTune` (derivado de `cents` en cada render) es la dependencia del efecto: cada vez
@@ -208,22 +317,77 @@ export default function TuningBoard() {
     return () => window.clearTimeout(id);
   }, [allInTune, solved]);
 
-  // Empezar/reiniciar una ronda: vuelve las 6 cuerdas a afinación estándar y desafina según la
-  // dificultad -- FÁCIL/DIFÍCIL una cuerda al azar, EXPERTO las 6 -- antes de aplicar el nuevo
-  // estado. Re-seleccionar la MISMA dificultad genera un desafinado nuevo cada vez (útil como
-  // "otra ronda"), no repite el anterior.
-  function startDifficulty(next: Difficulty) {
+  // Empezar/reiniciar una ronda (Fácil/Difícil/Experto): vuelve las 6 cuerdas a afinación estándar
+  // y desafina según la dificultad -- FÁCIL/DIFÍCIL una cuerda al azar, EXPERTO las 6 -- antes de
+  // aplicar el nuevo estado. Re-seleccionar la MISMA dificultad genera un desafinado nuevo cada vez
+  // (útil como "otra ronda"), no repite el anterior. También limpia cualquier resto de una ronda
+  // de Profesional anterior (baseline visual, secuencia automática, nombres ocultos a medias) --
+  // sin esto, cambiar de Profesional a Fácil dejaría las clavijas con un giro visual heredado que
+  // ya no significa nada.
+  function startDifficulty(next: 'facil' | 'dificil' | 'experto') {
+    roundTokenRef.current += 1; // invalida cualquier startProfessionalRound todavía en curso
     setDifficulty(next);
     setElapsedSeconds(0);
     setSolved(false);
+    setIntroRunning(false);
+    setProfesionalNamesHidden(false);
+    setBaselineAngles(zeroedRecord());
     const maxSemitones = MAX_DETUNE_SEMITONES[next];
-    const fresh: Record<StringNumber, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    const fresh = zeroedRecord();
     if (next === 'experto') {
       for (const s of STRINGS) fresh[s] = randomDetuneCents(maxSemitones);
     } else {
       fresh[pickRandomString()] = randomDetuneCents(maxSemitones);
     }
     setCents(fresh);
+  }
+
+  // Empezar/reiniciar una ronda de Profesional: la secuencia de 4 fases descrita junto a las
+  // constantes PROFESIONAL_*/PHASE*_MS más arriba. `introRunning` se pone a false al terminar la
+  // fase 4, momento en el que el efecto del cronómetro (más arriba) por fin arranca el conteo.
+  async function startProfessionalRound() {
+    const myToken = ++roundTokenRef.current; // invalida cualquier ronda anterior (incl. otra Profesional en curso)
+    setDifficulty('profesional');
+    setElapsedSeconds(0);
+    setSolved(false);
+    setIntroRunning(true);
+    setProfesionalNamesHidden(false);
+    setCents(zeroedRecord());
+    setBaselineAngles(zeroedRecord());
+
+    // Fase 1: mástil base con nombres, en reposo -- una pausa para que se vea el estado "normal".
+    await sleep(PHASE1_SHOW_MS);
+    if (!mountedRef.current || roundTokenRef.current !== myToken) return;
+
+    // Fase 2: cada clavija gira a una orientación visual aleatoria SIN tocar el tono (cents sigue
+    // en 0 para las 6) -- simula un clavijero real con clavijas en distinta posición aunque esté
+    // afinado. La transición CSS de .is-animating (TuningPeg.tsx) anima el giro suavemente.
+    const newBaselines = zeroedRecord();
+    for (const s of STRINGS) newBaselines[s] = randomBaselineDeg();
+    setBaselineAngles(newBaselines);
+    await sleep(PHASE2_BASELINE_SPIN_MS);
+    if (!mountedRef.current || roundTokenRef.current !== myToken) return;
+
+    // Fase 3: desaparecen los nombres de las notas.
+    setProfesionalNamesHidden(true);
+    await sleep(PHASE3_HIDE_NAMES_MS);
+    if (!mountedRef.current || roundTokenRef.current !== myToken) return;
+
+    // Fase 4: cada cuerda gira PROFESIONAL_SUBROTATIONS veces, cada giro un valor aleatorio entre
+    // PROFESIONAL_MIN_TURN y PROFESIONAL_MAX_TURN vueltas, en sentido aleatorio -- y esta vez SÍ
+    // desafina de verdad. Las 6 cuerdas giran a la vez, en tandas simultáneas (no una cuerda detrás
+    // de otra), para que se vea más caótico/realista en vez de una revelación lenta y ordenada.
+    let running = zeroedRecord();
+    for (let round = 0; round < PROFESIONAL_SUBROTATIONS; round++) {
+      const next = { ...running };
+      for (const s of STRINGS) next[s] = running[s] + randomSubrotationCents();
+      running = next;
+      setCents({ ...running });
+      await sleep(PHASE4_SUBROTATION_STEP_MS);
+      if (!mountedRef.current || roundTokenRef.current !== myToken) return;
+    }
+
+    setIntroRunning(false);
   }
 
   // Diapasón (solo EXPERTO): La2 de referencia, SIN el desafinado de ninguna cuerda -- es un tono
@@ -310,6 +474,7 @@ export default function TuningBoard() {
       const entry = activeMap[e.code];
       if (!entry || entry.fret > END_FRET) return;
       e.preventDefault();
+      if (introRunningRef.current) return; // la secuencia automática de Profesional está "tocando" el mástil
       if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
       if (kbKeysHeldRef.current.size >= MAX_VOICES) return;
       kbKeysHeldRef.current.set(e.code, { ...entry, voiceId: -1 });
@@ -366,6 +531,7 @@ export default function TuningBoard() {
   }
 
   async function onPointerDown(e: PointerEvent<SVGSVGElement>) {
+    if (introRunning) return; // la secuencia automática de Profesional está "tocando" el mástil
     const cell = getCellAt(e);
     if (!cell) return;
     if (ptVoicesRef.current.size >= MAX_VOICES) return;
@@ -417,7 +583,12 @@ export default function TuningBoard() {
             type="button"
             className={`tuning-difficulty-button${difficulty === d ? ' is-active' : ''}`}
             aria-pressed={difficulty === d}
-            onClick={() => startDifficulty(d)}
+            disabled={introRunning}
+            onClick={() => {
+              if (introRunning) return;
+              if (d === 'profesional') startProfessionalRound();
+              else startDifficulty(d);
+            }}
           >
             {DIFFICULTY_LABELS[d]}
           </button>
@@ -519,6 +690,8 @@ export default function TuningBoard() {
                 stepValue={cents[s]}
                 onStepChange={next => setCents(c => ({ ...c, [s]: next }))}
                 ariaLabel={`Clavija de la cuerda ${s}`}
+                baselineDeg={baselineAngles[s]}
+                animating={introRunning}
               />
               {!hideNoteNames && (
                 <text className="tuning-open-note" x={BOARD_X - 12} y={y + 5}>
@@ -623,6 +796,11 @@ export function TuningBoardStyles() {
         color: #ffffff;
       }
 
+      .tuning-difficulty-button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
       .tuning-timer {
         color: #080808;
         font-size: 14px;
@@ -703,6 +881,14 @@ export function TuningBoardStyles() {
         stroke: #047857;
         stroke-linecap: round;
         stroke-width: 3;
+      }
+
+      .tuning-peg.is-animating {
+        cursor: default;
+      }
+
+      .tuning-peg.is-animating .tuning-peg-indicator {
+        transition: transform 400ms ease-in-out;
       }
 
       .tuning-open-note {

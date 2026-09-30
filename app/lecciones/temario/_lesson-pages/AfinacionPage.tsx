@@ -1,6 +1,8 @@
 import Image from 'next/image';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
+import { ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
+import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 import type { LessonPageProps } from './types';
 
 export default function AfinacionPage({ previous, next, quizHref }: LessonPageProps) {
@@ -99,13 +101,28 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
               ))}
             </div>
           </section>
+
+          <section className="tuning-game-section" aria-labelledby="tuning-game-title">
+            <p className="lesson-kicker">Ahora te toca a ti</p>
+            <h2 id="tuning-game-title">Practica afinando a oído</h2>
+            <p>
+              Elige una dificultad. </p>
+            <p>Gira las clavijas. </p>
+            <p>Afina cada cuerda escuchando con atención.
+            </p>
+            <TuningBoard />
+          </section>
         </article>
+
+
 
         <div className="lesson-pager-wrap">
           <QuizButton quizHref={quizHref} />
           <TemarioPager previous={previous} next={next} />
         </div>
 
+        <ReducedFretboardStyles />
+        <TuningBoardStyles />
         <style>{`
           .tuning-page {
             background: #ffffff;
@@ -213,7 +230,8 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
           }
 
           .string-section,
-          .interval-section {
+          .interval-section,
+          .tuning-game-section {
             border-top: 1px solid #d4d4d8;
             margin-top: clamp(52px, 9vw, 108px);
             padding-top: clamp(34px, 6vw, 64px);
@@ -221,6 +239,29 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
 
           .string-section {
             text-align: center;
+          }
+
+          .tuning-game-section {
+            min-width: 0;
+          }
+
+          .tuning-game-section h2 {
+            font-size: clamp(34px, 5vw, 68px);
+            font-weight: 950;
+            letter-spacing: 0;
+            line-height: 0.98;
+            margin: 0 0 20px;
+          }
+
+          .tuning-game-section > p {
+            color: #303030;
+            font-size: 18px;
+            line-height: 1.62;
+            margin: 0 0 8px;
+          }
+
+          .tuning-game-section .midi-instrument-host {
+            margin-top: clamp(20px, 3vw, 32px);
           }
 
           .string-grid {

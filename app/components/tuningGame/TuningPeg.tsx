@@ -11,6 +11,19 @@ interface TuningPegProps {
   stepValue: number;
   onStepChange: (nextStepValue: number) => void;
   ariaLabel: string;
+  /**
+   * Desplazamiento visual en grados, SUMADO al ángulo que ya da `stepValue` -- NUNCA toca el tono
+   * (eso sigue siendo pura y exclusivamente `stepValue`). Sirve para el modo Profesional: sus
+   * clavijas arrancan en una orientación visual aleatoria aunque sigan afinadas de fábrica ("misma
+   * nota, distinta posición", como un clavijero real). Ver "Animación de Profesional" en NOTES.md.
+   */
+  baselineDeg?: number;
+  /**
+   * Mientras es true, el indicador gira con una transición CSS suave en vez de seguir el dedo/
+   * ratón al instante, y la clavija deja de responder a gestos -- para la secuencia automática de
+   * Profesional (el usuario NO debe poder tocar una clavija mientras se está "auto-desafinando").
+   */
+  animating?: boolean;
 }
 
 // "Un octavo de tono" por flecha -- paso más grueso que el arrastre (pensado para nudges rápidos
@@ -34,7 +47,16 @@ function angleAt(clientX: number, clientY: number, centerX: number, centerY: num
 // (Math.round(exactDegrees / DEGREES_PER_STEP)). Si se cuantizase el propio acumulador en vez del
 // ángulo exacto, un arrastre lento y preciso podría perder movimientos más pequeños que un paso
 // entero y la clavija se quedaría "pegada" pese a estar moviendo el dedo/ratón de verdad.
-export default function TuningPeg({ x, y, radius = 15, stepValue, onStepChange, ariaLabel }: TuningPegProps) {
+export default function TuningPeg({
+  x,
+  y,
+  radius = 15,
+  stepValue,
+  onStepChange,
+  ariaLabel,
+  baselineDeg = 0,
+  animating = false,
+}: TuningPegProps) {
   const dragRef = useRef<{
     pointerId: number;
     centerX: number;
@@ -44,6 +66,7 @@ export default function TuningPeg({ x, y, radius = 15, stepValue, onStepChange, 
   } | null>(null);
 
   function onPointerDown(e: PointerEvent<SVGGElement>) {
+    if (animating) return; // la secuencia automática de Profesional está "tocando" esta clavija
     // Evita que este gesto también dispare el manejador de "pulsar un traste para oír la nota" del
     // <svg> padre (TuningBoard.tsx) -- son áreas visualmente separadas pero un pointerdown sobre la
     // clavija SÍ hace bubbling hasta el <svg>.
@@ -86,6 +109,7 @@ export default function TuningPeg({ x, y, radius = 15, stepValue, onStepChange, 
   }
 
   function onKeyDown(e: KeyboardEvent<SVGGElement>) {
+    if (animating) return; // la secuencia automática de Profesional está "tocando" esta clavija
     // stopPropagation: TuningBoard.tsx tiene su propio listener GLOBAL de flechas (para el toggle
     // de rango grave/agudo del modo teclado) -- sin esto, una flecha pulsada con esta clavija
     // enfocada movería la clavija Y ADEMÁS cambiaría de rango a la vez.
@@ -104,11 +128,13 @@ export default function TuningPeg({ x, y, radius = 15, stepValue, onStepChange, 
     }
   }
 
-  const visualAngle = (((stepValue * DEGREES_PER_STEP) % 360) + 360) % 360;
+  // baselineDeg se SUMA al ángulo visual pero nunca entra en `stepValue`/onStepChange -- por eso
+  // nunca afecta al tono real (ver el comentario de la prop más arriba).
+  const visualAngle = (((stepValue * DEGREES_PER_STEP + baselineDeg) % 360) + 360) % 360;
 
   return (
     <g
-      className="tuning-peg"
+      className={`tuning-peg${animating ? ' is-animating' : ''}`}
       transform={`translate(${x}, ${y})`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -119,7 +145,7 @@ export default function TuningPeg({ x, y, radius = 15, stepValue, onStepChange, 
       aria-label={ariaLabel}
       aria-valuenow={stepValue}
       aria-valuetext={`${(stepValue / 100).toFixed(2)} semitonos`}
-      tabIndex={0}
+      tabIndex={animating ? -1 : 0}
       style={{ touchAction: 'none' }}
     >
       <circle className="tuning-peg-hit-area" r={radius + 8} fill="transparent" />
