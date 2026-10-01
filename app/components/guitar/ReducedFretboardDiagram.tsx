@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
+import { HandednessToggleButton } from './HandednessToggleButton';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -33,6 +34,7 @@ type GuideDot = {
 };
 
 interface ReducedFretboardDiagramProps {
+  allowLeftHanded?: boolean;
   ariaLabel: string;
   endFret: number;
   fretLabels?: boolean;
@@ -91,12 +93,21 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   const boardX = 42;
   const fretWidth = 58;
   const boardHeight = 158;
   const stringGap = boardHeight / 5;
+  // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda
+  // (eje Y) nunca cambia de orden. `drawX` es la única función que conoce la inversión: toda
+  // coordenada X que se DIBUJA pasa por aquí (mirror respecto al centro del tablero), y el resto
+  // del componente (getPos, fretMarkerX, etc.) sigue razonando en coordenadas "lógicas" normales,
+  // ajeno a la mano -- ver el comentario en `getPos` para el lado simétrico (puntero -> lógico).
+  const [lefty, setLefty] = useState(false);
+  const centerX = boardX + (fretCount * fretWidth) / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fretMarkerX(boardX, fretWidth, startFret, fret));
   const allRomanFrets = Object.keys(romanFretLabels)
     .map(Number)
     .filter((fret) => fret >= startFret && fret <= endFret);
@@ -159,7 +170,14 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
   }, [kbMode, metr.on]);
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    // Modo zurdo: misma idea que `drawX` para el dibujo -- el mapa de teclado también se invierte
+    // SOLO en el eje X (traste dentro de cada fila/cuerda), nunca cambia a qué cuerda apunta cada
+    // tecla. `lefty` entra en las deps de este efecto (no un ref) a propósito: cambiar de mano
+    // mientras se toca reinicia limpiamente las teclas mantenidas en vez de dejarlas sonando con el
+    // mapa viejo -- comportamiento deseado, no un descuido.
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -238,14 +256,19 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa (reflejar dos veces = identidad) -- aplicarla UNA vez aquí sobre
+    // la coordenada real del puntero convierte "dónde tocó la pantalla" en "qué posición lógica (no
+    // volteada) representa eso", y el resto de esta función sigue funcionando exactamente igual que
+    // en modo diestro, sin enterarse de `lefty` -- ver el comentario de `drawX` más arriba.
+    const x = drawX(coords.x);
+    const { y } = coords;
 
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
@@ -421,7 +444,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
     return (
       <>
         {posList.map(({ string, fret }) => {
-          const markerX = fretMarkerX(boardX, fretWidth, startFret, fret);
+          const markerX = fretX(fret);
           const sy = stringY(string);
           const noteIsMarked = notes.some(n => n.string === string && n.fret === fret);
           return (
@@ -431,7 +454,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
             >
               <line
                 x1={markerX}
-                x2={boardX + boardWidth}
+                x2={drawX(boardX + boardWidth)}
                 y1={sy}
                 y2={sy}
                 stroke="#fbbf24"
@@ -482,8 +505,8 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
           <line
             className={isNut ? 'reduced-nut' : 'reduced-fret'}
             key={`fret-${fret}`}
-            x1={boardX + index * fretWidth}
-            x2={boardX + index * fretWidth}
+            x1={drawX(boardX + index * fretWidth)}
+            x2={drawX(boardX + index * fretWidth)}
             y1={boardY}
             y2={boardY + boardHeight}
           />
@@ -496,7 +519,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       ).map((dot) => (
         <circle
           className="reduced-guide-dot"
-          cx={fretMarkerX(boardX, fretWidth, startFret, dot.fret)}
+          cx={fretX(dot.fret)}
           cy={stringY(dot.string ?? 3.5)}
           key={`guide-${dot.fret}-${dot.string ?? 'center'}`}
           r="7"
@@ -506,17 +529,17 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
         <g key={`${note.string}-${note.fret}-${note.label}`}>
           <circle
             className={`reduced-note ${noteToneClass(note)}`}
-            cx={fretMarkerX(boardX, fretWidth, startFret, note.fret)}
+            cx={fretX(note.fret)}
             cy={stringY(note.string)}
             r="16"
           />
-          <text className="reduced-note-label" x={fretMarkerX(boardX, fretWidth, startFret, note.fret)} y={stringY(note.string) + 5}>
+          <text className="reduced-note-label" x={fretX(note.fret)} y={stringY(note.string) + 5}>
             {note.label}
           </text>
           {note.highlight ? (
             <circle
               className="reduced-note-highlight-ring"
-              cx={fretMarkerX(boardX, fretWidth, startFret, note.fret)}
+              cx={fretX(note.fret)}
               cy={stringY(note.string)}
               r="21"
             />
@@ -528,14 +551,14 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
         (_, index) => {
           const fret = startFret === 0 ? index : startFret + index;
           return (
-            <text className="reduced-fret-number-above" key={`fretnumtop-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={boardY - 20}>
+            <text className="reduced-fret-number-above" key={`fretnumtop-${fret}`} x={fretX(fret)} y={boardY - 20}>
               {fret}
             </text>
           );
         }
       )}
       {allRomanFrets.map((fret) => (
-        <text className="reduced-roman-fret" key={`roman-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={romansGoAbove ? boardY - 20 : bottomLabelY}>
+        <text className="reduced-roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={romansGoAbove ? boardY - 20 : bottomLabelY}>
           {romanFretLabels[fret]}
         </text>
       ))}
@@ -544,7 +567,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
         (_, index) => {
           const fret = startFret === 0 ? index : startFret + index;
           return (
-            <text className="reduced-fret-number" key={`fretnum-${fret}`} x={fretMarkerX(boardX, fretWidth, startFret, fret)} y={bottomLabelY}>
+            <text className="reduced-fret-number" key={`fretnum-${fret}`} x={fretX(fret)} y={bottomLabelY}>
               {fret}
             </text>
           );
@@ -553,7 +576,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
       <NoteMarksOverlay
         endFret={endFret}
         getNoteName={noteNameForFret}
-        getX={(fret) => fretMarkerX(boardX, fretWidth, startFret, fret)}
+        getX={fretX}
         getY={stringY}
         marks={marks}
         startFret={startFret}
@@ -567,6 +590,7 @@ export function ReducedFretboardDiagram({ ariaLabel, endFret, fretLabels, fretLa
         </span>
       )}
     >
+      {allowLeftHanded && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button

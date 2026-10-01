@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -11,6 +11,7 @@ import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -67,7 +68,6 @@ function ScaleFretboard({
   const boardHeight = 174;
   const stringGap = boardHeight / 5;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
-  const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
   const viewBoxWidth = boardX + boardWidth + 64;
   const viewBoxHeight = boardY + boardHeight + 42;
   const fretNotes = stringTunings.flatMap((string, stringIndex) =>
@@ -96,6 +96,13 @@ function ScaleFretboard({
   const paintModeRef = useRef(paintMode);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   const { marks, toggleMark } = useNoteMarks();
+  // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte el
+  // mástil SOLO en el eje X. `fretX` (ya usado en todo este fichero) hereda la inversión gratis al
+  // envolver la fórmula original con `drawX`.
+  const [lefty, setLefty] = useState(false);
+  const centerX = boardX + boardWidth / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -127,7 +134,9 @@ function ScaleFretboard({
   }, [kbMode, metr.on]);
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -206,14 +215,17 @@ function ScaleFretboard({
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getScaleSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada), igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
@@ -395,7 +407,7 @@ function ScaleFretboard({
             >
               <line
                 x1={markerX}
-                x2={boardX + boardWidth}
+                x2={drawX(boardX + boardWidth)}
                 y1={sy}
                 y2={sy}
                 stroke="#fbbf24"
@@ -437,7 +449,7 @@ function ScaleFretboard({
       >
         {showFretNumbers
           ? Array.from({ length: 12 }, (_, fret) => (
-              <text className="fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y="26">
+              <text className="fret-number" key={`number-${fret + 1}`} x={fretX(fret + 1)} y="26">
                 {fret + 1}
               </text>
             ))
@@ -446,7 +458,7 @@ function ScaleFretboard({
         <rect className="board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
-            <text className="string-label" x="22" y={stringY(index + 1) + 5}>
+            <text className="string-label" x={drawX(22)} y={stringY(index + 1) + 5}>
               {string.label}
             </text>
             <line className="string-line" x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
@@ -456,19 +468,19 @@ function ScaleFretboard({
           <line
             className={fret === 0 ? 'nut-line' : 'fret-line'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth}
-            x2={boardX + fret * fretWidth}
+            x1={drawX(boardX + fret * fretWidth)}
+            x2={drawX(boardX + fret * fretWidth)}
             y1={boardY}
             y2={boardY + boardHeight}
           />
         ))}
         {[3, 5, 7, 9].map((fret) => (
-          <circle className="guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+          <circle className="guide-dot" cx={fretX(fret)} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
         ))}
-        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
-        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(5)} key="guide-12-bottom" r="8" />
         {([3, 5, 7, 9, 12] as const).map((fret) => (
-          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y={boardY + boardHeight + 28}>
+          <text className="roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={boardY + boardHeight + 28}>
             {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
           </text>
         ))}
@@ -505,6 +517,7 @@ function ScaleFretboard({
         </span>
       )}
     >
+      <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button

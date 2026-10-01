@@ -197,6 +197,7 @@ function alphaTexForExercise(title: string, notes: TabNote[]) {
 function FigureOneDiagram() {
   return (
     <ReducedFretboardDiagram
+      allowLeftHanded
       ariaLabel="Figura 0 de la escala de Sol Mayor y Mi menor"
       endFret={figureOne.endFret}
       guideDots={[3].map((fret) => ({ fret }))}

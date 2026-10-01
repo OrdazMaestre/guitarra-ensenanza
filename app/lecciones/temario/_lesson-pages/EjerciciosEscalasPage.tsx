@@ -232,6 +232,7 @@ export default function EjerciciosEscalasPage({ previous, next, quizHref }: Less
                   {figure.title} <span>trastes {figure.startFret}-{figure.endFret}</span>
                 </p>
                 <ReducedFretboardDiagram
+                  allowLeftHanded
                   ariaLabel={`${figure.title} de la escala de Sol Mayor y Mi menor`}
                   endFret={figure.endFret}
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}

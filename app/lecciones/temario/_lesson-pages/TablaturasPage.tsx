@@ -31,6 +31,7 @@ export default function TablaturasPage({ previous, next, quizHref }: LessonPageP
 
           <div className="fretboard-diagram">
             <ReducedFretboardDiagram
+              allowLeftHanded
               ariaLabel="Mástil con las notas de Cumpleaños feliz, cuerda 1, trastes 0 al 12"
               startFret={0}
               endFret={12}

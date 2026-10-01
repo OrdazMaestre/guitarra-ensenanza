@@ -84,6 +84,7 @@ export default function ConceptosBasicosPage({ previous, next, quizHref }: Lesso
 
             <div className="mastil-diagram">
               <ReducedFretboardDiagram
+                allowLeftHanded
                 ariaLabel="Mástil de guitarra con los números de los trastes del 0 al 12"
                 startFret={0}
                 endFret={12}

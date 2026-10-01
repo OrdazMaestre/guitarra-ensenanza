@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -11,6 +11,7 @@ import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -311,7 +312,18 @@ function ScaleWithChordPositions() {
   const viewBoxWidth = boardX + boardWidth + 74;
   const viewBoxHeight = e2Row.top + 26 + miniHeight + 34;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
-  const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
+
+  // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte TODO el
+  // SVG (mástil principal + las 16 mini-cajas de acordes de las dos filas E4/E2) en el eje X, con
+  // un único `drawX` global -- las mini-cajas están posicionadas (`labelX`) para alinearse
+  // horizontalmente con la posición de cada acorde en el mástil principal (Em7 en labelX=82 ≈ nut
+  // en boardX=58; Em7-12 en labelX=1116 == fretX(12)=1116 exacto), así que un mirror GLOBAL (no uno
+  // por caja) mantiene esa alineación tras voltear en vez de romperla. `fretX` (ya usado en todo
+  // este fichero) hereda la inversión gratis al envolver la fórmula original con `drawX`.
+  const [lefty, setLefty] = useState(false);
+  const centerX = boardX + boardWidth / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -360,7 +372,9 @@ function ScaleWithChordPositions() {
   }, [kbMode, metr.on]);
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -439,14 +453,17 @@ function ScaleWithChordPositions() {
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getSeptimaSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada), igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = stringGap / 2;
     // Only main board zone — mini crops are at y≈44-180 and y≈470+, safely outside
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
@@ -474,7 +491,10 @@ function ScaleWithChordPositions() {
     if (!svg) return null;
     const coords = getSeptimaSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mismo mirror global que getPos -- las mini-cajas viven en el mismo sistema de coordenadas
+    // que el mástil principal (ver el comentario junto a `drawX` más arriba).
+    const x = drawX(coords.x);
+    const { y } = coords;
     let rowKey: 'e4' | 'e2';
     let top: number;
     if (y >= e4Row.top + 26 && y <= e4Row.top + 26 + miniHeight) {
@@ -768,7 +788,7 @@ function ScaleWithChordPositions() {
       const range = chordCropRanges[box.id];
       const cropWidth = (range.end - range.start + 1) * miniFretWidth;
       const cropX = range.labelX - cropWidth / 2;
-      const markerX = p.fret === 0 ? cropX - 17 : cropX + (p.fret - range.start + 0.5) * miniFretWidth;
+      const markerX = drawX(p.fret === 0 ? cropX - 17 : cropX + (p.fret - range.start + 0.5) * miniFretWidth);
 
       for (const { rowKey, top } of rows) {
         const markerY = top + 26 + (p.string - 1) * miniStringGap;
@@ -781,7 +801,7 @@ function ScaleWithChordPositions() {
         elements.push(
           <g key={`ol-${rowKey}-${box.id}-${p.string}-${p.fret}`} pointerEvents="none"
              style={direct ? { animation: 'fretboard-string-vibrate 80ms linear infinite' } : undefined}>
-            <line x1={markerX} x2={cropX + cropWidth} y1={markerY} y2={markerY}
+            <line x1={markerX} x2={drawX(cropX + cropWidth)} y1={markerY} y2={markerY}
               stroke="#fbbf24" strokeLinecap="round" strokeWidth="2" opacity="0.85" />
             <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity="0.85" r="12" />
             <text x={markerX} y={markerY + 3} fill="#b45309" fontSize="10" fontWeight="900" textAnchor="middle">
@@ -816,7 +836,11 @@ function ScaleWithChordPositions() {
     const cropWidth = fretCount * miniFretWidth;
     const cropX = range.labelX - cropWidth / 2;
     const cropStringY = (string: number) => top + 26 + (string - 1) * miniStringGap;
-    const cropFretX = (fret: number) => (fret === 0 ? cropX - 17 : cropX + (fret - range.start + 0.5) * miniFretWidth);
+    const cropFretX = (fret: number) => drawX(fret === 0 ? cropX - 17 : cropX + (fret - range.start + 0.5) * miniFretWidth);
+    // A diferencia de fretX/drawX sobre una coordenada suelta, un <rect> necesita su esquina
+    // IZQUIERDA como `x` -- al voltear globalmente, el borde DERECHO (cropX+cropWidth) es el que
+    // pasa a quedar más a la izquierda, así que ese es el nuevo `x` (mismo `width`, sin cambios).
+    const miniBgX = lefty ? drawX(cropX + cropWidth) : cropX;
     const lowShapeKeys = new Set(chord.voicingE2.map((note) => `${note.string}-${note.fret}`));
     const cropNotes = scaleNotes
       .filter((item) => item.fret >= range.start && item.fret <= range.end)
@@ -830,26 +854,26 @@ function ScaleWithChordPositions() {
 
     return (
       <g>
-        <text className="mini-title" x={range.labelX} y={top - 12}>
+        <text className="mini-title" x={drawX(range.labelX)} y={top - 12}>
           <tspan className="mini-degree">{chord.degree}º</tspan>
           <tspan> {label}</tspan>
         </text>
-        <rect className="mini-bg" x={cropX} y={top + 26} width={cropWidth} height={miniHeight} />
+        <rect className="mini-bg" x={miniBgX} y={top + 26} width={cropWidth} height={miniHeight} />
         {[1, 2, 3, 4, 5, 6].map((string) => (
-          <line className="mini-string" key={`mini-string-${id}-${string}`} x1={cropX} x2={cropX + cropWidth} y1={cropStringY(string)} y2={cropStringY(string)} />
+          <line className="mini-string" key={`mini-string-${id}-${string}`} x1={drawX(cropX)} x2={drawX(cropX + cropWidth)} y1={cropStringY(string)} y2={cropStringY(string)} />
         ))}
         {Array.from({ length: fretCount + 1 }, (_, index) => (
           <line
             className={range.start === 0 && index === 0 ? 'mini-nut' : 'mini-fret'}
             key={`mini-fret-${id}-${index}`}
-            x1={cropX + index * miniFretWidth}
-            x2={cropX + index * miniFretWidth}
+            x1={drawX(cropX + index * miniFretWidth)}
+            x2={drawX(cropX + index * miniFretWidth)}
             y1={top + 26}
             y2={top + 26 + miniHeight}
           />
         ))}
         {[3, 5, 7, 9, 12].filter((fret) => fret >= range.start && fret <= range.end).map((fret) => (
-          <circle className="mini-guide-dot" cx={cropX + (fret - range.start + 0.5) * miniFretWidth} cy={cropStringY(3.5)} key={`mini-guide-${id}-${fret}`} r="6" />
+          <circle className="mini-guide-dot" cx={drawX(cropX + (fret - range.start + 0.5) * miniFretWidth)} cy={cropStringY(3.5)} key={`mini-guide-${id}-${fret}`} r="6" />
         ))}
         {cropNotes.map((note) => (
           <g key={`mini-${id}-${note.string}-${note.fret}`}>
@@ -866,7 +890,11 @@ function ScaleWithChordPositions() {
   function MiniRow({ row }: { row: { label: string; mode: 'chordNotes' | 'lowShape'; top: number } }) {
     return (
       <g>
-        <text className="mini-row-label" x="8" y={row.top + 88}>
+        {/* .mini-row-label resuelve a text-anchor:start (la regla de la clase sola, más abajo en
+            el CSS, gana a la combinada con .mini-title/.mini-name) -- en zurdo la etiqueta se
+            mueve al borde derecho, así que necesita "end" para seguir creciendo HACIA el
+            diagrama en vez de salirse del viewBox, igual que .tuning-open-note en TuningBoard.tsx. */}
+        <text className="mini-row-label" x={drawX(8)} y={row.top + 88} style={{ textAnchor: lefty ? 'end' : 'start' }}>
           {row.label}
         </text>
         {positionedBoxes.map((box) => (
@@ -894,14 +922,14 @@ function ScaleWithChordPositions() {
         <MiniRow row={e4Row} />
 
         {Array.from({ length: 12 }, (_, fret) => (
-          <text className="fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y={boardY - 18}>
+          <text className="fret-number" key={`number-${fret + 1}`} x={fretX(fret + 1)} y={boardY - 18}>
             {fret + 1}
           </text>
         ))}
         <rect className="board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
-            <text className="string-label" x="22" y={stringY(index + 1) + 5}>
+            <text className="string-label" x={drawX(22)} y={stringY(index + 1) + 5}>
               {string.label}
             </text>
             <line className="string-line" x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
@@ -911,19 +939,19 @@ function ScaleWithChordPositions() {
           <line
             className={fret === 0 ? 'nut-line' : 'fret-line'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth}
-            x2={boardX + fret * fretWidth}
+            x1={drawX(boardX + fret * fretWidth)}
+            x2={drawX(boardX + fret * fretWidth)}
             y1={boardY}
             y2={boardY + boardHeight}
           />
         ))}
         {[3, 5, 7, 9].map((fret) => (
-          <circle className="guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+          <circle className="guide-dot" cx={fretX(fret)} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
         ))}
-        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
-        <circle className="guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="guide-dot" cx={fretX(12)} cy={stringY(5)} key="guide-12-bottom" r="8" />
         {([3, 5, 7, 9, 12] as const).map((fret) => (
-          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y={boardY + boardHeight + 22}>
+          <text className="roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={boardY + boardHeight + 22}>
             {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
           </text>
         ))}
@@ -965,6 +993,7 @@ function ScaleWithChordPositions() {
         </span>
       )}
     >
+      <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button

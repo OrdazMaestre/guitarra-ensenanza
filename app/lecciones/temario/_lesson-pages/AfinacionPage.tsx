@@ -16,11 +16,11 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
     ];
 
     const tuningSteps = [
-      ['E', '+5 semitonos', 'A'],
-      ['A', '+5 semitonos', 'D'],
-      ['D', '+5 semitonos', 'G'],
-      ['G', '+4 semitonos', 'B'],
       ['B', '+5 semitonos', 'E'],
+      ['G', '+4 semitonos', 'B'],
+      ['D', '+5 semitonos', 'G'],
+      ['A', '+5 semitonos', 'D'],
+      ['E', '+5 semitonos', 'A'],
     ];
 
     return (

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -12,6 +12,7 @@ import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -128,9 +129,16 @@ function FullFretboardDiagram() {
   const boardHeight = 174;
   const stringGap = boardHeight / 5;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
-  const fretX = (fret: number) => (fret === 0 ? boardX - 26 : boardX + (fret - 0.5) * fretWidth);
   const viewBoxWidth = boardX + boardWidth + 30;
   const viewBoxHeight = boardY + boardHeight + 42;
+
+  // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte el
+  // mástil SOLO en el eje X. `drawX` es la única función que conoce la inversión; `fretX` (ya usado
+  // en todo este fichero) la hereda gratis al envolver la fórmula original con `drawX`.
+  const [lefty, setLefty] = useState(false);
+  const centerX = boardX + boardWidth / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fret === 0 ? boardX - 26 : boardX + (fret - 0.5) * fretWidth);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
@@ -175,7 +183,9 @@ function FullFretboardDiagram() {
   }, [kbMode, metr.on]);
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -254,14 +264,17 @@ function FullFretboardDiagram() {
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getFullFretSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada), igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
@@ -443,7 +456,7 @@ function FullFretboardDiagram() {
             >
               <line
                 x1={markerX}
-                x2={boardX + boardWidth}
+                x2={drawX(boardX + boardWidth)}
                 y1={sy}
                 y2={sy}
                 stroke="#fbbf24"
@@ -487,7 +500,7 @@ function FullFretboardDiagram() {
           0
         </text>
         {Array.from({ length: 12 }, (_, fret) => (
-          <text className="fretboard-fret-number" key={`number-${fret + 1}`} x={boardX + fret * fretWidth + fretWidth / 2} y="26">
+          <text className="fretboard-fret-number" key={`number-${fret + 1}`} x={fretX(fret + 1)} y="26">
             {fret + 1}
           </text>
         ))}
@@ -506,8 +519,8 @@ function FullFretboardDiagram() {
           <line
             className={fret === 0 ? 'fretboard-nut-line' : 'fretboard-fret-line'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth}
-            x2={boardX + fret * fretWidth}
+            x1={drawX(boardX + fret * fretWidth)}
+            x2={drawX(boardX + fret * fretWidth)}
             y1={boardY}
             y2={boardY + boardHeight}
           />
@@ -571,6 +584,7 @@ function FullFretboardDiagram() {
         </span>
       )}
     >
+      <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button

@@ -24,6 +24,7 @@ export default function SalaDePruebasPage() {
       <section className="test-room-instruments">
         <div className="test-room-fretboard">
           <ReducedFretboardDiagram
+            allowLeftHanded
             ariaLabel="Mástil de guitarra interactivo del 0 al 12"
             startFret={0}
             endFret={12}

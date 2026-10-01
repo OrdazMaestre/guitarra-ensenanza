@@ -38,6 +38,7 @@ export default function TablaturasDosCuerdasPage({ previous, next, quizHref }: L
 
           <div className="fretboard-diagram">
             <ReducedFretboardDiagram
+              allowLeftHanded
               ariaLabel="Mástil con las notas de Feliz Navidad, cuerdas 1 y 2, trastes 0 al 5"
               startFret={0}
               endFret={5}

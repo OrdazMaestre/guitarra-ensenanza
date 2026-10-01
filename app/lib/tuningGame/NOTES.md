@@ -300,6 +300,46 @@ cambia el rango grave/agudo del modo teclado.
 Se omitió `MetronomeControls` (sin relación obvia con comprobar una nota suelta contra una
 referencia) -- se puede añadir si el usuario lo pide explícitamente para este instrumento.
 
+## Etiqueta de la cuerda al aire: letra a opacidad completa, número de octava al 50%
+
+A petición explícita del usuario (tras una captura mostrando "E4"/"B3"/etc. junto a cada clavija),
+la etiqueta SIEMPRE visible de la cuerda al aire (`.tuning-open-note`, NO el marcador que aparece
+al pulsar un traste ni los números de traste del diapasón) separa la letra de la nota del número
+de octava: la letra se queda a opacidad completa (blanco en modo oscuro / negro en modo claro, sin
+cambios -- ya funcionaba así gracias al mismo `filter: invert(1)` que usa todo el modo oscuro del
+sitio) y el número de octava se atenúa al 50%. `splitNoteName(name)` (regex `^([A-G]#?)(-?\d+)$`)
+separa p.ej. "C#4" en `{letter: 'C#', octave: '4'}`; el render envuelve el número en un `<tspan
+className="tuning-open-note-octave">` SIN `fill` propio (hereda el de `<text>`) y la clase solo
+pone `opacity: 0.5` -- truco deliberado para no necesitar un gris explícito: 50% de negro ya es
+gris, y 50% de blanco (tras el invert de modo oscuro) también lo parece, así que un único `opacity`
+basta en los dos modos. Se dejaron sin tocar, a petición también explícita: los números de traste
+(`.reduced-fret-number`, ajenos a este componente) y la etiqueta del marcador de nota al pulsar un
+traste (`.tuning-note-marker-label`), que sigue la convención ámbar de `AGENTS.md` compartida con
+el resto de mástiles del sitio. Verificado con Playwright en `sala-de-pruebas` y en la instancia
+embebida en `AfinacionPage.tsx`: opacidad computada 1 en la letra, 0.5 en el `<tspan>` del número,
+y 1 sin cambios en los números de traste, en ambas páginas.
+
+## Diestro/zurdo
+
+A petición explícita del usuario de implementarlo en TODOS los mástiles MIDI del sitio (lo había
+pedido primero solo para `ReducedFretboardDiagram.tsx` en sala-de-pruebas), este tablero también
+tiene su propio botón `DIESTRO`/`ZURDO` (`<HandednessToggleButton>`, compartido con el resto del
+sitio -- ver `app/components/guitar/HandednessToggleButton.tsx`), colocado como primer hijo dentro
+de `<MidiInstrumentChrome>` (este tablero no tiene botón de paleta, así que no hay "a la izquierda
+de qué" -- simplemente el primero). Mismo mecanismo que en todos los demás mástiles: un único
+`drawX(x) = lefty ? 2*centerX - x : x` (con `centerX = BOARD_X + BOARD_WIDTH/2`) que invierte TODAS
+las coordenadas X dibujadas (clavijas, nut/trastes, marcador de nota, nombre de traste) sin tocar
+nunca el eje Y (las cuerdas no cambian de orden), y el mismo mapa de teclado invertido
+(`FRETBOARD_KEYMAP_LEFTY`/`FRETBOARD_KEYMAP_UPPER_LEFTY` de `fretboardKeymap.ts`, filtrado por
+`entry.fret > END_FRET` igual que el mapa normal). La etiqueta `.tuning-open-note` (texto
+`text-anchor: end` por defecto, para crecer HACIA la clavija) es el único elemento que además
+necesita invertir su alineación -- `style={{ textAnchor: lefty ? 'start' : 'end' }}` -- porque en
+zurdo la clavija queda al otro lado y el texto debe seguir creciendo hacia ella en vez de salirse
+del `viewBox`; todo el resto de texto de este tablero (nombres de traste, marcador) ya es
+`text-anchor: middle`, simétrico, y no necesita este ajuste. Verificado con Playwright en
+`sala-de-pruebas` (incluida la entrada por teclado: `ShiftRight` en zurdo+KB suena como "E2", cuerda
+6 al aire, igual que en el resto de mástiles) y en la instancia embebida en `AfinacionPage.tsx`.
+
 ## Estilos
 
 Mismo patrón que el resto del sitio: CSS literal (`<style>{...}</style>`) en vez de utilidades de

@@ -100,6 +100,7 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next, quizHre
                   {figure.title} <span>trastes {figure.startFret}-{figure.endFret}</span>
                 </p>
                 <ReducedFretboardDiagram
+                  allowLeftHanded
                   ariaLabel={`${figure.title} de la pentatónica de blues de Mi menor`}
                   endFret={figure.endFret}
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}

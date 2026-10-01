@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
@@ -11,6 +11,7 @@ import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
+import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks, type NoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -120,13 +121,14 @@ type FretboardProps = {
   chord: ChordMap;
   kbMode: boolean;
   kbPositions: { string: number; fret: number }[];
+  lefty: boolean;
   marks: NoteMarks;
   paintMode: boolean;
   toggleMark: (noteName: string) => void;
   volumeRef: React.RefObject<number>;
 };
 
-function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, toggleMark, volumeRef }: FretboardProps) {
+function ChordScaleFretboard({ chord, kbMode, kbPositions, lefty, marks, paintMode, toggleMark, volumeRef }: FretboardProps) {
   const boardX = 44;
   const boardY = 30;
   const fretWidth = 54;
@@ -136,7 +138,14 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
   const viewBoxWidth = boardX + boardWidth + 34;
   const viewBoxHeight = boardY + boardHeight + 36;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
-  const fretX = (fret: number) => (fret === 0 ? boardX - 20 : boardX + (fret - 0.5) * fretWidth);
+  // Diestro/zurdo -- a diferencia del resto de mástiles del sitio, AQUÍ `lefty` llega como PROP
+  // (no useState local): esta página es la única excepción (AGENTS.md) donde varios mástiles
+  // pequeños comparten una sola barra de controles en el padre -- paintMode/kbMode/volumeRef ya
+  // se pasan igual, así que el botón diestro/zurdo vive una sola vez en esa barra compartida y
+  // voltea los 7 acordes a la vez, en vez de cada uno teniendo su propio botón independiente.
+  const centerX = boardX + boardWidth / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fret === 0 ? boardX - 20 : boardX + (fret - 0.5) * fretWidth);
 
   const notes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 6 }, (_, fret) => {
@@ -164,7 +173,10 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
     if (!svg) return null;
     const coords = getChordSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada), igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
@@ -345,7 +357,7 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
               style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}
             >
               <line
-                x1={markerX} x2={boardX + boardWidth} y1={sy} y2={sy}
+                x1={markerX} x2={drawX(boardX + boardWidth)} y1={sy} y2={sy}
                 stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
               />
               <circle
@@ -383,7 +395,7 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
         <rect className="board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
         {stringTunings.map((string, index) => (
           <g key={`${string.label}-${index}`}>
-            <text className="string-label" x="18" y={stringY(index + 1) + 5}>{string.label}</text>
+            <text className="string-label" x={drawX(18)} y={stringY(index + 1) + 5}>{string.label}</text>
             <line className="string-line" x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
           </g>
         ))}
@@ -391,12 +403,12 @@ function ChordScaleFretboard({ chord, kbMode, kbPositions, marks, paintMode, tog
           <line
             className={fret === 0 ? 'nut-line' : 'fret-line'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth} x2={boardX + fret * fretWidth}
+            x1={drawX(boardX + fret * fretWidth)} x2={drawX(boardX + fret * fretWidth)}
             y1={boardY} y2={boardY + boardHeight}
           />
         ))}
-        <circle className="guide-dot" cx={boardX + 2.5 * fretWidth} cy={stringY(3.5)} r="7" />
-        <text className="roman-fret" x={boardX + 2.5 * fretWidth} y={boardY + boardHeight + 22}>III</text>
+        <circle className="guide-dot" cx={fretX(3)} cy={stringY(3.5)} r="7" />
+        <text className="roman-fret" x={fretX(3)} y={boardY + boardHeight + 22}>III</text>
         {notes.map((note) => (
           <g key={`${note.string}-${note.fret}-${note.label}`}>
             <circle
@@ -435,6 +447,8 @@ export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: 
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   const { marks, toggleMark } = useNoteMarks();
   const metr = useMetronome();
+  // Diestro/zurdo compartido por los 7 acordes -- ver el comentario en ChordScaleFretboard.
+  const [lefty, setLefty] = useState(false);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -465,7 +479,9 @@ export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: 
 
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -544,7 +560,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: 
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   return (
     <main className="scale-chords-page">
@@ -579,6 +595,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: 
                 chord={chord}
                 kbMode={kbMode}
                 kbPositions={kbPositions}
+                lefty={lefty}
                 marks={marks}
                 paintMode={paintMode}
                 toggleMark={toggleMark}
@@ -594,6 +611,7 @@ export default function AcordesEscalaSolMayorPage({ previous, next, quizHref }: 
               </span>
             )}
           >
+            <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
             <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
             <div className="midi-anchor">
               <button

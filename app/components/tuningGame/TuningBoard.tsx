@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting, type FretKeyEntry } from '@/app/lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting, type FretKeyEntry } from '@/app/lib/fretboardKeymap';
 import MidiInstrumentChrome from '../guitar/MidiInstrumentChrome';
+import { HandednessToggleButton } from '../guitar/HandednessToggleButton';
 import TuningPeg from './TuningPeg';
 import {
   DEGREES_PER_STEP,
@@ -157,6 +158,21 @@ function fretMarkerX(fret: number): number {
   return fret === 0 ? BOARD_X : BOARD_X + (fret - 0.5) * FRET_WIDTH;
 }
 
+// Separa "E4"/"C#4" en la letra (+ sostenido) y el número de octava -- a petición explícita del
+// usuario, la etiqueta de la cuerda al aire (.tuning-open-note) siempre muestra la LETRA a opacidad
+// completa (blanco/negro según el modo, heredado del mismo truco de `filter: invert(1)` que ya usa
+// todo el modo oscuro del sitio) y el NÚMERO atenuado al 50% -- un <tspan> hijo con solo `opacity:
+// 0.5` y SIN fill propio (hereda el fill del texto padre) consigue esto en los dos modos a la vez,
+// sin necesitar un color gris explícito: 50% de negro es gris, 50% de blanco (tras el invert) sigue
+// pareciendo gris. A propósito NO se toca el número de los trastes (0,1,2...) ni la etiqueta del
+// marcador de nota al pulsar un traste (esa sigue la convención ámbar de AGENTS.md compartida con
+// el resto de mástiles del sitio).
+function splitNoteName(name: string): { letter: string; octave: string } {
+  const match = name.match(/^([A-G]#?)(-?\d+)$/);
+  if (!match) return { letter: name, octave: '' };
+  return { letter: match[1], octave: match[2] };
+}
+
 function getSvgCoords(e: PointerEvent<SVGSVGElement>, svg: SVGSVGElement): { x: number; y: number } | null {
   const ctm = svg.getScreenCTM();
   if (!ctm) return null;
@@ -197,6 +213,14 @@ export default function TuningBoard() {
   const [baselineAngles, setBaselineAngles] = useState<Record<StringNumber, number>>(zeroedRecord());
   const [introRunning, setIntroRunning] = useState(false);
   const [profesionalNamesHidden, setProfesionalNamesHidden] = useState(false);
+  // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte el
+  // mástil SOLO en el eje X (la cuerda/eje Y nunca cambia de orden). `drawX` es la única función
+  // que conoce la inversión -- toda coordenada X que se DIBUJA pasa por aquí, y el resto del
+  // componente (getCellAt, fretMarkerX, etc.) sigue razonando en coordenadas lógicas normales.
+  const [lefty, setLefty] = useState(false);
+  const centerX = BOARD_X + BOARD_WIDTH / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fretMarkerX(fret));
 
   // FÁCIL: una cuerda al azar desafinada, nombres de nota siempre visibles.
   // DIFÍCIL: igual, pero sin nombres de nota (ni al aire ni al pulsar un traste).
@@ -454,7 +478,13 @@ export default function TuningBoard() {
   // voz independiente (mismo criterio que el puntero, ver el comentario de MAX_VOICES).
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    // Zurdo invierte también el mapa de teclado -- mismo mecanismo que ReducedFretboardDiagram.tsx
+    // (AGENTS.md): cada fila se invierte dentro de su propia cuerda, nunca cambia a qué cuerda
+    // apunta cada tecla. `lefty` en las deps del efecto (no un ref) a propósito: cambiar de mano
+    // reinicia limpiamente las teclas mantenidas en vez de dejarlas sonando con el mapa viejo.
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
 
     function syncKbPositions() {
       setKbPositions([...kbKeysHeldRef.current.values()].map(({ string, fret }) => ({ string: string as StringNumber, fret })));
@@ -509,14 +539,17 @@ export default function TuningBoard() {
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function getCellAt(e: PointerEvent<SVGSVGElement>): { string: StringNumber; fret: number } | null {
     const svg = svgRef.current;
     if (!svg) return null;
     const coords = getSvgCoords(e, svg);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada) que representa, igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = STRING_GAP / 2;
     if (y < BOARD_Y - halfGap || y > BOARD_Y + BOARD_HEIGHT + halfGap) return null;
     const rowIndex = Math.max(0, Math.min(5, Math.round((y - BOARD_Y) / STRING_GAP)));
@@ -651,8 +684,8 @@ export default function TuningBoard() {
           <line
             className={fret === 0 ? 'reduced-nut' : 'reduced-fret'}
             key={`fret-${fret}`}
-            x1={BOARD_X + fret * FRET_WIDTH}
-            x2={BOARD_X + fret * FRET_WIDTH}
+            x1={drawX(BOARD_X + fret * FRET_WIDTH)}
+            x2={drawX(BOARD_X + fret * FRET_WIDTH)}
             y1={BOARD_Y}
             y2={BOARD_Y + BOARD_HEIGHT}
           />
@@ -662,7 +695,7 @@ export default function TuningBoard() {
           <circle
             className="reduced-guide-dot"
             key={`dot-${fret}`}
-            cx={BOARD_X + (fret - 0.5) * FRET_WIDTH}
+            cx={fretX(fret)}
             cy={BOARD_Y + BOARD_HEIGHT / 2}
             r={7}
           />
@@ -672,7 +705,7 @@ export default function TuningBoard() {
           <text
             className="reduced-fret-number"
             key={`fretnum-${fret}`}
-            x={fret === 0 ? BOARD_X : BOARD_X + (fret - 0.5) * FRET_WIDTH}
+            x={fretX(fret)}
             y={FRET_NUMBER_Y}
           >
             {fret}
@@ -685,7 +718,7 @@ export default function TuningBoard() {
           return (
             <g key={`peg-row-${s}`}>
               <TuningPeg
-                x={PEG_X}
+                x={drawX(PEG_X)}
                 y={y}
                 stepValue={cents[s]}
                 onStepChange={next => setCents(c => ({ ...c, [s]: next }))}
@@ -693,17 +726,33 @@ export default function TuningBoard() {
                 baselineDeg={baselineAngles[s]}
                 animating={introRunning}
               />
-              {!hideNoteNames && (
-                <text className="tuning-open-note" x={BOARD_X - 12} y={y + 5}>
-                  {noteName}
-                </text>
-              )}
+              {!hideNoteNames && (() => {
+                const { letter, octave } = splitNoteName(noteName);
+                // En zurdo, la etiqueta se mueve al otro lado del mástil (mirror de su x), pero
+                // además necesita invertir su ALINEACIÓN: en diestro "end" hace que el texto
+                // crezca hacia la clavija (a la izquierda); en zurdo la clavija queda a la derecha,
+                // así que "start" (crece hacia la derecha) es lo que mantiene el texto pegado al
+                // hueco entre el nut y la clavija en vez de meterse por encima del mástil. `style`
+                // (no className) para que gane a la regla `.tuning-open-note { text-anchor: end }`
+                // del CSS -- el estilo en línea tiene más prioridad que una clase en la cascada.
+                return (
+                  <text
+                    className="tuning-open-note"
+                    x={drawX(BOARD_X - 12)}
+                    y={y + 5}
+                    style={{ textAnchor: lefty ? 'start' : 'end' }}
+                  >
+                    {letter}
+                    <tspan className="tuning-open-note-octave">{octave}</tspan>
+                  </text>
+                );
+              })()}
             </g>
           );
         })}
 
         {(kbMode ? kbPositions : pointerPositions).map(({ string, fret }) => {
-          const markerX = fretMarkerX(fret);
+          const markerX = fretX(fret);
           const y = stringY(STRINGS.indexOf(string));
           const noteName = midiToNoteName(effectiveMidi(string, fret, cents[string]));
           return (
@@ -730,6 +779,7 @@ export default function TuningBoard() {
           </span>
         )}
       >
+        <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
         <div className="midi-anchor">
           <button
             onClick={() => setKbMode(m => !m)}
@@ -896,6 +946,10 @@ export function TuningBoardStyles() {
         font-size: 16px;
         font-weight: 950;
         text-anchor: end;
+      }
+
+      .tuning-open-note-octave {
+        opacity: 0.5;
       }
 
       .tuning-note-marker {

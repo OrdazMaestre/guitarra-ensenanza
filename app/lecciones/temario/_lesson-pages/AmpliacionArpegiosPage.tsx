@@ -83,6 +83,7 @@ export default function AmpliacionArpegiosPage({ previous, next, quizHref }: Les
           </header>
           <div className="fretboard-map-wrap">
             <ReducedFretboardDiagram
+              allowLeftHanded
               ariaLabel="Mapa del arpegio de Sol Mayor: G, B y D"
               startFret={0}
               endFret={12}
@@ -104,6 +105,7 @@ export default function AmpliacionArpegiosPage({ previous, next, quizHref }: Les
           </header>
           <div className="fretboard-map-wrap">
             <ReducedFretboardDiagram
+              allowLeftHanded
               ariaLabel="Mapa del arpegio de Sol Mayor Séptima: G, B, D y F#"
               startFret={0}
               endFret={12}

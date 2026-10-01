@@ -5,13 +5,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import { playNote, preloadSamples, releaseNote, switchNote } from '../../../lib/guitarAudioEngine';
-import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_UPPER, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
+import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '../../../lib/fretboardKeymap';
 import type { LessonPageProps } from './types';
 import { useMetronome } from '../../../lib/useMetronome';
 import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guitar/NoteMarksOverlay';
+import { HandednessToggleButton } from '../../../components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '../../../lib/useNoteMarks';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -56,7 +57,6 @@ function FretboardMap({
   const viewBoxHeight = boardY + boardHeight + 56;
   const stringGap = boardHeight / 5;
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
-  const fretX = (fret: number) => (fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
   const fretNotes = stringTunings.flatMap((string, stringIndex) =>
     Array.from({ length: 13 }, (_, fret) => {
       const note = noteNameForFret(string.open, fret);
@@ -76,6 +76,13 @@ function FretboardMap({
   const paintModeRef = useRef(paintMode);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   const { marks, toggleMark } = useNoteMarks();
+  // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte el
+  // mástil SOLO en el eje X. `fretX` (ya usado en todo este fichero) hereda la inversión gratis al
+  // envolver la fórmula original con `drawX`.
+  const [lefty, setLefty] = useState(false);
+  const centerX = boardX + boardWidth / 2;
+  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const fretX = (fret: number) => drawX(fret === 0 ? boardX - 28 : boardX + (fret - 0.5) * fretWidth);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -106,7 +113,9 @@ function FretboardMap({
   }, [kbMode, metr.on]);
   useEffect(() => {
     if (!kbMode) return;
-    const activeMap = kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP;
+    const activeMap = lefty
+      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -185,7 +194,7 @@ function FretboardMap({
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange]);
+  }, [kbMode, kbRange, lefty]);
 
   function svgCoords(e: React.PointerEvent<SVGSVGElement>) {
     const svg = svgRef.current;
@@ -201,7 +210,10 @@ function FretboardMap({
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const coords = svgCoords(e);
     if (!coords) return null;
-    const { x, y } = coords;
+    // Mirror es su propia inversa -- convierte "dónde tocó la pantalla" en la posición lógica (no
+    // volteada), igual que en ReducedFretboardDiagram.tsx.
+    const x = drawX(coords.x);
+    const { y } = coords;
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
@@ -378,7 +390,7 @@ function FretboardMap({
           return (
             <g key={`ko-${string}-${fret}`} pointerEvents="none" style={{ animation: 'fretboard-string-vibrate 80ms linear infinite' }}>
               <line
-                x1={markerX} x2={boardX + boardWidth} y1={markerY} y2={markerY}
+                x1={markerX} x2={drawX(boardX + boardWidth)} y1={markerY} y2={markerY}
                 stroke="#fbbf24" strokeLinecap="round" strokeWidth="3" opacity="0.85"
               />
               <circle cx={markerX} cy={markerY} fill="#fbbf24" opacity={noteIsMarked ? 0.5 : 0.9} r="17" />
@@ -417,19 +429,19 @@ function FretboardMap({
           <line
             className={fret === 0 ? 'map-nut' : 'map-fret'}
             key={`fret-${fret}`}
-            x1={boardX + fret * fretWidth}
-            x2={boardX + fret * fretWidth}
+            x1={drawX(boardX + fret * fretWidth)}
+            x2={drawX(boardX + fret * fretWidth)}
             y1={boardY}
             y2={boardY + boardHeight}
           />
         ))}
         {[3, 5, 7, 9].map((fret) => (
-          <circle className="map-guide-dot" cx={boardX + (fret - 0.5) * fretWidth} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
+          <circle className="map-guide-dot" cx={fretX(fret)} cy={stringY(3.5)} key={`guide-${fret}`} r="8" />
         ))}
-        <circle className="map-guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(2)} key="guide-12-top" r="8" />
-        <circle className="map-guide-dot" cx={boardX + 11.5 * fretWidth} cy={stringY(5)} key="guide-12-bottom" r="8" />
+        <circle className="map-guide-dot" cx={fretX(12)} cy={stringY(2)} key="guide-12-top" r="8" />
+        <circle className="map-guide-dot" cx={fretX(12)} cy={stringY(5)} key="guide-12-bottom" r="8" />
         {([3, 5, 7, 9, 12] as const).map((fret) => (
-          <text className="roman-fret" key={`roman-${fret}`} x={boardX + (fret - 0.5) * fretWidth} y={boardY + boardHeight + 22}>
+          <text className="roman-fret" key={`roman-${fret}`} x={fretX(fret)} y={boardY + boardHeight + 22}>
             {({ 3: 'III', 5: 'V', 7: 'VII', 9: 'IX', 12: 'XII' } as Record<number, string>)[fret]}
           </text>
         ))}
@@ -473,6 +485,7 @@ function FretboardMap({
         </span>
       )}
     >
+      <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button

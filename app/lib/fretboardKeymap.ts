@@ -73,6 +73,32 @@ export const FRETBOARD_KEYMAP_UPPER: Record<string, FretKeyEntry> = Object.fromE
   ])
 );
 
+// Modo zurdo (ReducedFretboardDiagram, prop `allowLeftHanded`): invierte el mástil SOLO en el eje
+// X, así que cada fila de teclas también se invierte -- la tecla que antes tocaba el traste MÁS
+// ALTO de su fila pasa a ser la cuerda al aire (traste 0), y viceversa. Se calcula invirtiendo el
+// traste dentro de cada cuerda (`traste_nuevo = traste_máximo_de_esa_cuerda - traste_viejo`) en vez
+// de escribir un mapa a mano -- así sale solo el resultado que pidió el usuario explícitamente:
+// ShiftRight/Enter/Backslash("ç")/Backspace("borrar") son la última tecla de sus filas en
+// FRETBOARD_KEYMAP (trastes 10/11/12/12), así que tras invertir pasan a traste 0 (cuerda al aire)
+// de las cuerdas 6/5/4/3 respectivamente -- exactamente lo pedido, sin necesidad de codificarlo
+// a mano ni duplicar lógica para FRETBOARD_KEYMAP_UPPER (mismo helper, mismo resultado).
+function mirrorKeymapFrets(keymap: Record<string, FretKeyEntry>): Record<string, FretKeyEntry> {
+  const maxFretByString: Record<number, number> = {};
+  for (const entry of Object.values(keymap)) {
+    maxFretByString[entry.string] = Math.max(maxFretByString[entry.string] ?? 0, entry.fret);
+  }
+  return Object.fromEntries(
+    Object.entries(keymap).map(([code, entry]) => {
+      const fret = maxFretByString[entry.string] - entry.fret;
+      const openMidi = entry.midi - entry.fret;
+      return [code, { string: entry.string, fret, midi: openMidi + fret }];
+    })
+  );
+}
+
+export const FRETBOARD_KEYMAP_LEFTY: Record<string, FretKeyEntry> = mirrorKeymapFrets(FRETBOARD_KEYMAP);
+export const FRETBOARD_KEYMAP_UPPER_LEFTY: Record<string, FretKeyEntry> = mirrorKeymapFrets(FRETBOARD_KEYMAP_UPPER);
+
 // Returns true when two held keys share the same keyboard-matrix column
 // (same fret offset on different strings), meaning a 3rd key may be blocked
 // by hardware ghosting on standard keyboards.

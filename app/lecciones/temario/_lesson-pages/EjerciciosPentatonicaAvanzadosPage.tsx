@@ -75,6 +75,7 @@ function notesForFigure(startFret: number, endFret: number) {
 function FigureThreeDiagram() {
   return (
     <ReducedFretboardDiagram
+      allowLeftHanded
       ariaLabel="Figura 2 de la pentatónica de Sol Mayor y Mi menor"
       endFret={figureThree.endFret}
       guideDots={[5, 7].map((fret) => ({ fret }))}
