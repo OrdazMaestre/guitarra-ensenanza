@@ -170,8 +170,8 @@ export default function ChannelStrip({
             accentColor: '#34d399',
             cursor: 'pointer',
             direction: 'rtl',
-            height: 96,
-            width: 8,
+            height: 72,
+            width: 6,
             writingMode: 'vertical-lr',
           }}
         />

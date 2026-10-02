@@ -107,6 +107,13 @@ export interface EngineState {
   /** true si la última comprobación periódica detectó una pista desincronizada >150ms y la
    * realineó. Informativo, se limpia solo en la siguiente comprobación si ya no hay deriva. */
   desynced: boolean;
+  /** Posición de reproducción (segundos), leída de la pista de referencia (ver startDriftCheck).
+   * Solo informativo para la barra de progreso -- el motor sigue usando cada <audio> como su
+   * propia fuente de verdad; esto es una copia de solo lectura para React. */
+  currentTime: number;
+  /** Duración total (segundos) de la pista de referencia, 0 hasta que el navegador la conoce
+   * (evento loadedmetadata). */
+  duration: number;
 }
 
 const DEFAULT_CHANNEL: ChannelState = { volume: 0.85, pan: 0, eq: { low: 0, mid: 0, high: 0 }, muted: false };
@@ -202,6 +209,7 @@ export class MixingConsoleEngine {
   private channels = new Map<string, ChannelNodes>();
   private listeners = new Set<Listener>();
   private driftTimer: number | null = null;
+  private positionTimer: number | null = null;
 
   private state: EngineState = {
     songId: MIXING_SONGS[0].id,
@@ -210,6 +218,8 @@ export class MixingConsoleEngine {
     soloId: null,
     channels: {},
     desynced: false,
+    currentTime: 0,
+    duration: 0,
   };
 
   constructor() {
@@ -290,6 +300,15 @@ export class MixingConsoleEngine {
       const audio = new Audio(trackUrl(song.id, inst.id));
       audio.preload = 'auto';
 
+      // Solo la pista de referencia (la primera del array, igual que en startDriftCheck) alimenta
+      // currentTime/duration -- todas las pistas de una canción duran lo mismo, así que basta con
+      // seguir una.
+      if (inst.id === song.instruments[0].id) {
+        audio.addEventListener('loadedmetadata', () => {
+          if (Number.isFinite(audio.duration)) this.emit({ duration: audio.duration });
+        });
+      }
+
       // Cadena por canal: MediaElementSource -> EQ (low/mid/high) -> pan -> volumen de canal
       // (con mute/solo ya aplicados) -> bus máster -> destino. Ver NOTES.md.
       const source = ctx.createMediaElementSource(audio);
@@ -341,7 +360,16 @@ export class MixingConsoleEngine {
     // (MixingConsole.tsx) la que llama a play() justo después, a petición del usuario, para que
     // elegir una canción la reproduzca de inmediato. Se mantiene separado aquí para que el motor
     // no asuma que selectSong() siempre ocurre dentro de un gesto de click.
-    this.emit({ songId, playing: false, soloId: null, desynced: false, channels: defaultChannelsFor(songId) });
+    this.stopPositionTracking();
+    this.emit({
+      songId,
+      playing: false,
+      soloId: null,
+      desynced: false,
+      channels: defaultChannelsFor(songId),
+      currentTime: 0,
+      duration: 0,
+    });
     if (this.ctx) this.buildChannelsForCurrentSong();
   }
 
@@ -352,6 +380,7 @@ export class MixingConsoleEngine {
     }
     this.emit({ playing: true });
     this.startDriftCheck();
+    this.startPositionTracking();
   }
 
   pause(): void {
@@ -360,6 +389,43 @@ export class MixingConsoleEngine {
     }
     this.emit({ playing: false });
     this.stopDriftCheck();
+    this.stopPositionTracking();
+  }
+
+  /** Mueve todas las pistas de la canción actual al mismo punto (segundos), p.ej. al arrastrar la
+   * barra de progreso -- mismo patrón de "fijar currentTime en todas" que startDriftCheck ya usa
+   * para realinear. Funciona en pausa o en reproducción. */
+  seek(time: number): void {
+    const reference = this.referenceAudio();
+    const clamped = clamp(time, 0, reference && Number.isFinite(reference.duration) ? reference.duration : time);
+    for (const nodes of this.channels.values()) {
+      nodes.audio.currentTime = clamped;
+    }
+    this.emit({ currentTime: clamped });
+  }
+
+  private referenceAudio(): HTMLAudioElement | null {
+    const nodesList = [...this.channels.values()];
+    return nodesList.length > 0 ? nodesList[0].audio : null;
+  }
+
+  // Actualiza currentTime en el estado de React mientras suena, para que la barra de progreso
+  // avance. Un intervalo de 250ms es más que suficiente para que se vea fluido sin recalcular el
+  // estado en cada frame.
+  private startPositionTracking(): void {
+    this.stopPositionTracking();
+    this.positionTimer = window.setInterval(() => {
+      const reference = this.referenceAudio();
+      if (!reference) return;
+      this.emit({ currentTime: reference.currentTime });
+    }, 250);
+  }
+
+  private stopPositionTracking(): void {
+    if (this.positionTimer !== null) {
+      window.clearInterval(this.positionTimer);
+      this.positionTimer = null;
+    }
   }
 
   // Cada uno de los setters de abajo llama a ensureContext() antes de tocar los nodos: mover
@@ -488,6 +554,7 @@ export class MixingConsoleEngine {
 
   dispose(): void {
     this.stopDriftCheck();
+    this.stopPositionTracking();
     this.teardownChannels();
     if (this.ctx) {
       this.ctx.close().catch(() => {});

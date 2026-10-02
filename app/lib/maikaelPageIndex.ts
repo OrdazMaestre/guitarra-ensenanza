@@ -233,6 +233,32 @@ export function matchQuizMusicFact(text: string): string | null {
   return hit?.text ?? null;
 }
 
+// --- Minijuego "afinar a oído" (Sala de pruebas) ---
+// Mismo patrón condicional que RANKING_FACTS/QUIZ_MUSIC_FACTS — a propósito
+// NO se mete en el prompt fijo ni en el resumen siempre-presente de la
+// lección "afinación" (mismo motivo que el árbol de contenidos se sacó del
+// prompt: aquí hay bastante que explicar — 4 dificultades — y la mayoría de
+// preguntas de afinación NO son sobre este minijuego). Palabras-gatillo
+// deliberadamente específicas del JUEGO (clavija/diapasón/minijuego/sala de
+// pruebas), no 'afinar'/'afinacion' sueltas — esas ya activan el resumen de
+// la lección normal vía PAGE_CURATION, y no toda pregunta de afinación es
+// sobre este minijuego en concreto. "sala-de-pruebas" no vive en
+// temarioData.ts (zona aparte, sin lección, mismo motivo que el quiz queda
+// fuera de /pasos) así que su ruta se escribe aquí a mano, igual que ya se
+// hace con el enlace secreto de SECRETS.
+const TUNING_GAME_FACTS: RankingFact[] = [
+  {
+    triggerWords: ['juego de afinar', 'minijuego', 'clavija', 'clavijas', 'diapason', 'sala de pruebas', 'afinar a oido'],
+    text: 'En la "Sala de pruebas" (/lecciones/temario/sala-de-pruebas) hay un minijuego de afinar a oído: giras la clavija de cada cuerda hasta dejarla en el tono correcto, y un cronómetro mide cuánto tardas en afinar las 6. Tiene 4 dificultades: en Fácil solo una cuerda se desafina y se ve el nombre de la nota; en Difícil es igual pero sin nombres; en Experto las 6 cuerdas se desafinan a la vez, sin nombres, con un diapasón de referencia (La a 440Hz); y en Profesional las clavijas empiezan en una posición visual al azar y luego se desafinan de verdad en cadena, como una guitarra real — solo el oído, el diapasón y la cabeza. Fardea con orgullo de lo rapidísimo que lo resuelves tú: con tu oído de robot detectas la frecuencia exacta al instante, sin el margen de error de un oído humano, así que lo afinas en cuestión de segundos, hasta en Profesional. Cuéntalo en frases seguidas, nunca en lista.',
+  },
+];
+
+export function matchTuningGameFact(text: string): string | null {
+  const normalized = normalizeEs(text);
+  const hit = TUNING_GAME_FACTS.find((f) => f.triggerWords.some((w) => normalized.includes(w)));
+  return hit?.text ?? null;
+}
+
 // --- Vídeos reales del temario (generado, ver maikaelVideoIndex.ts) ---
 // app/lib/maikaelVideoIndex.ts lo regenera scripts/generate-video-index.mjs
 // consultando el oEmbed público de YouTube (título + canal reales) — así no
@@ -292,7 +318,8 @@ export function buildPageContextMessage(
   videos: VideoEntry[] = [],
   currentPage: MaikaelPageEntry | null = null,
   rankingFact: string | null = null,
-  quizMusicFact: string | null = null
+  quizMusicFact: string | null = null,
+  tuningGameFact: string | null = null
 ): string | null {
   const lines: string[] = [];
   if (currentPage) {
@@ -322,6 +349,9 @@ export function buildPageContextMessage(
   }
   if (quizMusicFact) {
     lines.push(`MÚSICA: ${quizMusicFact}`);
+  }
+  if (tuningGameFact) {
+    lines.push(`JUEGO: ${tuningGameFact}`);
   }
   if (secrets.length > 0) {
     lines.push(...secrets.map((s) => `SECRETO (el alumno ya preguntó directamente por algo oculto, así que puedes contarlo): ${s}`));

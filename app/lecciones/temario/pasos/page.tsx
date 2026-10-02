@@ -1,106 +1,95 @@
 import Link from 'next/link';
 import TemarioPager from '../TemarioPager';
-import { extensionPages, lessonBlocks } from '../temarioData';
-import SecondaryPaths from './SecondaryPaths';
 import TestRoomButton from './TestRoomButton';
+import { lessonBlocks } from '../temarioData';
+import {
+  branchMap,
+  lessonToneClasses,
+  SECONDARY_MAIN_TARGET_SLUG,
+  SECONDARY_SOURCE_SLUG,
+} from '../temarioTree';
+import ConceptLinks from './ConceptLinks';
 
-type BranchItem = {
-  title: string;
-  href: string;
-  secondaryTarget?: 'harmony' | 'sevenths';
-};
-
-// secondaryTarget es puramente visual (flechas del mapa de esta página) para
-// las 2 ramas que lo necesitan — no vive en extensionPages porque no aporta
-// nada fuera de aquí.
-const SECONDARY_TARGETS: Partial<Record<string, BranchItem['secondaryTarget']>> = {
-  'acordes-escala-sol-mayor': 'harmony',
-  'acordes-con-septima': 'sevenths',
-};
-
-// Derivado de extensionPages (temarioData.ts), la fuente única de las
-// páginas rama — antes era un literal mantenido a mano aquí mismo.
+// Árbol del temario (datos en temarioTree.ts): tarjetas redondeadas, tronco con
+// puntos, ramas con codos curvos y flechas de esquinas suaves (ConceptLinks.tsx).
 //
-// El quiz (/lecciones/temario/quiz) se deja fuera A PROPÓSITO de este árbol: no es una rama de
-// una lección concreta (no tiene un parentSlug real), es una utilidad transversal accesible desde
-// el botón QUIZ de CUALQUIER lección vía quizHref. Incluirlo aquí rompería la lectura del árbol
-// como "de qué lección cuelga qué".
-const branchMap: Record<string, BranchItem[]> = extensionPages.reduce(
-  (acc, page) => {
-    (acc[page.parentSlug] ??= []).push({
-      title: page.title,
-      href: `/lecciones/temario/${page.slug}`,
-      secondaryTarget: SECONDARY_TARGETS[page.slug],
-    });
-    return acc;
-  },
-  {} as Record<string, BranchItem[]>
-);
-
-const lessonToneClasses = [
-  'tone-emerald',
-  'tone-red',
-  'tone-zinc',
-  'tone-amber',
-  'tone-emerald',
-  'tone-red',
-  'tone-zinc',
-  'tone-amber',
-  'tone-emerald',
-  'tone-red',
-];
-
+// Geometría compartida entre CSS y ConceptLinks: el "gancho" de cada tarjeta
+// (--cn-hook, 43px desde arriba) es la altura del centro del número; ahí se
+// alinean el punto del tronco, el conector y la primera rama.
 export default function PasosPage() {
   return (
-    <main className="steps-page">
-      <section className="steps-hero">
-        <div className="steps-hero-copy">
-          <h1>TEMARIO</h1>
-          <p className="steps-note">(Esta web está pendiente de ser ampliada)</p>
-          <p className="steps-strong">MÉTODO ORDAZ: Temas principales + apartados.</p>
-          <ul className="steps-list">
-            <li><strong>Soy nuevo:</strong> Céntrate en los temas principales (1, 2, 3... 10), y entra en los apartados de los temas 2 y 3.</li>
-            <li><strong>Llegué al final:</strong> tras llegar al tema 10, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
-            <li>Aprender cosas nuevas es necesario para avanzar y también facilita entender lo anterior.</li>
-          </ul>
-          <p className="steps-strong">Niveles: a nuestro ritmo</p>
-          <ul className="steps-list">
-            <li><strong>Nivel 1</strong> → al superar el tema 5</li>
-            <li><strong>Nivel 2</strong> → al entender todos los temas principales</li>
-            <li><strong>Nivel 3</strong> → al completar todos los apartados (listo para clases avanzadas)</li>
-          </ul>
-          
+    <main className="cn-page">
+      <header className="cn-hero">
+        <p className="cn-eyebrow">Mapa de contenidos</p>
+        <h1 className="cn-title">Temario</h1>
+        <p className="cn-note">(Esta web está pendiente de ser ampliada)</p>
+
+        <div className="cn-guide">
+          <section className="cn-guide-card">
+            <h2>Método Ordaz</h2>
+            <p className="cn-guide-sub">Temas principales + apartados.</p>
+            <ul>
+              <li><strong>Soy nuevo:</strong> Céntrate en los temas principales (1, 2, 3... 10), y entra en los apartados de los temas 2 y 3.</li>
+              <li><strong>Llegué al final:</strong> tras llegar al tema 10, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
+              <li>Aprender cosas nuevas es necesario para avanzar y también facilita entender lo anterior.</li>
+            </ul>
+          </section>
+
+          <section className="cn-guide-card">
+            <h2>Niveles</h2>
+            <p className="cn-guide-sub">A nuestro ritmo.</p>
+            <ul className="cn-levels">
+              <li><span>1</span>Al superar el tema 5</li>
+              <li><span>2</span>Al entender todos los temas principales</li>
+              <li><span>3</span>Al completar todos los apartados (listo para clases avanzadas)</li>
+            </ul>
+          </section>
         </div>
 
-      </section>
+        <ul className="cn-legend" aria-label="Leyenda del mapa">
+          <li><i className="cn-legend-main" aria-hidden="true" />Tema principal</li>
+          <li><i className="cn-legend-branch" aria-hidden="true" />Apartado</li>
+          <li><i className="cn-legend-link" aria-hidden="true" />Relacionado</li>
+        </ul>
+      </header>
 
-      <section className="learning-map" aria-label="Orden real de las lecciones" data-learning-map>
-        <SecondaryPaths />
-        
+      <section className="cn-map" aria-label="Orden real de las lecciones" data-pasos-map>
+        <ConceptLinks />
 
-        <ol className="map-trunk">
-          {lessonBlocks.map((lesson, index) => (
-            <li key={lesson.slug} className={`map-node ${lessonToneClasses[index]}`}>
-              <div className="main-lesson" data-secondary-source={lesson.slug === 'acordes' ? 'acordes' : undefined} data-secondary-target={lesson.slug === 'figuras-de-acordes' ? 'figuras' : undefined}>
-                <span className="lesson-number">{lesson.number}</span>
-                <Link href={`/lecciones/temario/${lesson.slug}`} className="lesson-title">
-                  {lesson.title}
-                </Link>
-              </div>
+        <ol className="cn-trunk">
+          {lessonBlocks.map((lesson, index) => {
+            const branches = branchMap[lesson.slug];
 
-              <div className="node-side">
-                {branchMap[lesson.slug] ? (
-                  <ul className="branch-list" aria-label={`Ramas de ${lesson.title}`}>
-                    {branchMap[lesson.slug].map((branch) => (
-                      <li key={branch.href} className="branch-node" data-secondary-target={branch.secondaryTarget}>
-                        <Link href={branch.href}>{branch.title}</Link>
-                      </li>
-                    ))}
-                  </ul>
+            return (
+              <li key={lesson.slug} className={`cn-node ${lessonToneClasses[index]}`}>
+                <span className="cn-dot" aria-hidden="true" />
+                <div
+                  className="cn-card"
+                  data-pasos-source={lesson.slug === SECONDARY_SOURCE_SLUG ? '' : undefined}
+                  data-pasos-target={lesson.slug === SECONDARY_MAIN_TARGET_SLUG ? 'figuras' : undefined}
+                >
+                  <span className="cn-badge">{lesson.number}</span>
+                  <Link href={`/lecciones/temario/${lesson.slug}`} className="cn-card-title">
+                    {lesson.title}
+                  </Link>
+                </div>
+
+                {branches ? (
+                  <div className="cn-side">
+                    <ul className="cn-branches" aria-label={`Apartados de ${lesson.title}`}>
+                      {branches.map((branch) => (
+                        <li key={branch.href} className="cn-branch">
+                          <div className="cn-branch-card" data-pasos-target={branch.secondaryTarget}>
+                            <Link href={branch.href}>{branch.title}</Link>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ) : null}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ol>
       </section>
 
@@ -112,14 +101,22 @@ export default function PasosPage() {
       <TestRoomButton />
 
       <style>{`
-        .steps-page {
-          background:
-            linear-gradient(90deg, rgba(4, 120, 87, 0.08) 1px, transparent 1px),
-            linear-gradient(180deg, rgba(4, 120, 87, 0.08) 1px, transparent 1px),
-            #ffffff;
-          background-size: 38px 38px;
-          box-sizing: border-box;
+        .cn-page {
+          --cn-ink: #27272a;
+          --cn-line: 3px;
+          --cn-hook: 43px;
+          --cn-branch-hook: 27px;
+          --cn-trunk-x: 52px;
+          --cn-card-left: 112px;
+          --cn-gap: 44px;
+          --cn-lane-space: 56px;
+          --cn-node-width: 760px;
+          --cn-card-width: 600px;
+          --cn-branch-width: 400px;
+          background: #ffffff;
           color: #080808;
+          margin: 0;
+          max-width: 100%;
           min-height: 100vh;
           overflow-x: clip;
           padding: clamp(76px, 9vw, 116px) clamp(16px, 6vw, 88px) clamp(48px, 7vw, 84px);
@@ -127,88 +124,193 @@ export default function PasosPage() {
           width: 100%;
         }
 
-        .steps-hero {
-          align-items: end;
-          display: grid;
-          gap: 28px;
-          grid-template-columns: minmax(0, 1fr) auto;
-          margin: 0 auto clamp(38px, 7vw, 72px);
+        /* ---------- Cabecera ---------- */
+
+        .cn-hero {
+          margin: 0 auto clamp(40px, 6vw, 64px);
           max-width: 1180px;
           min-width: 0;
           width: 100%;
         }
 
-        .steps-hero-copy {
-          min-width: 0;
-        }
-
-        .steps-kicker {
+        .cn-eyebrow {
           color: #047857;
-          font-size: 13px;
-          font-weight: 950;
-          letter-spacing: 0.2em;
+          font-size: clamp(13px, 1.1vw, 16px);
+          font-weight: 800;
+          letter-spacing: 0.32em;
+          margin: 0 0 14px;
           text-transform: uppercase;
         }
 
-        .steps-kicker {
-          margin: 0 0 16px;
-        }
-
-        .steps-hero h1 {
-          font-size: clamp(46px, 8vw, 112px);
+        .cn-title {
+          font-size: clamp(46px, 8vw, 104px);
           font-weight: 950;
           letter-spacing: 0;
           line-height: 0.92;
           margin: 0;
-          max-width: 780px;
           overflow-wrap: break-word;
+          text-transform: uppercase;
         }
 
-        .steps-hero p:not(.steps-kicker) {
-          color: #303030;
-          font-size: clamp(18px, 2vw, 24px);
+        .cn-note {
+          color: #71717a;
+          font-size: clamp(15px, 1.4vw, 18px);
           font-weight: 650;
-          line-height: 1.45;
-          margin: 18px 0 0;
-          max-width: 720px;
+          margin: 14px 0 0;
         }
 
-        .steps-legend {
-          align-content: start;
-          border: 1px solid #111111;
+        .cn-guide {
           display: grid;
-          gap: 12px;
-          justify-self: end;
-          min-width: min(100%, 240px);
-          padding: 18px;
+          gap: clamp(14px, 2vw, 22px);
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          margin-top: clamp(24px, 4vw, 36px);
         }
 
-        .steps-legend span {
-          align-items: center;
+        .cn-guide-card {
+          background: #fafafa;
+          border: 1.5px solid #e4e4e7;
+          border-radius: 20px;
+          min-width: 0;
+          padding: clamp(18px, 2.6vw, 26px);
+        }
+
+        .cn-guide-card h2 {
+          color: #047857;
+          font-size: clamp(20px, 2vw, 26px);
+          font-weight: 950;
+          line-height: 1.1;
+          margin: 0;
+        }
+
+        .cn-guide-sub {
           color: #18181b;
+          font-size: clamp(16px, 1.5vw, 19px);
+          font-weight: 800;
+          margin: 6px 0 14px;
+        }
+
+        .cn-guide-card ul {
+          display: grid;
+          gap: 10px;
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+
+        /* Tamaño fijo (el mínimo de pantalla pequeña): si creciera con el ancho,
+           en pantallas grandes cada punto ocuparía una línea más. */
+        .cn-guide-card li {
+          color: #303030;
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.45;
+          min-width: 0;
+          padding-left: 18px;
+          position: relative;
+        }
+
+        .cn-guide-card li::before {
+          background: #34d399;
+          border-radius: 999px;
+          content: "";
+          height: 8px;
+          left: 0;
+          position: absolute;
+          top: 0.6em;
+          width: 8px;
+        }
+
+        .cn-guide-card strong {
+          color: #080808;
+        }
+
+        .cn-levels li {
+          align-items: center;
+          display: flex;
+          gap: 12px;
+          padding-left: 0;
+        }
+
+        .cn-levels li::before {
+          display: none;
+        }
+
+        .cn-levels span {
+          align-items: center;
+          background: #047857;
+          border-radius: 999px;
+          color: #ffffff;
+          display: inline-flex;
+          flex: 0 0 auto;
+          font-size: 14px;
+          font-weight: 950;
+          height: 30px;
+          justify-content: center;
+          width: 30px;
+        }
+
+        .cn-legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 22px;
+          list-style: none;
+          margin: clamp(20px, 3vw, 28px) 0 0;
+          padding: 0;
+        }
+
+        .cn-legend li {
+          align-items: center;
+          color: #52525b;
           display: flex;
           font-size: 14px;
-          font-weight: 900;
-          gap: 10px;
-          line-height: 1.2;
+          font-weight: 800;
+          gap: 8px;
         }
 
-        .steps-legend i {
+        .cn-legend i {
           display: inline-block;
           flex: 0 0 auto;
-          height: 12px;
-          width: 34px;
         }
 
-        .legend-main {
-          background: #080808;
+        .cn-legend-main {
+          background: #10b981;
+          border-radius: 999px;
+          box-shadow: 0 0 0 3px #ffffff, 0 0 0 5px var(--cn-ink);
+          height: 14px;
+          margin: 0 4px;
+          width: 14px;
         }
 
-        .legend-branch {
-          background: #047857;
+        .cn-legend-branch {
+          border-radius: 999px;
+          border-top: 3px solid #10b981;
+          height: 0;
+          width: 28px;
         }
 
-        .learning-map {
+        .cn-legend-link {
+          border-top: 3px solid #f59e0b;
+          border-radius: 999px;
+          height: 0;
+          position: relative;
+          width: 28px;
+        }
+
+        .cn-legend-link::after {
+          border-right: 3px solid #f59e0b;
+          border-top: 3px solid #f59e0b;
+          content: "";
+          height: 8px;
+          position: absolute;
+          right: 0;
+          top: -5.5px;
+          transform: rotate(45deg);
+          width: 8px;
+        }
+
+        /* ---------- Mapa ---------- */
+
+        .cn-map {
           margin: 0 auto;
           max-width: 1180px;
           min-width: 0;
@@ -216,7 +318,7 @@ export default function PasosPage() {
           width: 100%;
         }
 
-        .secondary-path-overlay {
+        .cn-links {
           height: 100%;
           inset: 0;
           overflow: visible;
@@ -226,176 +328,203 @@ export default function PasosPage() {
           z-index: 1;
         }
 
-        .secondary-path {
+        .cn-link path {
           fill: none;
-          marker-end: url("#secondary-path-arrow");
           stroke: #f59e0b;
-          stroke-linecap: square;
+          stroke-linecap: round;
           stroke-linejoin: round;
-          stroke-width: 4;
+          stroke-width: 3;
         }
 
-        .secondary-path-overlay marker path {
+        .cn-link circle {
           fill: #f59e0b;
         }
 
-        .map-root {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 12px;
-          margin: 0 0 24px;
-          padding-left: clamp(0px, 6vw, 92px);
+        .cn-links marker path {
+          fill: none;
+          stroke: #f59e0b;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+          stroke-width: 3;
         }
 
-        .map-root-link {
-          background: #080808;
-          border: 2px solid #080808;
-          border-radius: 6px;
-          color: #ffffff !important;
-          font-size: 13px;
-          font-weight: 950;
-          letter-spacing: 0.12em;
-          padding: 12px 14px;
-          text-decoration: none !important;
-          text-transform: uppercase;
-        }
-
-        .map-root-link-active {
-          background: #ffffff;
-          color: #080808 !important;
-        }
-
-        .map-trunk {
-          counter-reset: lessons;
+        .cn-trunk {
           display: grid;
-          gap: 0;
           list-style: none;
           margin: 0;
-          padding: 0;
+          padding: 0 var(--cn-lane-space) 0 0;
           position: relative;
           z-index: 2;
         }
 
-        .map-trunk::before {
-          background: #080808;
-          bottom: 36px;
-          content: "";
-          left: clamp(24px, 6vw, 74px);
-          position: absolute;
-          top: 16px;
-          width: 6px;
-        }
-
-        .map-node {
-          box-sizing: border-box;
+        /* Siempre una sola columna: el tema arriba (pegado a la izquierda) y
+           sus apartados debajo (pegados a la derecha). */
+        .cn-node {
           display: grid;
-          gap: clamp(14px, 3vw, 34px);
-          grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1fr);
+          max-width: calc(var(--cn-card-left) + var(--cn-node-width));
           min-width: 0;
-          padding: 0 0 clamp(28px, 5vw, 52px) clamp(58px, 10vw, 124px);
+          padding: 0 0 clamp(30px, 4.5vw, 46px) var(--cn-card-left);
           position: relative;
+          row-gap: 14px;
         }
 
-        .map-node::before {
-          background: var(--node-color);
-          border: 5px solid #080808;
+        /* Tramo de tronco desde este punto hasta el del siguiente tema. */
+        .cn-node::before {
+          background: var(--cn-ink);
+          border-radius: 999px;
+          bottom: calc(-1 * var(--cn-hook));
+          content: "";
+          left: calc(var(--cn-trunk-x) - 2px);
+          position: absolute;
+          top: var(--cn-hook);
+          width: 4px;
+        }
+
+        .cn-node:last-child::before {
+          display: none;
+        }
+
+        /* Conector corto del punto a la tarjeta. */
+        .cn-node::after {
+          background: var(--cn-ink);
           border-radius: 999px;
           content: "";
-          height: 28px;
-          left: calc(clamp(24px, 6vw, 74px) - 11px);
+          height: var(--cn-line);
+          left: var(--cn-trunk-x);
           position: absolute;
-          top: 20px;
-          width: 28px;
+          top: calc(var(--cn-hook) - var(--cn-line) / 2);
+          width: calc(var(--cn-card-left) - var(--cn-trunk-x));
+        }
+
+        .cn-dot {
+          background: var(--node-color);
+          border-radius: 999px;
+          box-shadow: 0 0 0 4px #ffffff, 0 0 0 7px var(--cn-ink);
+          height: 18px;
+          left: calc(var(--cn-trunk-x) - 9px);
+          position: absolute;
+          top: calc(var(--cn-hook) - 9px);
+          width: 18px;
           z-index: 3;
         }
 
-        .main-lesson {
-          align-items: center;
+        .cn-card {
+          align-items: start;
+          align-self: start;
           background: #ffffff;
-          border: 2px solid #080808;
-          box-shadow: 8px 8px 0 var(--node-color);
+          border: 2px solid var(--cn-ink);
+          border-radius: 20px;
+          box-shadow: 0 6px 0 var(--node-color);
           display: grid;
           gap: 16px;
           grid-template-columns: auto minmax(0, 1fr);
+          max-width: var(--cn-card-width);
           min-width: 0;
-          padding: clamp(14px, 3vw, 20px);
+          padding: 17px 20px 20px 17px;
           position: relative;
           z-index: 2;
         }
 
-        .lesson-number {
+        .cn-badge {
           align-items: center;
-          background: #080808;
-          color: #ffffff;
+          background: color-mix(in srgb, var(--node-color) 18%, #ffffff);
+          border: 2px solid var(--node-color);
+          border-radius: 14px;
+          color: #080808;
           display: inline-flex;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: 950;
-          height: 46px;
+          height: 48px;
           justify-content: center;
-          width: 46px;
-          position: relative;
-          z-index: 2;
+          width: 48px;
         }
 
-        .lesson-title {
-          color: #080808 !important;
-          font-size: clamp(22px, 3vw, 34px);
+        .cn-card-title {
+          font-size: clamp(22px, 2.8vw, 32px);
           font-weight: 950;
-          line-height: 1.04;
-          max-width: 100%;
+          line-height: 1.08;
+          margin-top: 8px;
           overflow-wrap: anywhere;
-          text-decoration-color: var(--node-color) !important;
-          text-decoration-thickness: 0.12em !important;
-          text-underline-offset: 0.16em !important;
-          position: relative;
-          z-index: 2;
         }
 
-        .node-side {
-          align-content: start;
-          display: grid;
-          gap: 12px;
+        /* ---------- Apartados (ramas) ---------- */
+
+        .cn-side {
           min-width: 0;
+          padding-left: var(--cn-gap);
           position: relative;
           z-index: 2;
         }
 
-        .branch-list {
-          align-content: start;
+        .cn-branches {
           display: grid;
-          gap: 12px;
+          gap: 14px;
           list-style: none;
-          margin: 12px 0 0;
+          margin: 0;
           min-width: 0;
-          padding: 0;
+          padding: 14px 0 0;
           position: relative;
         }
 
-        .branch-list::before {
-          background: var(--node-color);
+        /* La vía baja recta desde el borde inferior de la tarjeta del tema. */
+        .cn-branches::before {
+          border-left: var(--cn-line) solid var(--node-color);
           content: "";
-          height: 4px;
-          left: calc(clamp(-34px, -3vw, -14px));
+          height: 28px;
+          left: calc(-1 * var(--cn-gap) / 2 - var(--cn-line) / 2);
           position: absolute;
-          top: 34px;
-          width: clamp(16px, 3vw, 34px);
+          top: -14px;
         }
 
-        .branch-node {
-          background: #f4f4f5;
-          border-left: 5px solid var(--node-color);
+        .cn-branch {
+          display: flex;
+          justify-content: flex-end;
           min-width: 0;
-          padding: 18px 16px;
           position: relative;
         }
 
-        .branch-node a {
-          color: #080808 !important;
-          display: inline-block;
-          font-size: clamp(18px, 2vw, 24px);
-          font-weight: 900;
-          line-height: 1.12;
+        /* Codo curvo de la vía hacia cada apartado. Llega hasta el borde derecho
+           de la fila: la caja (opaca) tapa el tramo que queda debajo de ella, así
+           el trazo siempre muere justo en su borde izquierdo, esté donde esté. */
+        .cn-branch::before {
+          border-bottom: var(--cn-line) solid var(--node-color);
+          border-bottom-left-radius: 14px;
+          border-left: var(--cn-line) solid var(--node-color);
+          content: "";
+          height: calc(var(--cn-branch-hook) + var(--cn-line) / 2);
+          left: calc(-1 * var(--cn-gap) / 2 - var(--cn-line) / 2);
+          position: absolute;
+          right: 8px;
+          top: 0;
+        }
+
+        /* La vía sigue recta hacia el siguiente apartado. */
+        .cn-branch:not(:last-child)::after {
+          border-left: var(--cn-line) solid var(--node-color);
+          bottom: -14px;
+          content: "";
+          left: calc(-1 * var(--cn-gap) / 2 - var(--cn-line) / 2);
+          position: absolute;
+          top: 0;
+        }
+
+        .cn-branch-card {
+          background: color-mix(in srgb, var(--node-color) 9%, #ffffff);
+          border: 1.5px solid color-mix(in srgb, var(--node-color) 45%, #ffffff);
+          border-radius: 16px;
+          flex: 0 1 var(--cn-branch-width);
           max-width: 100%;
+          min-width: 0;
+          padding: 14px 18px 15px;
+          position: relative;
+          z-index: 1;
+        }
+
+        .cn-branch-card a {
+          font-size: clamp(17px, 1.8vw, 21px);
+          font-weight: 900;
+          line-height: 1.2;
           overflow-wrap: anywhere;
         }
 
@@ -415,56 +544,39 @@ export default function PasosPage() {
           --node-color: #f59e0b;
         }
 
+        /* ---------- Responsive ---------- */
+
+        @media (max-width: 900px) {
+          .cn-guide {
+            grid-template-columns: minmax(0, 1fr);
+          }
+        }
+
         @media (max-width: 820px) {
-          .steps-hero {
-            align-items: start;
-            grid-template-columns: 1fr;
-          }
-
-          .steps-legend {
-            justify-self: stretch;
-          }
-
-          .map-node {
-            grid-template-columns: 1fr;
-            padding-left: clamp(48px, 11vw, 72px);
-          }
-
-          .branch-list {
-            margin-top: 0;
-          }
-
-          .branch-list::before {
-            display: none;
+          .cn-page {
+            --cn-gap: 34px;
+            --cn-lane-space: 40px;
           }
         }
 
         @media (max-width: 560px) {
-          .steps-hero h1 {
-            font-size: clamp(38px, 10vw, 44px);
-            line-height: 1;
+          .cn-page {
+            --cn-trunk-x: 22px;
+            --cn-card-left: 50px;
           }
 
-          .map-trunk::before {
-            left: 14px;
+          .cn-dot {
+            box-shadow: 0 0 0 3px #ffffff, 0 0 0 6px var(--cn-ink);
           }
 
-          .map-node {
-            padding-left: 38px;
+          .cn-card {
+            gap: 12px;
+            padding: 17px 16px 18px 17px;
           }
 
-          .map-node::before {
-            left: 2px;
-          }
-
-          .main-lesson {
-            box-shadow: 5px 5px 0 var(--node-color);
-            grid-template-columns: 1fr;
-          }
-
-          .lesson-number {
-            height: 40px;
-            width: 40px;
+          .cn-card-title {
+            font-size: clamp(20px, 6vw, 24px);
+            margin-top: 10px;
           }
         }
       `}</style>

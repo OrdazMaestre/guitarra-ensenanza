@@ -7,7 +7,7 @@ import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
-import { HandednessToggleButton } from './HandednessToggleButton';
+import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -584,6 +584,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
       {interactionOverlay()}
     </svg>
     <MidiInstrumentChrome
+      belowNote={allowLeftHanded && kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
           ⚠ Necesitas teclado gaming para tocar ciertos acordes

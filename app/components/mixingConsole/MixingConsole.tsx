@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import ChannelStrip from './ChannelStrip';
 import { useMixingConsole } from '../../lib/mixingConsole/useMixingConsole';
@@ -22,6 +22,15 @@ declare global {
 // Ver el bloque de comentarios junto a los handlers de puntero más abajo para el porqué de cada
 // umbral. Persistido en localStorage para que un bloqueo hecho antes de clase siga activo aunque
 // se recargue la página o el profesor navegue a otra lección.
+// "0:00" / "3:07" -- sin horas, esta mesa solo reproduce canciones de unos pocos minutos.
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 const LOCK_STORAGE_KEY = 'mixing-console-locked';
 const LOCK_DRAG_THRESHOLD_PX = 40; // arrastre a la derecha necesario para bloquear (estando ya desbloqueado)
 const UNLOCK_DRAG_THRESHOLD_PX = 40; // arrastre a la derecha necesario para desbloquear, UNA VEZ armado
@@ -358,6 +367,26 @@ export default function MixingConsole() {
                 </label>
               </div>
 
+              <div className="mc-progress">
+                <span className="mc-progress-time">{formatTime(state.currentTime)}</span>
+                <input
+                  type="range"
+                  className="mc-progress-bar"
+                  aria-label="Posición de la canción"
+                  min={0}
+                  max={state.duration || 0}
+                  step={0.01}
+                  value={Math.min(state.currentTime, state.duration || state.currentTime)}
+                  onChange={e => engine.seek(Number(e.target.value))}
+                  style={
+                    {
+                      '--mc-progress-pct': `${state.duration ? Math.min(100, (state.currentTime / state.duration) * 100) : 0}%`,
+                    } as CSSProperties
+                  }
+                />
+                <span className="mc-progress-time">{formatTime(state.duration)}</span>
+              </div>
+
               <div className="mc-channels">
                 {currentSong.instruments.map(inst => {
                   const channel = state.channels[inst.id];
@@ -672,6 +701,76 @@ export default function MixingConsole() {
           color: var(--mc-text-primary);
           min-width: 24px;
           text-align: right;
+        }
+
+        .mc-progress {
+          align-items: center;
+          display: flex;
+          gap: 8px;
+          margin-bottom: 14px;
+          width: 100%;
+        }
+
+        .mc-progress-time {
+          color: var(--mc-text-secondary);
+          flex: 0 0 auto;
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
+          font-weight: 700;
+          min-width: 30px;
+          text-align: center;
+        }
+
+        /* Barra de progreso estilo Spotify: el propio <input type="range"> hace de pista, con su
+           relleno dibujado como un gradiente de dos colores que corta justo en --mc-progress-pct
+           (actualizada desde React en cada tick de reproducción) -- funciona nativo en Chrome/Edge
+           con appearance:none. Firefox ignora ese fondo para la pista y usa sus propios
+           pseudo-elementos (::-moz-range-track/::-moz-range-progress) en su lugar, de ahí la
+           segunda definición del relleno más abajo. */
+        .mc-progress-bar {
+          -webkit-appearance: none;
+          appearance: none;
+          background: linear-gradient(
+            to right,
+            #34d399 var(--mc-progress-pct, 0%),
+            var(--mc-bg-control) var(--mc-progress-pct, 0%)
+          );
+          border-radius: 999px;
+          cursor: pointer;
+          flex: 1 1 auto;
+          height: 6px;
+          min-width: 0;
+          outline: none;
+        }
+
+        .mc-progress-bar::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          background: #34d399;
+          border-radius: 999px;
+          height: 14px;
+          margin-top: -4px;
+          width: 14px;
+        }
+
+        .mc-progress-bar::-moz-range-track {
+          background: var(--mc-bg-control);
+          border-radius: 999px;
+          height: 6px;
+        }
+
+        .mc-progress-bar::-moz-range-progress {
+          background: #34d399;
+          border-radius: 999px;
+          height: 6px;
+        }
+
+        .mc-progress-bar::-moz-range-thumb {
+          background: #34d399;
+          border: none;
+          border-radius: 999px;
+          height: 14px;
+          width: 14px;
         }
 
         .mc-channels {

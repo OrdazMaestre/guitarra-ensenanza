@@ -23,7 +23,7 @@ cuerdas a afinación estándar y luego aplica:
 |---|---|---|---|---|
 | Fácil       | 1 al azar | 1-3 semitonos | visibles | no |
 | Difícil     | 1 al azar | 1-4 semitonos | ocultos (aire y al pulsar un traste) | no |
-| Experto     | las 6     | 1-6 semitonos | ocultos | sí ("Diapasón La 440Hz") |
+| Experto     | las 6     | 1-6 semitonos | ocultos | sí (botón "A (La)"; Profesional mantiene "Diapasón La 440Hz") |
 | Profesional | las 6     | secuencia animada, ver más abajo | ocultos (a media secuencia) | sí |
 
 Profesional NO usa `startDifficulty`/`randomDetuneCents` -- tiene su propio arranque asíncrono,
@@ -339,6 +339,13 @@ del `viewBox`; todo el resto de texto de este tablero (nombres de traste, marcad
 `text-anchor: middle`, simétrico, y no necesita este ajuste. Verificado con Playwright en
 `sala-de-pruebas` (incluida la entrada por teclado: `ShiftRight` en zurdo+KB suena como "E2", cuerda
 6 al aire, igual que en el resto de mástiles) y en la instancia embebida en `AfinacionPage.tsx`.
+
+**El viewBox también se refleja en zurdo.** A diferencia de los demás mástiles, este `viewBox` es
+asimétrico (BOARD_X=90 de margen a la izquierda para clavijas + nombres, solo 20 a la derecha). Con
+`drawX` solo, en zurdo las clavijas acababan fuera de `[0, VIEWBOX_WIDTH]`. En escritorio no se
+notaba, pero en móvil estrecho quedaban cortadas y no se podía jugar. Por eso el `min-x` del
+`viewBox` pasa a `2*centerX - VIEWBOX_WIDTH` en zurdo (el espejo exacto de `[0, W]`). `getCellAt`
+usa `getScreenCTM()`, que ya incluye ese desplazamiento, así que la entrada por puntero no cambia.
 
 ## Estilos
 

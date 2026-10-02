@@ -11,7 +11,7 @@ import MetronomeControls from '@/app/components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '@/app/components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
-import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
+import { HandednessToggleButton, KeyboardLeftyNote } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -511,6 +511,7 @@ function ScaleFretboard({
     </figure>
     <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
+      belowNote={kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
           ⚠ Necesitas teclado gaming para tocar ciertos acordes

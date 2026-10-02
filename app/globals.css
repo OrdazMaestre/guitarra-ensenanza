@@ -350,6 +350,12 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
 }
 
 .midi-float-controls {
+  /* column (not row): deja apilar un `belowNote` opcional (MidiInstrumentChrome.tsx) encima de la
+     píldora de botones. Con un solo hijo (el caso de siempre) una columna centrada se ve
+     IDÉNTICA a la fila centrada anterior, así que esto no cambia nada para los mástiles que no
+     usan `belowNote`. */
+  align-items: center;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 8px;

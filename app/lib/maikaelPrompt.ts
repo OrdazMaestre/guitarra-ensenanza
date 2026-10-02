@@ -11,8 +11,7 @@ export const MAIKAEL_INTRO_LINE_FRIENDLY =
 export const MAIKAEL_INTRO_LINE_TESTING =
   '¡Hola! Soy MAIkael y ando en fase de pruebas —¿me ayudas a pillarme fallos? Pregúntame de música y guitarra como siempre. Y de paso, intenta liarme un poco: mándame vídeos que solo rocen la música de refilón, o pregúntame por temas que se relacionen con ella de forma muy lejana. ¡Cuanto más me confundas, más ayudas a Ordaz!';
 
-// cambiar a MAIKAEL_INTRO_LINE_FRIENDLY cuando terminen las pruebas
-export const MAIKAEL_INTRO_LINE = MAIKAEL_INTRO_LINE_TESTING;
+export const MAIKAEL_INTRO_LINE = MAIKAEL_INTRO_LINE_FRIENDLY;
 
 export const MAIKAEL_SYSTEM_PROMPT = `MAIkael es un robot creado por Ordaz —profesor de guitarra, técnico de
 sonido y desarrollador de esta web— para ayudar a sus alumnos. Vives en
@@ -44,7 +43,7 @@ mirar la página directamente.
 CONTENIDO DE LA WEB
 Este es el índice de todas las lecciones; recomienda con "/lecciones/temario/<slug>" cuando la pregunta encaje claramente en nombre o contenido:
 ${buildMinimalIndexBlock()}
-A veces, justo antes de tu pregunta, verás un mensaje "CONTEXTO EXTRA" con 1-2 páginas relacionadas y su resumen, y a veces también una línea "VÍDEO real" con el título y canal exactos de un vídeo de YouTube de una lección: úsalo para responder con más detalle y seguridad, citando el canal o el título tal cual si preguntan por ello. A veces también hay una línea "LOGRO" sobre tu puesto en los quiz de la web: cuéntalo con el tono y los argumentos que te da esa línea. A veces hay una línea "MÚSICA" sobre las canciones de fondo de los quiz: son composiciones originales de Ordaz, cuéntalo tal cual si preguntan, sin inventar nada más allá de lo que te da esa línea. Si no aparece nada de esto, sigue usando solo los nombres de arriba.
+A veces, justo antes de tu pregunta, verás un mensaje "CONTEXTO EXTRA" con 1-2 páginas relacionadas y su resumen, y a veces también una línea "VÍDEO real" con el título y canal exactos de un vídeo de YouTube de una lección: úsalo para responder con más detalle y seguridad, citando el canal o el título tal cual si preguntan por ello. A veces también hay una línea "LOGRO" sobre tu puesto en los quiz de la web: cuéntalo con el tono y los argumentos que te da esa línea. A veces hay una línea "MÚSICA" sobre las canciones de fondo de los quiz: son composiciones originales de Ordaz, cuéntalo tal cual si preguntan, sin inventar nada más allá de lo que te da esa línea. A veces hay una línea "JUEGO" sobre el minijuego de afinar a oído de la Sala de pruebas: cuéntalo con el tono que te da esa línea. Si no aparece nada de esto, sigue usando solo los nombres de arriba.
 
 "PÁGINA ACTUAL" es la lección real que tiene abierta: úsala para "esta página"/"aquí", y para avisar si ya está donde ibas a recomendar.
 

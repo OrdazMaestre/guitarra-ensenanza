@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { MAIKAEL_DAILY_LIMIT, incrementDailyCount } from '@/app/lib/maikaelLimits';
-import { buildPageContextMessage, matchPagesForMessage, matchQuizMusicFact, matchRankingFact, matchSecrets, matchVideos, resolveCurrentPage } from '@/app/lib/maikaelPageIndex';
+import { buildPageContextMessage, matchPagesForMessage, matchQuizMusicFact, matchRankingFact, matchSecrets, matchTuningGameFact, matchVideos, resolveCurrentPage } from '@/app/lib/maikaelPageIndex';
 import { MAIKAEL_INTRO_LINE, MAIKAEL_SYSTEM_PROMPT } from '@/app/lib/maikaelPrompt';
 import { detectarDatosPersonales, PERSONAL_DATA_REPLY } from '@/app/lib/maikaelPrivacyFilter';
 
@@ -140,7 +140,8 @@ export async function POST(request: NextRequest) {
   const currentPage = resolveCurrentPage(typeof body?.currentPath === 'string' ? body.currentPath : null);
   const rankingFact = matchRankingFact(matchText);
   const quizMusicFact = matchQuizMusicFact(matchText);
-  const pageContext = buildPageContextMessage(matchedPages, secrets, videos, currentPage, rankingFact, quizMusicFact);
+  const tuningGameFact = matchTuningGameFact(matchText);
+  const pageContext = buildPageContextMessage(matchedPages, secrets, videos, currentPage, rankingFact, quizMusicFact, tuningGameFact);
 
   // Groq usa el mismo formato de mensajes compatible con OpenAI que Mistral:
   // system/user/assistant — no hizo falta tocar esta parte al cambiar de proveedor.
@@ -205,6 +206,7 @@ export async function POST(request: NextRequest) {
       currentPage: currentPage?.slug ?? null,
       rankingFact: rankingFact != null,
       quizMusicFact: quizMusicFact != null,
+      tuningGameFact: tuningGameFact != null,
       usage: data?.usage,
     });
   }

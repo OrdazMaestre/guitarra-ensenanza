@@ -12,7 +12,7 @@ import MetronomeControls from '../../../components/guitar/MetronomeControls';
 import MidiInstrumentChrome from '../../../components/guitar/MidiInstrumentChrome';
 import HorizontalScrollbar from '../../../components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guitar/NoteMarksOverlay';
-import { HandednessToggleButton } from '../../../components/guitar/HandednessToggleButton';
+import { HandednessToggleButton, KeyboardLeftyNote } from '../../../components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '../../../lib/useNoteMarks';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -479,6 +479,7 @@ function FretboardMap({
     </figure>
     <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
+      belowNote={kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
         <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
           ⚠ Necesitas teclado gaming para tocar ciertos acordes

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting, type FretKeyEntry } from '@/app/lib/fretboardKeymap';
 import MidiInstrumentChrome from '../guitar/MidiInstrumentChrome';
-import { HandednessToggleButton } from '../guitar/HandednessToggleButton';
+import { HandednessToggleButton, KeyboardLeftyNote } from '../guitar/HandednessToggleButton';
 import TuningPeg from './TuningPeg';
 import {
   DEGREES_PER_STEP,
@@ -651,14 +651,19 @@ export default function TuningBoard() {
           onPointerCancel={onDiapasonPointerUp}
           style={{ touchAction: 'none' }}
         >
-          🎵 Diapasón La 440Hz
+          🎵 {difficulty === 'experto' ? 'A (La)' : 'Diapasón La 440Hz'}
         </button>
       )}
 
       <svg
         ref={svgRef}
         className="tuning-board-svg"
-        viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
+        // El viewBox es ASIMÉTRICO (BOARD_X=90 de hueco a la izquierda para las clavijas, solo 20 a
+        // la derecha), así que en zurdo `drawX` deja las clavijas FUERA de [0, VIEWBOX_WIDTH] y en
+        // pantallas estrechas quedaban recortadas. Se refleja también el propio viewBox: su borde
+        // izquierdo pasa a 2*centerX - VIEWBOX_WIDTH (= BOARD_X - 20), el espejo exacto de [0, W].
+        // Los punteros no necesitan cambios: getCellAt usa getScreenCTM(), que ya incluye este offset.
+        viewBox={`${lefty ? 2 * centerX - VIEWBOX_WIDTH : 0} 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         role="img"
         aria-label="Mástil de afinación a oído, trastes 0 a 5, con una clavija por cuerda"
         style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
@@ -773,6 +778,7 @@ export default function TuningBoard() {
       </svg>
 
       <MidiInstrumentChrome
+        belowNote={kbMode && lefty && <KeyboardLeftyNote />}
         warning={kbMode && kbGhostWarn && (
           <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
             ⚠ Necesitas teclado gaming para tocar ciertos acordes

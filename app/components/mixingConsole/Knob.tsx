@@ -123,10 +123,10 @@ export default function Knob({
           border: `1.5px solid ${isAtDefault ? 'var(--mc-border-control)' : accentColor}`,
           borderRadius: '999px',
           cursor: 'ns-resize',
-          height: 34,
+          height: 26,
           position: 'relative',
           touchAction: 'none',
-          width: 34,
+          width: 26,
         }}
       >
         <div
@@ -134,12 +134,12 @@ export default function Knob({
             background: accentColor,
             borderRadius: '2px',
             bottom: '50%',
-            height: '13px',
+            height: '10px',
             left: '50%',
             position: 'absolute',
             transform: `translateX(-50%) rotate(${angle}deg)`,
             transformOrigin: '50% 100%',
-            width: '2px',
+            width: '1.5px',
           }}
         />
       </div>

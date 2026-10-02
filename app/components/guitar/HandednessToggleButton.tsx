@@ -30,3 +30,20 @@ export function HandednessToggleButton({ lefty, onClick }: { lefty: boolean; onC
     </button>
   );
 }
+
+// Aviso compartido: "zurdo + teclado" a la vez -- a petición explícita del usuario, en TODOS los
+// mástiles MIDI del sitio. Se renderiza vía el nuevo prop `belowNote` de MidiInstrumentChrome, que
+// lo coloca en el hueco entre el final del mástil (números de traste) y la fila de botones --
+// posición DISTINTA del aviso de ghosting existente (`warning`, que flota POR ENCIMA del
+// instrumento) ya que el usuario pidió explícitamente ese hueco concreto, no reemplazar el aviso de
+// ghosting ni compartir su sitio. Mismo lenguaje visual ámbar que ese aviso (mismo tema de fondo:
+// "tu teclado físico puede no comportarse como se espera") para no introducir un tercer estilo de
+// aviso en la interfaz. Cada mástil decide cuándo mostrarlo: `kbMode && lefty` (modo teclado Y
+// zurdo activos a la vez), nunca uno sin el otro.
+export function KeyboardLeftyNote() {
+  return (
+    <span style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+      ⌨ Funcionará mejor o peor según las teclas de tu teclado
+    </span>
+  );
+}
