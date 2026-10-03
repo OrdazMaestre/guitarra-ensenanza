@@ -660,7 +660,7 @@ export default function NotacionMusicalPage({ previous, next, quizHref }: Lesson
             <p>
               <strong>NOTACIÓN INTERNACIONAL:</strong> Nombrar a las notas musicales con las letras del <strong>ABECEDARIO</strong> o, como lo llamo aqui;
             </p>
-            <h2>ABCDEFGario: <strong>A,  B,  C,  D,  E,  F  y  G.</strong></h2>
+            <h2>ABCDEFGario: </h2><p><strong>A,  B,  C,  D,  E,  F  y  G.</strong></p>
           </div>
         </header>
 
@@ -708,18 +708,18 @@ export default function NotacionMusicalPage({ previous, next, quizHref }: Lesson
           <FullFretboardDiagram />
           
           <section className="lesson-close" aria-label="Resumen">
-          <h2>POCO A POCO MEMORIZAREMOS LA POSICION DE VARIAS NOTAS EN LA GUITARRA</h2>
+          <h2>EL MAPA DE LA GUITARRA (cómo memorizarlo).</h2>
           <p><strong>Trastes 0 y 12 son IGUALES</strong>.</p>
           <p><strong>Cuerdas 1 y 6 son IGUALES</strong>.</p>
-          <p>TRUCOS: Empieza aprendiendo las notas del traste 0 de abajo a arriba.</p>
-          <p>El resto de momento las iremos calculando sabiéndonos el <strong>abecedefgario</strong>.</p>
+          <p>TRUCO: Empieza aprendiendo las notas del traste 0.</p>
+          <p>El resto las calculamos sabiéndonos el <strong>abecedefgario</strong>.</p>
           </section>
         </section>
 
         <section className="branch-link-section" aria-label="Rama de afinación">
           <Link href="/lecciones/temario/afinacion">Afinación</Link>
           <p>Ajustar las cuerdas con las clavijas</p>
-          <p>hasta tener el patrón de la izquierda en el mástil de arriba</p>
+          <p>hasta tener las notas del traste 0</p>
           <p>para que la guitarra suene bien.</p>
         </section>
       </article>

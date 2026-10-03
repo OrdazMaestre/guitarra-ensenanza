@@ -25,7 +25,7 @@ export default function TablaturasPage({ previous, next, quizHref }: LessonPageP
             </p>
             <p> El <strong>1</strong>, el <strong>2</strong>, el <strong>3</strong> y los demás números nos mandan avanzar por el mástil.</p>
               <p>Intentamos memorizar este mapa de notas para aprender más fácil la canción.</p>
-              <p>EJERCICIO 1: practicar el siguiente patrón</p>
+              <p><strong>EJERCICIO 1:</strong> practicar el siguiente patrón</p>
               <p> (2 - 4 - 5  -  2 - 4 - 5) - (4 - 5 - 7  -  4 - 5 - 7) - (0 - 2 - 4  -  0 - 2 - 4)</p>
           </div>
 
@@ -52,7 +52,7 @@ export default function TablaturasPage({ previous, next, quizHref }: LessonPageP
 
         <section className="exercise-section" aria-labelledby="birthday-title">
           <div className="exercise-heading">
-            <p className="lesson-kicker">Ejercicio 1</p>
+            <p className="lesson-kicker">Ejercicio 2</p>
             <h2 id="birthday-title">Cumpleaños feliz</h2>
             
           </div>
