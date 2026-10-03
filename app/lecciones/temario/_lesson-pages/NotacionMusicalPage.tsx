@@ -709,11 +709,10 @@ export default function NotacionMusicalPage({ previous, next, quizHref }: Lesson
           
           <section className="lesson-close" aria-label="Resumen">
           <h2>POCO A POCO MEMORIZAREMOS LA POSICION DE VARIAS NOTAS EN LA GUITARRA</h2>
-          <p>Trastes 0 y 12 son iguales.</p>
-          <p>Cuerdas 1 y 6 son iguales.</p>
+          <p><strong>Trastes 0 y 12 son IGUALES</strong>.</p>
+          <p><strong>Cuerdas 1 y 6 son IGUALES</strong>.</p>
           <p>TRUCOS: Empieza aprendiendo las notas del traste 0 de abajo a arriba.</p>
-          <p>Memoriza que la cuerda 2 contiene de Do a Si en orden por toda la cuerda.</p>
-          <p>El resto de posiciones las sacaremos cada vez más rápido sabiéndonos el abecedefgario.</p>
+          <p>El resto de momento las iremos calculando sabiéndonos el <strong>abecedefgario</strong>.</p>
           </section>
         </section>
 
