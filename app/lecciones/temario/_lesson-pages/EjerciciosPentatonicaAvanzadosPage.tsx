@@ -30,13 +30,13 @@ const figureThree = {
 
 const advancedExercises = [
   {
-    note: 'Ejercicio 1 y 2',
+    note: 'Ejercicio 1',
     source: '/tabs/ejerciciopent1.gp',
     text: ['Primero subimos.', 'Luego bajamos.', 'Misma figura. Dos direcciones.'],
     title: 'Ascendente y descendente',
   },
   {
-    note: 'Ejercicio 3 y 4',
+    note: 'Ejercicio 2',
     source: '/tabs/ejerciciopent2.gp',
     text: ['Subimos 2 y bajamos 1.', 'Después bajamos 2 y subimos 1.', 'Aquí empieza el movimiento de verdad.'],
     title: 'Patrones de tres notas',

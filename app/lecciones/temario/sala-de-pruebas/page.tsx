@@ -3,10 +3,12 @@ import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../compon
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
 import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
+import SpotlightCorners from './SpotlightCorners';
 
 export default function SalaDePruebasPage() {
   return (
     <main className="test-room-page">
+      <SpotlightCorners />
       <header className="test-room-header">
         <p className="test-room-kicker">Zona aparte</p>
         <h1>Sala de pruebas</h1>
@@ -25,6 +27,7 @@ export default function SalaDePruebasPage() {
         <div className="test-room-fretboard">
           <ReducedFretboardDiagram
             allowLeftHanded
+            allowTuning
             ariaLabel="Mástil de guitarra interactivo del 0 al 12"
             startFret={0}
             endFret={12}
@@ -37,7 +40,14 @@ export default function SalaDePruebasPage() {
       </section>
 
       <section className="test-room-tab">
-        <AlphaTabPlayer source="/tabs/prueba-master-of-puppets.gp" multiTrack layout="horizontal" />
+        <AlphaTabPlayer
+          source="/tabs/prueba-master-of-puppets.gp"
+          multiTrack
+          layout="horizontal"
+          minHeight={240}
+          initialTrack="Rhythm Guitar (Kirk)"
+          trackOrder={['Rhythm Guitar (Kirk)', 'Rhythm Guitar (James)', 'Bass', 'Drums']}
+        />
       </section>
 
       <Link href="/lecciones/temario/pasos" className="test-room-back">
@@ -54,6 +64,7 @@ export default function SalaDePruebasPage() {
           min-height: 100vh;
           overflow-x: clip;
           padding: clamp(28px, 5vw, 72px) clamp(20px, 7vw, 108px);
+          position: relative;
           width: 100%;
         }
 

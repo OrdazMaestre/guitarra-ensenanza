@@ -1,23 +1,21 @@
 import Link from 'next/link';
+import SpotlightFlank from '../SpotlightFlank';
 
-// Hermano de QuizButton.tsx: mismo estilo de botón (.quiz-button-link), pero SIN
-// SpotlightFlank -- aquí no queremos los focos decorativos que flanquean el botón QUIZ,
-// solo el botón suelto. Vive en su propio archivo (en vez de inline en pasos/page.tsx)
+// Hermano de QuizButton.tsx: mismo estilo de botón (.quiz-button-link) Y ahora también los mismos
+// focos de SpotlightFlank (antes deliberadamente se omitían aquí -- a petición explícita del
+// usuario, ahora SÍ se quieren). Vive en su propio archivo (en vez de inline en pasos/page.tsx)
 // porque trae su propio bloque <style>, igual que QuizButton.
 export default function TestRoomButton() {
   return (
     <>
-      <div className="test-room-button-wrap">
+      <SpotlightFlank className="test-room-button-wrap">
         <Link href="/lecciones/temario/sala-de-pruebas" className="test-room-button-link">
           SALA DE PRUEBAS
         </Link>
-      </div>
+      </SpotlightFlank>
       <style>{`
         .test-room-button-wrap {
-          display: flex;
-          justify-content: center;
           margin-top: clamp(48px, 7vw, 72px);
-          width: 100%;
         }
 
         .test-room-button-link {
@@ -32,6 +30,7 @@ export default function TestRoomButton() {
           padding: 14px 40px;
           position: relative;
           text-decoration: none;
+          z-index: 1;
         }
 
         .test-room-button-link:hover,

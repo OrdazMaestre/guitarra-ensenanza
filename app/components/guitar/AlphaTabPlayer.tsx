@@ -15,6 +15,20 @@ interface AlphaTabPlayerProps {
   centerHorizontalContent?: boolean;
   compact?: boolean;
   disablePlaybackScrollFollow?: boolean;
+  // Per-string volume trim for every guitar note this player plays (primary
+  // and auxiliary guitar tracks), keyed by real string number (1 = high E ...
+  // 6 = low E). Applied on top of everything else, after the level clamp, so
+  // it is an exact ratio. Defaults to DEFAULT_GUITAR_STRING_VOLUMES (site-wide
+  // choice); pass {} for no trim. Bass/drums are unaffected.
+  guitarStringVolumes?: Partial<Record<number, number>>;
+  // Extra AlphaTab notation elements to hide (by enum name), on top of the
+  // ones this player always hides (tempo, tuning, track names, whammy bar).
+  hiddenNotationElements?: Array<keyof typeof alphaTab.NotationElement>;
+  // Escape hatch only: true brings back the pre-2026-10 playback (setTimeout
+  // chain in playEvent, legacy string labels, 35px vertical padding, no
+  // "Seguir la tablatura" button). Nothing passes it today. See "Programador
+  // con anticipación" in AlphaTabPlayer.NOTES.md.
+  legacyPlayback?: boolean;
   horizontalLeftCrop?: number;
   horizontalBarFit?: {
     barCount: number;
@@ -34,7 +48,13 @@ interface AlphaTabPlayerProps {
   // because this defaults to false and every new code path it triggers is
   // additive (see "Multipista" in AlphaTabPlayer.NOTES.md).
   multiTrack?: boolean;
+  // multiTrack only. `trackOrder`: track names (exact, as in the score) in
+  // the order the "Pistas" menu should list them; unlisted tracks keep their
+  // score order after these. `initialTrack`: name of the guitar/bass track
+  // shown first on load (falls back to the first guitar track if missing).
+  initialTrack?: string;
   showHorizontalScrollbar?: boolean;
+  trackOrder?: string[];
   source?: string;
   tab?: string;
   title?: string;
@@ -88,10 +108,26 @@ const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 const GUITAR_OUTPUT_LIMITER_THRESHOLD = 0.7;
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
+// Measured string labels (experimentalScheduler): how far left of the staff
+// system's start each label's left edge sits (12px font, ~8px wide letter).
+const STRING_LABEL_GAP = 14;
 const LOOP_VISUAL_X_OFFSET = -31;
 const LOOP_HANDLE_OUTSIDE_OFFSET = 30;
 const CURSOR_LINE_WIDTH = 3;
 const PLAYBACK_SCROLL_RESUME_DELAY = 1600;
+// experimentalScheduler: how often the scheduler wakes up and how far ahead
+// of the audio clock it schedules notes. Lookahead must comfortably exceed
+// the interval plus typical main-thread stalls; kept short so Stop/mute/speed
+// changes still feel immediate.
+const SCHEDULER_INTERVAL_MS = 25;
+const SCHEDULER_LOOKAHEAD_SECONDS = 0.12;
+// experimentalScheduler toolbar: volume/speed sliders at 75% of their
+// rendered 129px so the extra "Seguir la tablatura" button fits.
+const COMPACT_TOOLBAR_SLIDER_WIDTH = 97;
+// Site-wide string balance (user's choice, 2026-10-04): high E at 59.5% and
+// B at 70% of every other string, on every tablature. Module-level so the
+// default prop value is a stable object.
+const DEFAULT_GUITAR_STRING_VOLUMES: Partial<Record<number, number>> = { 1: 0.595, 2: 0.7 };
 const PAGE_LAYOUT_HORIZONTAL_SCROLL_MARGIN_RATIO = 0.22;
 const LINEAR_PLAYBACK_CURSOR_RATIO = 0.34;
 const ANNOTATED_BAR_BASE_WIDTH = 72;
@@ -163,12 +199,18 @@ interface BeatBoundsLike {
         x: number;
         y: number;
       };
+      staffSystemBounds?: {
+        realBounds: { x: number };
+      } | null;
     };
   };
   notes?: Array<{
+    note?: { string?: number } | null;
     noteHeadBounds: {
+      h?: number;
       w: number;
       x: number;
+      y?: number;
     };
   }> | null;
   onNotesX: number;
@@ -404,6 +446,10 @@ function IconButton({ active = false, disabled = false, label, onClick, children
       type="button"
       aria-label={label}
       title={label}
+      // Sin efecto visual propio: solo da al CSS de la Sala de pruebas un
+      // gancho para el estado activo (ver "Estilo experimental en Sala de
+      // pruebas" en AlphaTabPlayer.NOTES.md).
+      data-active={active ? 'true' : 'false'}
       disabled={disabled}
       onClick={onClick}
       style={{
@@ -446,6 +492,20 @@ function MetronomeIcon() {
       <path d="M8 21h8" />
       <path d="M6 21l4-18h4l4 18" />
       <path d="M12 7l4 7" />
+    </svg>
+  );
+}
+
+// "Seguir la tablatura": the six tab strings, the playback cursor crossing
+// them, and an arrow showing the scroll advancing to the right.
+function FollowScrollIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" width="32" height="32" fill="none" stroke="currentColor" strokeLinecap="round">
+      {[5.5, 8.1, 10.7, 13.3, 15.9, 18.5].map((y) => (
+        <line key={y} x1="2" y1={y} x2="15" y2={y} strokeWidth="1.2" />
+      ))}
+      <line x1="8.5" y1="3" x2="8.5" y2="21" strokeWidth="2.6" />
+      <path d="M16.5 12h5.5M19 9l3 3-3 3" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -1063,6 +1123,9 @@ export default function AlphaTabPlayer({
   centerHorizontalContent = false,
   compact = false,
   disablePlaybackScrollFollow = false,
+  guitarStringVolumes = DEFAULT_GUITAR_STRING_VOLUMES,
+  hiddenNotationElements,
+  legacyPlayback = false,
   horizontalLeftCrop = 0,
   horizontalBarFit,
   horizontalBarWidth,
@@ -1071,10 +1134,21 @@ export default function AlphaTabPlayer({
   layout = 'page',
   minHeight,
   multiTrack = false,
+  initialTrack,
   showHorizontalScrollbar = true,
   source,
   tab = '',
+  trackOrder,
 }: AlphaTabPlayerProps) {
+  // The lookahead scheduler & co. started as an opt-in experiment named
+  // "experimentalScheduler" (Sala de pruebas) and became the default for the
+  // whole site; the internal name was kept so every condition below still
+  // reads the same. See "Programador con anticipación" in NOTES.
+  const experimentalScheduler = !legacyPlayback;
+  // "Seguir la tablatura" only makes sense on a horizontal tab: its lock
+  // deliberately stops vertical page-follow, which a vertical (page) layout
+  // needs to keep up with the cursor.
+  const followLockEnabled = experimentalScheduler && layout === 'horizontal' && !disablePlaybackScrollFollow;
   const frameRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerIdRef = useRef(Symbol('AlphaTabPlayer'));
@@ -1163,6 +1237,13 @@ export default function AlphaTabPlayer({
   const metronomeRef = useRef(DEFAULT_METRONOME);
   const playbackScrollPendingRef = useRef(false);
   const playbackScrollUserOverrideRef = useRef(false);
+  // "Seguir la tablatura" button (experimentalScheduler only). While locked,
+  // vertical page scrolling (wheel, touch, keys, window scroll) no longer
+  // stops horizontal follow, and the player stops pulling the page
+  // vertically; only a manual HORIZONTAL move of the tab (drag or its own
+  // scrollbar) releases it. Never set on the legacy path.
+  const followLockRef = useRef(false);
+  const [followLock, setFollowLock] = useState(false);
   const pointerDragHandleRef = useRef<'end' | 'start' | null>(null);
   const pointerScrollDragRef = useRef<{
     pointerId: number;
@@ -1176,6 +1257,16 @@ export default function AlphaTabPlayer({
   const pointerSuppressUpRef = useRef(false);
   const pointerTapRef = useRef<{ index: number; time: number; x: number; y: number } | null>(null);
   const playTimerRef = useRef<number | null>(null);
+  // experimentalScheduler only (see the prop's comment). The interval/rAF
+  // loops call through schedulerLatestRef so they always run this render's
+  // functions (fresh state), never the closure from when playback started.
+  const schedulerIntervalRef = useRef<number | null>(null);
+  const cursorRafRef = useRef<number | null>(null);
+  const scheduledCursorQueueRef = useRef<Array<{ index: number; time: number }>>([]);
+  const nextScheduledIndexRef = useRef(0);
+  const nextScheduledTimeRef = useRef(0);
+  const schedulerLatestRef = useRef<{ drawCursor: () => void; tick: () => void } | null>(null);
+  const tabScrollBindCacheTimeRef = useRef(0);
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const programmaticPageScrollRef = useRef(false);
   const programmaticPageScrollTimerRef = useRef<number | null>(null);
@@ -1232,6 +1323,17 @@ export default function AlphaTabPlayer({
   const [loopStartIndex, setLoopStartIndex] = useState<number | null>(null);
   const [cursorBox, setCursorBox] = useState<CursorBox>({ height: 0, visible: false, x: 0, y: 0 });
   const [events, setEvents] = useState<TabEvent[]>(fallbackEvents);
+  // eventStartQuarters[i] = sum of quarterNotes of events[0..i-1]. Used by the
+  // experimental scheduler instead of playEvent's per-note slice().reduce().
+  const eventStartQuarters = useMemo(() => {
+    const starts: number[] = [];
+    let total = 0;
+    for (const event of events) {
+      starts.push(total);
+      total += event.quarterNotes;
+    }
+    return starts;
+  }, [events]);
   const [loopHighlightBoxes, setLoopHighlightBoxes] = useState<HighlightBox[]>([]);
   const [stringLabelGroups, setStringLabelGroups] = useState<StringLabelGroup[]>([]);
   const [tabScrollMetrics, setTabScrollMetrics] = useState({ clientWidth: 0, scrollWidth: 0 });
@@ -1328,7 +1430,9 @@ export default function AlphaTabPlayer({
 
     if (shouldScroll && !disablePlaybackScrollFollow) {
       followCursorHorizontally(nextBox.x);
-      keepCursorVisibleOnPage(nextBox, true);
+      if (!followLockRef.current) {
+        keepCursorVisibleOnPage(nextBox, true);
+      }
       return;
     }
 
@@ -1383,6 +1487,24 @@ export default function AlphaTabPlayer({
   }
 
   function bindTabScrollElement() {
+    // findTabScrollElement scans every node of AlphaTab's SVG (the whole song
+    // in horizontal layout) and forces layout reads; running that on every
+    // note was the main per-note cost of scroll-follow. During experimental
+    // playback, rescan at most once per second.
+    if (experimentalScheduler && isPlayingRef.current) {
+      // False positive: bindTabScrollElement only runs from events, timers
+      // and effects, never during render.
+      // eslint-disable-next-line react-hooks/purity
+      const now = performance.now();
+      if (now - tabScrollBindCacheTimeRef.current < 1000) {
+        // Skip only the DOM scan; metrics stay fresh (cheap: one rect read),
+        // e.g. after a track switch changes the rendered width.
+        updateTabScrollMetrics(tabScrollElementRef.current);
+        return tabScrollElementRef.current;
+      }
+      tabScrollBindCacheTimeRef.current = now;
+    }
+
     const nextElement = findTabScrollElement();
     if (nextElement === tabScrollElementRef.current) {
       updateTabScrollMetrics(nextElement);
@@ -1409,6 +1531,9 @@ export default function AlphaTabPlayer({
       updateTabScrollMetrics(nextElement);
       syncVisibleScrollbar(nextElement.scrollLeft);
       setTabScrollLeft(nextElement.scrollLeft);
+      if (!programmaticTabScrollRef.current) {
+        releaseFollowLock();
+      }
       if (isPlayingRef.current && !programmaticTabScrollRef.current) {
         playbackScrollUserOverrideRef.current = true;
       }
@@ -1465,6 +1590,7 @@ export default function AlphaTabPlayer({
       if (programmaticScrollbarScrollRef.current) {
         return;
       }
+      releaseFollowLock();
       markExplicitManualPlaybackScroll();
       return;
     }
@@ -1479,6 +1605,7 @@ export default function AlphaTabPlayer({
     if (programmaticScrollbarScrollRef.current) {
       return;
     }
+    releaseFollowLock();
     markExplicitManualPlaybackScroll();
   }
 
@@ -1517,14 +1644,45 @@ export default function AlphaTabPlayer({
   }
 
   function markManualPlaybackScroll() {
+    if (followLockRef.current) return;
     if (isPlayingRef.current && !programmaticPageScrollRef.current && !programmaticTabScrollRef.current) {
       playbackScrollUserOverrideRef.current = true;
     }
   }
 
   function markExplicitManualPlaybackScroll() {
+    // Locked follow ignores page-level intents (wheel, touch, keys); the
+    // horizontal tab paths call releaseFollowLock() first, so they still
+    // get through.
+    if (followLockRef.current) return;
     if (isPlayingRef.current) {
       playbackScrollUserOverrideRef.current = true;
+    }
+  }
+
+  // Turning follow off (button or a manual horizontal move) leaves the tab
+  // static where it is — still draggable — while playback continues.
+  function releaseFollowLock() {
+    if (!followLockRef.current) return;
+    followLockRef.current = false;
+    setFollowLock(false);
+    if (isPlayingRef.current) {
+      playbackScrollUserOverrideRef.current = true;
+    }
+  }
+
+  function toggleFollowLock() {
+    if (followLockRef.current) {
+      releaseFollowLock();
+      return;
+    }
+
+    followLockRef.current = true;
+    setFollowLock(true);
+    playbackScrollUserOverrideRef.current = false;
+    // Catch up right away instead of waiting for the next note.
+    if (isPlayingRef.current && cursorBox.visible) {
+      followCursorHorizontally(cursorBox.x);
     }
   }
 
@@ -1597,6 +1755,7 @@ export default function AlphaTabPlayer({
       pointerStartIndexRef.current = null;
       pointerSuppressUpRef.current = true;
       pointerTapRef.current = null;
+      releaseFollowLock();
       markExplicitManualPlaybackScroll();
     }
 
@@ -1720,7 +1879,10 @@ export default function AlphaTabPlayer({
     }
 
     followCursorHorizontally(nextBox.x);
-    keepCursorVisibleOnPage(nextBox);
+    // Locked follow leaves vertical page scrolling to the user.
+    if (!followLockRef.current) {
+      keepCursorVisibleOnPage(nextBox);
+    }
   }
 
   useEffect(() => {
@@ -1735,6 +1897,15 @@ export default function AlphaTabPlayer({
       window.clearTimeout(playTimerRef.current);
       playTimerRef.current = null;
     }
+    if (schedulerIntervalRef.current !== null) {
+      window.clearInterval(schedulerIntervalRef.current);
+      schedulerIntervalRef.current = null;
+    }
+    if (cursorRafRef.current !== null) {
+      window.cancelAnimationFrame(cursorRafRef.current);
+      cursorRafRef.current = null;
+    }
+    scheduledCursorQueueRef.current = [];
     for (const source of activeSourcesRef.current) {
       try {
         source.stop();
@@ -1824,7 +1995,10 @@ export default function AlphaTabPlayer({
       },
       display: {
         layoutMode: layout === 'horizontal' ? alphaTab.LayoutMode.Horizontal : alphaTab.LayoutMode.Page,
-        padding: compact ? [18, 24] : [56, 35],
+        // experimentalScheduler: tighter top/bottom (35 → 12) to shrink the
+        // box; safe there because cursor, loop and string labels are all
+        // measured from boundsLookup + container padding, not fixed offsets.
+        padding: compact ? [18, 24] : [56, experimentalScheduler ? 12 : 35],
         startBar: 1,
         staveProfile: alphaTab.StaveProfile.Tab,
         systemPaddingBottom: compact ? 14 : 40,
@@ -1840,6 +2014,14 @@ export default function AlphaTabPlayer({
           [alphaTab.NotationElement.EffectTempo, false],
           [alphaTab.NotationElement.GuitarTuning, false],
           [alphaTab.NotationElement.TrackNames, false],
+          // Floyd/whammy info: its effect rows can't share space with other
+          // effects (canShareBand=false) and took ~52px above the tab; the
+          // audio engine never used it. See "Banda de efectos" in NOTES.
+          [alphaTab.NotationElement.EffectWhammyBar, false],
+          [alphaTab.NotationElement.EffectWhammyBarLine, false],
+          ...(hiddenNotationElements ?? []).map(
+            (name) => [alphaTab.NotationElement[name], false] as [alphaTab.NotationElement, boolean]
+          ),
         ]),
         rhythmHeight: compact ? 18 : 32,
         rhythmMode: alphaTab.TabRhythmMode.ShowWithBars,
@@ -1922,8 +2104,17 @@ export default function AlphaTabPlayer({
         }
       }
 
+      // initialTrack (prop): only a guitar/bass track can be primary, same
+      // rule as the "Pistas" menu; anything else falls back to the default.
+      const initialTrackIndex = initialTrack
+        ? typedScore.tracks.findIndex((track) => {
+            const kind = classifyTrackKind(track);
+            return track.name === initialTrack && (kind === 'guitar' || kind === 'bass');
+          })
+        : -1;
       const desiredTrackIndex = multiTrack
-        ? selectedTrackIndexOverrideRef.current ?? choosePrimaryTrackIndex(typedScore)
+        ? selectedTrackIndexOverrideRef.current ??
+          (initialTrackIndex >= 0 ? initialTrackIndex : choosePrimaryTrackIndex(typedScore))
         : 0;
       // Skip while a percussion preview is active: previewPercussionTrack's
       // own api.renderTracks() call re-fires this same scoreLoaded event
@@ -1960,6 +2151,14 @@ export default function AlphaTabPlayer({
       if (playTimerRef.current !== null) {
         window.clearTimeout(playTimerRef.current);
         playTimerRef.current = null;
+      }
+      if (schedulerIntervalRef.current !== null) {
+        window.clearInterval(schedulerIntervalRef.current);
+        schedulerIntervalRef.current = null;
+      }
+      if (cursorRafRef.current !== null) {
+        window.cancelAnimationFrame(cursorRafRef.current);
+        cursorRafRef.current = null;
       }
       if (programmaticPageScrollTimerRef.current !== null) {
         window.clearTimeout(programmaticPageScrollTimerRef.current);
@@ -2083,6 +2282,15 @@ export default function AlphaTabPlayer({
 
       // eslint-disable-next-line react-hooks/immutability
       void startLocalPlayback();
+    };
+    // Same idea for experimentalScheduler's interval/rAF loops: always call
+    // this render's functions, so loop bounds, events and scroll state are
+    // fresh instead of frozen at the moment Play was pressed.
+    schedulerLatestRef.current = {
+      // eslint-disable-next-line react-hooks/immutability
+      drawCursor: drawScheduledCursor,
+      // eslint-disable-next-line react-hooks/immutability
+      tick: schedulerTick,
     };
   });
 
@@ -2240,6 +2448,22 @@ export default function AlphaTabPlayer({
       window.clearTimeout(playTimerRef.current);
       playTimerRef.current = null;
     }
+
+    clearScheduledPlaybackLoops();
+  }
+
+  // experimentalScheduler's interval + rAF loop. No-op (both refs null) on
+  // the legacy path.
+  function clearScheduledPlaybackLoops() {
+    if (schedulerIntervalRef.current !== null) {
+      window.clearInterval(schedulerIntervalRef.current);
+      schedulerIntervalRef.current = null;
+    }
+    if (cursorRafRef.current !== null) {
+      window.cancelAnimationFrame(cursorRafRef.current);
+      cursorRafRef.current = null;
+    }
+    scheduledCursorQueueRef.current = [];
   }
 
   function stopActiveSources() {
@@ -2358,7 +2582,82 @@ export default function AlphaTabPlayer({
     ];
   }
 
+  // experimentalScheduler only: places the labels on the REAL tab lines,
+  // measured from AlphaTab's own note-head bounds (includeNoteBounds), instead
+  // of offsetting from masterBarBounds' top — which also contains the effects
+  // band above the staff (P.M., section text…), so in songs with effects the
+  // legacy labels landed far above the strings. Returns null when no note
+  // bounds are available, and the caller falls back to the legacy estimate.
+  function buildMeasuredStringLabelGroups(sourceEvents: TabEvent[]) {
+    const boundsLookup = apiRef.current?.boundsLookup;
+    if (!boundsLookup) return null;
+
+    // First system only (same as the legacy labels): the beats whose system
+    // sits highest.
+    let firstSystemY = Number.POSITIVE_INFINITY;
+    let systemX: number | null = null;
+    const samples: Array<{ lineFromTop: number; y: number }> = [];
+    for (const event of sourceEvents) {
+      const beat = event.beat;
+      if (!beat) continue;
+      const beatBounds = (boundsLookup.findBeat(beat as unknown as alphaTab.model.Beat) ??
+        boundsLookup.findBeats(beat as unknown as alphaTab.model.Beat)?.[0]) as unknown as BeatBoundsLike | undefined;
+      if (!beatBounds) continue;
+
+      const systemY = Math.round(beatBounds.barBounds.masterBarBounds.realBounds.y);
+      if (systemY > firstSystemY) continue;
+      if (systemY < firstSystemY) {
+        firstSystemY = systemY;
+        samples.length = 0;
+        systemX = beatBounds.barBounds.masterBarBounds.staffSystemBounds?.realBounds.x ?? null;
+      }
+
+      for (const noteBounds of beatBounds.notes ?? []) {
+        const alphaTabString = noteBounds.note?.string;
+        const head = noteBounds.noteHeadBounds;
+        if (typeof alphaTabString !== 'number' || typeof head.y !== 'number' || typeof head.h !== 'number') continue;
+        // AlphaTab counts strings from 1 = lowest; labels go top (high E) down.
+        samples.push({ lineFromTop: STRING_LABELS_TOP_TO_BOTTOM.length - alphaTabString, y: head.y + head.h / 2 });
+      }
+    }
+
+    if (samples.length === 0 || systemX === null) return null;
+
+    // Least-squares line through (lineFromTop, y): slope = real line spacing,
+    // intercept = top line. Falls back to TAB_LINE_SPACING if only one string
+    // has notes in the first system.
+    const meanLine = samples.reduce((sum, s) => sum + s.lineFromTop, 0) / samples.length;
+    const meanY = samples.reduce((sum, s) => sum + s.y, 0) / samples.length;
+    const variance = samples.reduce((sum, s) => sum + (s.lineFromTop - meanLine) ** 2, 0);
+    const lineGap =
+      variance > 0
+        ? samples.reduce((sum, s) => sum + (s.lineFromTop - meanLine) * (s.y - meanY), 0) / variance
+        : TAB_LINE_SPACING;
+    const topLineY = meanY - meanLine * lineGap;
+
+    // Labels are absolutely positioned in .alphatab-surface, which also holds
+    // the custom scrollbar above the container: add the container's own
+    // offset plus its padding to go from SVG to surface coordinates.
+    const padding = getTabContainerPadding();
+    const containerTop = (containerRef.current?.offsetTop ?? 0) + padding.top;
+    return [
+      {
+        labels: STRING_LABELS_TOP_TO_BOTTOM.map((note, stringIndex) => ({
+          note,
+          x: systemX + padding.left - STRING_LABEL_GAP,
+          y: containerTop + topLineY + stringIndex * lineGap,
+        })),
+        systemY: firstSystemY,
+      },
+    ];
+  }
+
   function buildStringLabelGroups(sourceEvents: TabEvent[]) {
+    if (experimentalScheduler) {
+      const measured = buildMeasuredStringLabelGroups(sourceEvents);
+      if (measured) return measured;
+    }
+
     const systemMap = new Map<number, HighlightBox>();
 
     for (const event of sourceEvents) {
@@ -2806,10 +3105,13 @@ export default function AlphaTabPlayer({
     const articulationLevel = isPalmMuted ? 0.34 : 0.58;
     const currentVolume = volumeRef.current * trackVolumeMultiplier;
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
+    // guitarStringVolumes trim (see the prop): after the clamp, so the ratio
+    // between strings is exact. 1 (no-op) whenever the prop is omitted.
+    const stringTrim = guitarStringVolumes?.[note.stringNumber] ?? 1;
     const level =
       currentVolume <= 0
         ? 0
-        : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, 0.62 * currentVolume);
+        : clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, 0.62 * currentVolume) * stringTrim;
 
     enforceGuitarSamplePolyphony(context);
 
@@ -2993,8 +3295,10 @@ export default function AlphaTabPlayer({
   // shared with this component's audioContextRef), so their schedule times
   // must be derived from getAudioCurrentTime() (that engine's own clock)
   // sampled at the same instant as `startTime`, not from `context.currentTime`
-  // — see "Multipista" in AlphaTabPlayer.NOTES.md for why.
-  function scheduleAuxiliaryTracks(context: AudioContext, eventStartQuarter: number, startTime: number, eventQuarterNotes: number) {
+  // — see "Multipista" in AlphaTabPlayer.NOTES.md for why. `auxLeadSeconds`
+  // is how far ahead of "now" `startTime` sits: always the fixed 0.045 on the
+  // legacy path; the real lookahead offset under experimentalScheduler.
+  function scheduleAuxiliaryTracks(context: AudioContext, eventStartQuarter: number, startTime: number, eventQuarterNotes: number, auxLeadSeconds = 0.045) {
     const schedules = auxiliaryTrackScheduleRef.current;
     if (!schedules.length) return;
 
@@ -3022,7 +3326,7 @@ export default function AlphaTabPlayer({
             playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, auxDurationSeconds, notes.length, trackVolume);
           }
         } else if (track.kind === 'bass' && auxEvent.bassNotes) {
-          const bassStartTime = auxEngineNow + 0.045 + offsetSeconds;
+          const bassStartTime = auxEngineNow + auxLeadSeconds + offsetSeconds;
           const trackVolume = getTrackVolume(track.index);
           for (const note of auxEvent.bassNotes) {
             playBassNote(
@@ -3034,7 +3338,7 @@ export default function AlphaTabPlayer({
             );
           }
         } else if (track.kind === 'percussion' && auxEvent.percussionHits) {
-          const drumStartTime = auxEngineNow + 0.045 + offsetSeconds;
+          const drumStartTime = auxEngineNow + auxLeadSeconds + offsetSeconds;
           const trackVolume = getTrackVolume(track.index);
           for (const clickType of auxEvent.percussionHits) {
             if (!isDrumElementAudible(clickType)) continue;
@@ -3085,8 +3389,102 @@ export default function AlphaTabPlayer({
     stopCurrentPlayingPlayer = stopLocalPlayback;
     playbackScrollUserOverrideRef.current = false;
     playbackScrollPendingRef.current = true;
+    // experimentalScheduler: Play turns "Seguir la tablatura" on.
+    if (followLockEnabled) {
+      followLockRef.current = true;
+      setFollowLock(true);
+    }
     setIsPlaying(true);
+    if (experimentalScheduler) {
+      startScheduledPlayback(firstIndex);
+      return;
+    }
     playEvent(firstIndex);
+  }
+
+  // ---- experimentalScheduler ("A Tale of Two Clocks" lookahead pattern) ----
+  // Audio is scheduled on a fixed AudioContext timeline (nextScheduledTime +=
+  // eventDuration), so main-thread hiccups (scroll-follow, React renders) can
+  // no longer accumulate into a slower tempo the way playEvent's
+  // "now + 0.045, then setTimeout(duration)" chain does. The cursor is drawn
+  // separately from requestAnimationFrame when each event actually sounds.
+  // See "Programador con anticipación (experimental)" in
+  // AlphaTabPlayer.NOTES.md.
+  function startScheduledPlayback(firstIndex: number) {
+    const context = getAudioContext();
+    clearScheduledPlaybackLoops();
+    tabScrollBindCacheTimeRef.current = 0;
+    nextScheduledIndexRef.current = firstIndex;
+    nextScheduledTimeRef.current = context.currentTime + 0.045;
+    // Via the latest-render ref too: startLocalPlayback awaited sample
+    // loading, so this closure's `events` may already be outdated.
+    (schedulerLatestRef.current?.tick ?? schedulerTick)();
+    schedulerIntervalRef.current = window.setInterval(() => {
+      schedulerLatestRef.current?.tick();
+    }, SCHEDULER_INTERVAL_MS);
+    const frame = () => {
+      if (!isPlayingRef.current) {
+        cursorRafRef.current = null;
+        return;
+      }
+      schedulerLatestRef.current?.drawCursor();
+      cursorRafRef.current = window.requestAnimationFrame(frame);
+    };
+    cursorRafRef.current = window.requestAnimationFrame(frame);
+  }
+
+  function schedulerTick() {
+    if (!isPlayingRef.current) return;
+
+    const context = getAudioContext();
+    // A stall longer than the lookahead (throttled background tab, heavy
+    // main-thread work) leaves the timeline in the past: resync instead of
+    // firing every overdue note at the same instant.
+    if (nextScheduledTimeRef.current < context.currentTime) {
+      nextScheduledTimeRef.current = context.currentTime + 0.045;
+    }
+
+    const horizon = context.currentTime + SCHEDULER_LOOKAHEAD_SECONDS;
+    while (nextScheduledTimeRef.current < horizon) {
+      const index = nextScheduledIndexRef.current;
+      if (index >= events.length) {
+        // Same end-of-song moment as playEvent(events.length): once the last
+        // event's duration has fully elapsed.
+        if (context.currentTime >= nextScheduledTimeRef.current) {
+          stopLocalPlayback();
+        }
+        return;
+      }
+
+      const event = events[index];
+      const startTime = nextScheduledTimeRef.current;
+      const eventDuration = eventDurationSeconds(event, speedRef.current, bpm);
+      scheduleEventAudio(context, event, eventStartQuarters[index] ?? 0, startTime, eventDuration, startTime - context.currentTime);
+      scheduledCursorQueueRef.current.push({ index, time: startTime });
+
+      nextScheduledIndexRef.current =
+        loopStartIndex !== null && loopEndIndex !== null && index >= loopEndIndex ? loopStartIndex : index + 1;
+      nextScheduledTimeRef.current = startTime + eventDuration;
+    }
+  }
+
+  function drawScheduledCursor() {
+    const context = audioContextRef.current;
+    const queue = scheduledCursorQueueRef.current;
+    if (!context || queue.length === 0) return;
+
+    let due: { index: number; time: number } | undefined;
+    while (queue.length > 0 && queue[0].time <= context.currentTime) {
+      due = queue.shift();
+    }
+    if (!due) return;
+
+    placeCursorForEvent(due.index, playbackScrollPendingRef.current);
+    playbackScrollPendingRef.current = false;
+    const event = events[due.index];
+    if (event) {
+      placePercussionPreviewCursor(event, eventStartQuarters[due.index] ?? 0);
+    }
   }
 
   function playEvent(index: number) {
@@ -3108,15 +3506,29 @@ export default function AlphaTabPlayer({
     placeCursorForEvent(index, playbackScrollPendingRef.current);
     playbackScrollPendingRef.current = false;
 
-    // Percussion notation preview (see "Previsualización de partitura de
-    // batería" in AlphaTabPlayer.NOTES.md). While a drum track is being
-    // previewed, AlphaTab is rendering that track instead of the primary
-    // one, so the placeCursorForEvent call just above — which looks up the
-    // PRIMARY track's beat in boundsLookup — silently finds nothing and is a
-    // no-op. This repositions the cursor against whichever drum beat falls
-    // inside this tick's time window instead, reusing placeCursorForBeat
-    // exactly as-is (it only needs a real beat object + boundsLookup, both
-    // valid here — no change to that function was needed).
+    placePercussionPreviewCursor(event, eventStartQuarter);
+    scheduleEventAudio(context, event, eventStartQuarter, startTime, eventDuration, 0.045);
+
+    const nextIndex =
+      loopStartIndex !== null && loopEndIndex !== null && index >= loopEndIndex
+        ? loopStartIndex
+        : index + 1;
+
+    playTimerRef.current = window.setTimeout(() => {
+      playEvent(nextIndex);
+    }, Math.max(10, eventDuration * 1000));
+  }
+
+  // Percussion notation preview (see "Previsualización de partitura de
+  // batería" in AlphaTabPlayer.NOTES.md). While a drum track is being
+  // previewed, AlphaTab is rendering that track instead of the primary
+  // one, so the placeCursorForEvent call made right before this — which looks up the
+  // PRIMARY track's beat in boundsLookup — silently finds nothing and is a
+  // no-op. This repositions the cursor against whichever drum beat falls
+  // inside this tick's time window instead, reusing placeCursorForBeat
+  // exactly as-is (it only needs a real beat object + boundsLookup, both
+  // valid here — no change to that function was needed).
+  function placePercussionPreviewCursor(event: TabEvent, eventStartQuarter: number) {
     if (multiTrack && previewedTrackIndexRef.current !== null) {
       const previewMatch = percussionPreviewEventsRef.current.find(
         (candidate) =>
@@ -3127,7 +3539,20 @@ export default function AlphaTabPlayer({
         placeCursorForBeat(previewMatch.beat, false);
       }
     }
+  }
 
+  // Audio half of playEvent. `leadSeconds` = how far ahead of "now"
+  // startTime sits (legacy: always 0.045; experimentalScheduler: the real
+  // lookahead offset), needed to map startTime onto guitarAudioEngine.ts's
+  // separate clock for bass/drums.
+  function scheduleEventAudio(
+    context: AudioContext,
+    event: TabEvent,
+    eventStartQuarter: number,
+    startTime: number,
+    eventDuration: number,
+    leadSeconds: number
+  ) {
     scheduleMetronomeClicks(context, eventStartQuarter, startTime, eventDuration, event.quarterNotes);
 
     const primaryTrackAudible = !multiTrack || isTrackAudible(primaryTrackIndexRef.current);
@@ -3136,7 +3561,7 @@ export default function AlphaTabPlayer({
     // Primary track's own notes: 'bass' (only reachable when multiTrack picks
     // a bass track as primary via selectVisibleTrack) plays through
     // guitarAudioEngine.ts's playBassNote instead of the sample engine — same
-    // dispatch playEvent already does for auxiliary tracks in
+    // dispatch already done for auxiliary tracks in
     // scheduleAuxiliaryTracks below, and same clock-sampling pattern (that
     // engine's own getAudioCurrentTime(), not this context's currentTime; no
     // chordDelay/STRUM_OFFSETS, bass doesn't need guitar-strum compensation).
@@ -3147,7 +3572,7 @@ export default function AlphaTabPlayer({
       const trackVolume = getTrackVolume(primaryTrackIndexRef.current);
       for (const note of audibleNotes) {
         playBassNote(
-          bassEngineNow + 0.045,
+          bassEngineNow + leadSeconds,
           bassNoteMidi(note),
           eventDuration,
           volumeRef.current * BASS_TRACK_VOLUME_MULTIPLIER * trackVolume,
@@ -3163,17 +3588,8 @@ export default function AlphaTabPlayer({
     }
 
     if (multiTrack) {
-      scheduleAuxiliaryTracks(context, eventStartQuarter, startTime, event.quarterNotes);
+      scheduleAuxiliaryTracks(context, eventStartQuarter, startTime, event.quarterNotes, leadSeconds);
     }
-
-    const nextIndex =
-      loopStartIndex !== null && loopEndIndex !== null && index >= loopEndIndex
-        ? loopStartIndex
-        : index + 1;
-
-    playTimerRef.current = window.setTimeout(() => {
-      playEvent(nextIndex);
-    }, Math.max(10, eventDuration * 1000));
   }
 
   function playPause() {
@@ -3459,8 +3875,20 @@ export default function AlphaTabPlayer({
     }, 0);
   }
 
+  // "Pistas" menu order (trackOrder prop): display only — every handler
+  // still works by track.index, so audio/mute/solo are unaffected.
+  const orderedScoreTracks = trackOrder
+    ? scoreTracks.toSorted((a, b) => {
+        const rank = (name: string) => {
+          const position = trackOrder.indexOf(name);
+          return position >= 0 ? position : trackOrder.length;
+        };
+        return rank(a.name) - rank(b.name) || a.index - b.index;
+      })
+    : scoreTracks;
+
   return (
-    <div ref={frameRef} className={`max-w-full overflow-visible border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
+    <div ref={frameRef} className={`alphatab-frame max-w-full overflow-visible border border-zinc-700 bg-zinc-900 shadow-2xl ${compact ? 'p-2' : 'rounded-2xl p-4'}`}>
       <div className={`${compact ? 'flex justify-center px-1 pb-2' : 'sticky top-3 z-[100] flex justify-center px-1 pb-4'}`}>
         <div className={`flex flex-wrap items-center justify-center border border-zinc-700 bg-zinc-950/95 shadow-xl backdrop-blur ${compact ? 'gap-2 px-2 py-2' : 'gap-4 px-4 py-3'}`}>
           <div className="flex items-center justify-center gap-2">
@@ -3508,7 +3936,7 @@ export default function AlphaTabPlayer({
                     role="menu"
                     aria-label="Selector de pistas"
                   >
-                    {scoreTracks.map((track) => {
+                    {orderedScoreTracks.map((track) => {
                       const isMuted = mutedTrackIndexes.has(track.index);
                       const isSolo = soloTrackIndex === track.index;
                       const isVisible = track.index === primaryTrackIndex && previewedTrackIndex === null;
@@ -3639,6 +4067,11 @@ export default function AlphaTabPlayer({
             <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
               {isPlaying ? <StopIcon /> : <PlayIcon />}
             </IconButton>
+            {followLockEnabled && (
+              <IconButton label="Seguir la tablatura" active={followLock} onClick={toggleFollowLock}>
+                <FollowScrollIcon />
+              </IconButton>
+            )}
             <div className="relative flex items-center gap-2">
               <IconButton label="Configurar metrónomo" active={metronome || metronomeMenuOpen} onClick={toggleMetronomeMenu}>
                 <span className="relative flex h-8 w-8 items-center justify-center">
@@ -3805,6 +4238,9 @@ export default function AlphaTabPlayer({
               min="0"
               max="1"
               step="0.05"
+              // 75% of the browser's default 129px (w-28 doesn't compile here)
+              // to make room for the "Seguir la tablatura" button.
+              style={experimentalScheduler ? { width: COMPACT_TOOLBAR_SLIDER_WIDTH } : undefined}
               type="range"
               value={volume}
               onChange={(event) => updateVolume(Number(event.target.value))}
@@ -3819,6 +4255,7 @@ export default function AlphaTabPlayer({
               min="0.5"
               max="1.5"
               step="0.05"
+              style={experimentalScheduler ? { width: COMPACT_TOOLBAR_SLIDER_WIDTH } : undefined}
               type="range"
               value={speed}
               onChange={(event) => updateSpeed(Number(event.target.value))}

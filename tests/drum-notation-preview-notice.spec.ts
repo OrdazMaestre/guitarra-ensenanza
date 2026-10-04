@@ -69,15 +69,19 @@ test('drum notation notice: appears only in the drum preview, never in guitar/ba
 });
 
 test('drum notation notice: no regression on non-multiTrack lesson pages', async ({ page }) => {
+  // Since the new playback format became the default (2026-10), Play turns
+  // on "Seguir la tablatura", whose lock deliberately does NOT scroll the page
+  // vertically (see "Programador con anticipación" in AlphaTabPlayer.NOTES.md).
+  // So instead of page scroll, check that playback really runs and the follow
+  // lock is on.
   for (const url of ['/lecciones/prueba', '/lecciones/temario/ampliacion-arpegios']) {
     await page.goto(url);
     await page.waitForTimeout(1500);
     const playButton = page.getByRole('button', { name: 'Reproducir' }).first();
     if ((await playButton.count()) === 0) continue;
     await playButton.click();
-    const before = await page.evaluate(() => window.scrollY);
-    await page.waitForTimeout(4000);
-    const after = await page.evaluate(() => window.scrollY);
-    expect(after - before).toBeGreaterThan(0);
+    await page.waitForTimeout(1500);
+    await expect(page.getByRole('button', { name: 'Parar' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Seguir la tablatura' }).first()).toHaveAttribute('data-active', 'true');
   }
 });

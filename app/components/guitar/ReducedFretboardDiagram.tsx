@@ -4,10 +4,13 @@ import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/gui
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
+import HorizontalScrollbar from './HorizontalScrollbar';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
+import TuningPeg from '../tuningGame/TuningPeg';
+import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -16,8 +19,41 @@ const OPEN_STRING_MIDI: Record<number, number> = {
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-function noteNameForFret(string: number, fret: number) {
-  return chromaticNotes[(OPEN_STRING_MIDI[string] + fret) % chromaticNotes.length];
+// `centsValue` SIEMPRE como parámetro explícito (nunca leído de un ref/estado dentro de la
+// función) -- mismo motivo que TuningBoard.tsx: así sirve tanto desde el render (pasando
+// `cents[string]`) como desde los manejadores de puntero/teclado asíncronos (pasando
+// `centsRef.current[string]`, el valor más reciente tras un `await`). Ver `allowTuning` más abajo.
+function effectiveMidi(string: number, fret: number, centsValue: number): number {
+  return OPEN_STRING_MIDI[string] + fret + centsToMidiOffset(centsValue);
+}
+
+function noteNameForFret(string: number, fret: number, centsValue: number) {
+  const midi = Math.round(effectiveMidi(string, fret, centsValue));
+  return chromaticNotes[((midi % 12) + 12) % 12];
+}
+
+type TuningPreset = { id: string; label: string; shiftSemitones: number };
+
+// Afinaciones "Estándar X" -- a petición explícita del usuario: mismo patrón de intervalos que la
+// afinación estándar (E A D G B E), desplazado uniformemente en semitonos para que la cuerda 6
+// caiga en la nota X. EDITAR AQUÍ para añadir/quitar afinaciones del menú -- cada entrada nueva
+// solo necesita su `shiftSemitones` (cuántos semitonos por debajo -negativo- o encima -positivo-
+// de la afinación estándar se desplazan las 6 cuerdas a la vez).
+const TUNING_PRESETS: TuningPreset[] = [
+  { id: 'e', label: 'Estándar E (Estándar)', shiftSemitones: 0 },
+  { id: 'eb', label: 'Estándar D# (Media caída)', shiftSemitones: -1 },
+  { id: 'd', label: 'Estándar D (Un tono bajo)', shiftSemitones: -2 },
+  { id: 'c', label: 'Estándar C (Dos tonos bajo)', shiftSemitones: -4 },
+  { id: 'b', label: 'Estándar B (Barítono)', shiftSemitones: -5 },
+];
+
+function zeroedCents(): Record<number, number> {
+  return { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+}
+
+function centsForPreset(preset: TuningPreset): Record<number, number> {
+  const value = preset.shiftSemitones * 100;
+  return { 1: value, 2: value, 3: value, 4: value, 5: value, 6: value };
 }
 
 type FretboardNote = {
@@ -35,6 +71,7 @@ type GuideDot = {
 
 interface ReducedFretboardDiagramProps {
   allowLeftHanded?: boolean;
+  allowTuning?: boolean;
   ariaLabel: string;
   endFret: number;
   fretLabels?: boolean;
@@ -93,9 +130,23 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
-  const boardX = 42;
+  // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
+  // nut, igual sistema que TuningBoard.tsx (arrastre circular -> cents -> MIDI fraccionario), pero
+  // aquí guardado detrás de un botón ("AFINAR") en vez de siempre visible -- el mástil normal no
+  // debe verse distinto en el resto del sitio. Mostrar las clavijas EMPUJA el tablero (`boardX`)
+  // hacia la derecha para hacerles sitio real, en vez de superponerlas -- por eso `boardX` pasa de
+  // constante a derivado de `showTuning`.
+  // `<TuningPeg>`'s CSS (.tuning-peg/.tuning-peg-body/.tuning-peg-indicator) vive en
+  // TuningBoardStyles() (TuningBoard.tsx), no aquí -- cualquier página que pase `allowTuning` debe
+  // renderizar `<TuningBoardStyles />` también, o las clavijas saldrán sin estilo. sala-de-pruebas
+  // ya lo hace (usa <TuningBoard /> en la misma página); si `allowTuning` se usa en otra página sin
+  // ese componente, añadir `<TuningBoardStyles />` ahí también.
+  const [showTuning, setShowTuning] = useState(false);
+  const PEG_AREA_WIDTH = 66;
+  const PEG_X = 24;
+  const boardX = 42 + (allowTuning && showTuning ? PEG_AREA_WIDTH : 0);
   const fretWidth = 58;
   const boardHeight = 158;
   const stringGap = boardHeight / 5;
@@ -116,8 +167,34 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
   const boardWidth = fretCount * fretWidth;
   const bottomLabelY = boardY + boardHeight + 30;
   const hasBottomLabels = !!fretLabels || (allRomanFrets.length > 0 && !romansGoAbove);
-  const viewBoxWidth = boardX + boardWidth + 42;
+  // `2 * boardX` (no `boardX + 42`) a propósito: el margen derecho debe ser SIMÉTRICO al
+  // izquierdo para que nada se recorte al reflejar en modo zurdo (drawX refleja respecto al
+  // centro del TABLERO, no del viewBox -- cualquier elemento a la izquierda de boardX, como las
+  // clavijas o el marcador de cuerda al aire, necesita el mismo hueco disponible a la derecha tras
+  // el mirror). Cuando `boardX` es la constante de siempre (42, sin clavijas) esto da exactamente
+  // el mismo resultado que antes (42 + boardWidth + 42), así que no cambia nada para el resto de
+  // usos de este componente -- solo importa cuando `boardX` crece por `showTuning`.
+  const viewBoxWidth = 2 * boardX + boardWidth;
+  // `viewBoxWidth` crece cuando aparecen las clavijas, pero el <svg> seguía fijo en `width: 100%`
+  // de su contenedor -- más unidades lógicas en el MISMO ancho en píxeles significa que CADA
+  // unidad ocupa menos píxeles, así que todo el mástil (trastes, puntos, letras) se encogía al
+  // desplegar las clavijas. Bug real reportado por el usuario: "NO debe hacer eso, debe
+  // desplazarse". La escala (píxeles por unidad) se define SOLO por `boardWidth`+el margen base de
+  // 42 -- `baseViewBoxWidth` -- igual en todos los demás usos de este componente (sin clavijas).
+  // Si el `<svg>` crece en ANCHO EN PANTALLA en la misma proporción que crece `viewBoxWidth`, esa
+  // escala se mantiene constante: el mástil no se encoge, el widget entero se ENSANCHA hacia donde
+  // haga falta (izquierda en diestro, derecha en zurdo -- más precisamente, el NUT se desplaza
+  // dentro de ese ancho mayor, ver el comentario de `boardX`/`drawX`). El contenedor con scroll
+  // (`.reduced-fretboard-wrap` + `HorizontalScrollbar`, más abajo) absorbe ese extra ancho sin
+  // provocar overflow de la PÁGINA -- cuando no hace falta más ancho que el contenedor (caso
+  // normal, o pantallas anchas), `HorizontalScrollbar` simplemente no se muestra (ya se comporta
+  // así en el resto del sitio).
+  const baseViewBoxWidth = 2 * 42 + boardWidth;
+  const svgWidthPercent = (viewBoxWidth / baseViewBoxWidth) * 100;
   const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + 20;
+  const [cents, setCents] = useState<Record<number, number>>(zeroedCents());
+  const centsRef = useRef(cents);
+  useEffect(() => { centsRef.current = cents; }, [cents]);
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   const passedFrets = new Set(guideDots.map((d) => d.fret));
   const mergedGuideDots = [
@@ -129,6 +206,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
 
   // Audio interaction
   const svgRef = useRef<SVGSVGElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
   const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
@@ -201,13 +279,13 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
       if (!entry) return;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
-      if (paintModeRef.current) toggleMark(noteNameForFret(entry.string, entry.fret));
+      if (paintModeRef.current) toggleMark(noteNameForFret(entry.string, entry.fret, centsRef.current[entry.string]));
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
         kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
         syncPositions();
-        const id = await playNote(entry.midi, false, volumeRef.current);
+        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
         else releaseNote(id);
@@ -216,7 +294,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
         if (curEntry && entry.fret > curEntry.fret) {
           kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
           syncPositions();
-          const id = await switchNote(cur.voiceId, entry.midi, false, volumeRef.current);
+          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current);
           const sv = kbStringVoiceRef.current.get(entry.string);
           if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
           else releaseNote(id);
@@ -235,7 +313,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
       if (next) {
         kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
         syncPositions();
-        const id = await switchNote(cur.voiceId, next.entry.midi, false, volumeRef.current);
+        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
         else releaseNote(id);
@@ -323,8 +401,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
-    if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret));
-    const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
+    if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret, centsRef.current[pos.string]));
+    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string]);
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
       if (ptStringVoiceRef.current.size >= 3) return;
@@ -354,7 +432,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
     const pos = getPos(e, { string: curEntry.string, fret: curEntry.fret });
     if (!pos) return;
     if (pos.string === curEntry.string && pos.fret === curEntry.fret) return;
-    const midi = OPEN_STRING_MIDI[pos.string] + pos.fret;
+    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string]);
     if (pos.string === curEntry.string) {
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const sv = ptStringVoiceRef.current.get(pos.string);
@@ -470,7 +548,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
                 r="16"
               />
               <text x={markerX} y={sy + 4} fill="#b45309" fontSize="12" fontWeight="900" textAnchor="middle">
-                {noteNameForFret(string, fret)}
+                {noteNameForFret(string, fret, cents[string])}
               </text>
             </g>
           );
@@ -481,13 +559,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
 
   return (
     <div className="midi-instrument-host">
+    <div className="reduced-fretboard-wrap" ref={scrollRef}>
     <svg
       ref={svgRef}
       className="reduced-fretboard"
       viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none' }}
+      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none', maxWidth: `${svgWidthPercent}%`, width: `${svgWidthPercent}%` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -575,14 +654,26 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
       )}
       <NoteMarksOverlay
         endFret={endFret}
-        getNoteName={noteNameForFret}
+        getNoteName={(string, fret) => noteNameForFret(string, fret, cents[string])}
         getX={fretX}
         getY={stringY}
         marks={marks}
         startFret={startFret}
       />
+      {allowTuning && showTuning && [1, 2, 3, 4, 5, 6].map((string) => (
+        <TuningPeg
+          ariaLabel={`Clavija de la cuerda ${string}`}
+          key={`tuning-peg-${string}`}
+          onStepChange={(next) => setCents((c) => ({ ...c, [string]: next }))}
+          stepValue={cents[string]}
+          x={drawX(PEG_X)}
+          y={stringY(string)}
+        />
+      ))}
       {interactionOverlay()}
     </svg>
+    </div>
+    <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
       belowNote={allowLeftHanded && kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
@@ -592,6 +683,35 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
       )}
     >
       {allowLeftHanded && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
+      {allowTuning && (
+        <div className="midi-anchor">
+          <button
+            onClick={() => setShowTuning(s => !s)}
+            aria-pressed={showTuning}
+            aria-label="Afinar el mástil"
+            style={{ background: showTuning ? '#047857' : 'transparent', border: `1.5px solid ${showTuning ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: showTuning ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+          >
+            {noteNameForFret(6, 0, cents[6])}
+          </button>
+          {showTuning && (
+            <div className="midi-dropdown">
+              {TUNING_PRESETS.map((preset) => {
+                const active = [1, 2, 3, 4, 5, 6].every((s) => cents[s] === preset.shiftSemitones * 100);
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => setCents(centsForPreset(preset))}
+                    aria-pressed={active}
+                    style={{ background: active ? '#047857' : 'transparent', border: `1.5px solid ${active ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: active ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '11px', fontWeight: 700, lineHeight: 1.4, padding: '3px 7px', whiteSpace: 'nowrap' }}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
@@ -633,11 +753,21 @@ export function ReducedFretboardDiagram({ allowLeftHanded, ariaLabel, endFret, f
 export function ReducedFretboardStyles() {
   return (
     <style>{`
+      .reduced-fretboard-wrap {
+        margin: 0;
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        width: 100%;
+      }
+
+      .reduced-fretboard-wrap::-webkit-scrollbar {
+        display: none;
+      }
+
       .reduced-fretboard {
         display: block;
         height: auto;
-        max-width: 100%;
-        width: 100%;
       }
 
       .reduced-board-bg {

@@ -224,16 +224,36 @@ const seventhChords: SeventhChord[] = [
   },
 ];
 
-const triadDegreeChords = ['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F# disminuido', 'G'];
-const seventhDegreeChords = ['GMaj7', 'Am7', 'Bm7', 'CMaj7', 'D7', 'Em7', 'F# semi-disminuido', 'GMaj7'];
+const triadDegreeChords = ['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F# disminuido'];
+const seventhDegreeChords = ['GMaj7', 'Am7', 'Bm7', 'CMaj7', 'D7', 'Em7', 'F# semi-disminuido'];
+
+// Color pálido por tipo de acorde, para que los niños reconozcan la familia de un vistazo:
+// mayor/Maj7 verde, menor/m7 azul, disminuido/semi-disminuido morado, dominante (D7) rojo.
+type DegreeChordKind = 'major' | 'minor' | 'diminished' | 'dominant';
+
+function degreeChordKind(chord: string): DegreeChordKind {
+  if (chord.includes('disminuido')) return 'diminished';
+  if (chord === 'D7') return 'dominant';
+  if (/m7?$/.test(chord)) return 'minor';
+  return 'major';
+}
 
 function DegreeRow({ chords }: { chords: string[] }) {
   return (
     <div className="degree-row">
       {chords.map((chord, index) => (
-        <span className="degree-cell" key={`${chord}-${index}`}>
-          {chord}
-          {index === chords.length - 1 ? '.' : null}
+        <span className={`degree-cell degree-cell-${degreeChordKind(chord)}`} key={`${chord}-${index}`}>
+          {(() => {
+            // "F# disminuido": la raíz arriba y la calidad debajo, más pequeña, para que quepa
+            // dentro de la cajita de color sin salirse por el borde.
+            const [root, ...quality] = chord.split(' ');
+            return quality.length > 0 ? (
+              <>
+                {root}
+                <span className="degree-cell-quality">{quality.join(' ')}</span>
+              </>
+            ) : root;
+          })()}
         </span>
       ))}
     </div>
@@ -1033,6 +1053,59 @@ function ScaleWithChordPositions() {
   );
 }
 
+// Selector de explicación, mismo patrón visual que los carruseles de el-sonido-en-la-musica
+// (barra con ← título 1/2 →). La versión sencilla, pensada para primerizos, se ve primero.
+const INTRO_VERSIONS = [
+  {
+    lines: [
+      'Los acordes con séptima también se llaman cuatríadas.',
+      'Los acordes que vimos antes eran tríadas.',
+      'Un acorde triada usa tres notas.',
+      'Un acorde con séptima usa cuatro notas.',
+    ],
+  },
+  {
+    lines: [
+      'La escala tiene 7 notas y 7 acordes.',
+      'Cada nota y acorde tienen un número: 1º, 2º, 3º, 4º, 5º, 6º y 7º.',
+      'Un acorde triada usa las notas 1, 3 y 5 (tres notas)',
+      'Un acorde con séptima usa las notas 1, 3, 5 y 7 (cuatro notas)',
+      'TRUCO: son los números impares.',
+    ],
+  },
+];
+
+function IntroCopySelector() {
+  const [version, setVersion] = useState(0);
+  const total = INTRO_VERSIONS.length;
+  const current = INTRO_VERSIONS[version];
+
+  return (
+    <>
+      <div className="intro-selector-bar">
+        <button
+          type="button"
+          className="intro-selector-nav"
+          onClick={() => setVersion(v => (v - 1 + total) % total)}
+          aria-label="Explicación anterior"
+        >←</button>
+        <div className="intro-selector-info">
+          <span className="intro-selector-pager">{version + 1} / {total}</span>
+        </div>
+        <button
+          type="button"
+          className="intro-selector-nav"
+          onClick={() => setVersion(v => (v + 1) % total)}
+          aria-label="Explicación siguiente"
+        >→</button>
+      </div>
+      {current.lines.map(line => (
+        <p key={line}>{line}</p>
+      ))}
+    </>
+  );
+}
+
 export default function AcordesSeptimaPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="seventh-chords-page">
@@ -1041,11 +1114,7 @@ export default function AcordesSeptimaPage({ previous, next, quizHref }: LessonP
           <p className="lesson-kicker">Ampliacion acordes</p>
           <h1>Acordes con séptima: cuatriadas</h1>
           <div className="short-copy">
-            <p>La escala tiene 7 notas y 7 acordes.</p>
-            <p>Cada nota y acorde tienen un número: 1º, 2º, 3º, 4º, 5º, 6º y 7º.</p>
-            <p>Un acorde triada usa las notas 1, 3 y 5 (tres notas)</p>
-            <p>Un acorde con séptima usa las notas 1, 3, 5 y 7 (cuatro notas)</p>
-            <p>TRUCO: son los números impares.</p>
+            <IntroCopySelector />
                 <section className="rule-box" aria-label="Acordes triada y cuatriada">
           <p>
               <strong>Escala</strong> de Sol Mayor: <strong>G</strong>, A, <strong>B</strong>, C, <strong>D</strong>, E, <strong>F#</strong>
@@ -1185,17 +1254,49 @@ export default function AcordesSeptimaPage({ previous, next, quizHref }: LessonP
         .degree-row {
           display: grid;
           gap: 6px clamp(10px, 2.4vw, 26px);
-          grid-template-columns: repeat(8, minmax(0, 1fr));
+          grid-template-columns: repeat(7, minmax(0, 1fr));
           margin-top: -4px;
         }
 
         .degree-cell {
           color: #303030;
           display: inline-block;
-          font-size: clamp(15px, 2vw, 24px);
           font-weight: 650;
           line-height: 1.3;
-          overflow-wrap: normal;
+          border: 2px solid transparent;
+          border-radius: 10px;
+          font-size: clamp(14px, 1.7vw, 21px);
+          min-width: 0;
+          overflow-wrap: anywhere;
+          padding: 4px 2px;
+          text-align: center;
+        }
+
+        .degree-cell-quality {
+          display: block;
+          font-size: 0.68em;
+          hyphens: auto;
+          line-height: 1.15;
+        }
+
+        .degree-cell-major {
+          background: #dcfce7;
+          border-color: #86efac;
+        }
+
+        .degree-cell-minor {
+          background: #dbeafe;
+          border-color: #83d6ff;
+        }
+
+        .degree-cell-diminished {
+          background: #ede9fe;
+          border-color: #d0a0ff;
+        }
+
+        .degree-cell-dominant {
+          background: #fee2e2;
+          border-color: #fca5a5;
         }
 
         @media (max-width: 760px) {
@@ -1213,6 +1314,52 @@ export default function AcordesSeptimaPage({ previous, next, quizHref }: LessonP
         .short-copy {
           margin: clamp(20px, 4vw, 32px) auto 0;
           max-width: 720px;
+        }
+
+        .intro-selector-bar {
+          align-items: center;
+          background: #ffffff;
+          border: 1px solid #d4d4d8;
+          border-radius: 8px;
+          box-shadow: 0 1px 6px rgba(0,0,0,0.07);
+          display: flex;
+          gap: 6px;
+          margin: 0 auto 4px;
+          max-width: 420px;
+          padding: 8px 10px;
+          width: 100%;
+        }
+
+        .intro-selector-info {
+          align-items: center;
+          display: flex;
+          flex: 1;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+
+        .intro-selector-pager {
+          color: #666666;
+          font-size: 11px;
+          font-weight: 600;
+        }
+
+        .intro-selector-nav {
+          background: #f0f0f0;
+          border: 1px solid #cccccc;
+          border-radius: 6px;
+          color: #222222;
+          cursor: pointer;
+          flex-shrink: 0;
+          font-size: 16px;
+          line-height: 1;
+          padding: 6px 10px;
+          transition: background 0.12s;
+        }
+
+        .intro-selector-nav:hover {
+          background: #e0e0e0;
         }
 
         .short-copy p,

@@ -57,7 +57,7 @@ export default function TablaturasDosCuerdasPage({ previous, next, quizHref }: L
           </div>
 
           <div className="player-frame">
-            <AlphaTabPlayer source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
+            <AlphaTabPlayer layout="horizontal" minHeight={240} source="/tabs/feliz-navidad.gp" title="Feliz Navidad" />
           </div>
 
           <div className="extra-practice-link-wrap">

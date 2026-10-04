@@ -14,6 +14,8 @@ export default function PruebaPage() {
       <AlphaTabPlayer
         tab={sadisticMagicianTrack1}
         title="Municipal Waste - Sadistic Magician (Guitarra 1)"
+        layout="horizontal"
+        minHeight={240}
       />
 
       <p className="text-center text-zinc-400 mt-10">

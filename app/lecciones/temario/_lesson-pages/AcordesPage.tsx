@@ -1,6 +1,9 @@
+'use client';
+import { useState } from 'react';
 import Link from 'next/link';
 import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
+import { HandednessToggleButton } from '@/app/components/guitar/HandednessToggleButton';
 import type { LessonPageProps } from './types';
 
 type Marker = {
@@ -60,9 +63,13 @@ const minorChords: Chord[] = [
 // Coordinates below are pre-rotated 90° left (nut on the left, frets left-to-right,
 // high E on top, low E on bottom) so these diagrams match the MIDI fretboards' orientation.
 const stringY = (stringNumber: number) => 18 + (stringNumber - 1) * 20;
-const fretX = (fret: number) => 22 + (fret - 0.5) * 19;
-const powerFretX = (fret: number) => 24 + (fret - 0.5) * 19;
+const baseFretX = (fret: number) => 22 + (fret - 0.5) * 19;
+const basePowerFretX = (fret: number) => 24 + (fret - 0.5) * 19;
 const neckCenterY = (stringY(1) + stringY(6)) / 2;
+// Centro X de cada tablero (su propio nut/borde, no depende de `fret`) -- el mismo valor que usa
+// `drawX` dentro de cada componente para invertir SOLO el dibujo en modo zurdo, ver más abajo.
+const CHORD_BOARD_CENTER_X = (22 + 117) / 2;
+const POWER_BOARD_CENTER_X = (24 + 119) / 2;
 
 const fretInlays = [
   { fret: 3, roman: 'III' },
@@ -141,8 +148,17 @@ function spanishChordLabel(chord: Chord) {
   return `${spanishRoot} ${isMinor ? 'menor' : 'Mayor'}`;
 }
 
-function ChordDiagram({ chord }: { chord: Chord }) {
+function ChordDiagram({ chord, lefty }: { chord: Chord; lefty: boolean }) {
   const highlight = highlightedChordNames.has(chord.english);
+  // Modo zurdo: invierte SOLO el dibujo (líneas, puntos, cejilla) en el eje X -- a petición
+  // explícita del usuario, el texto (nombre del acorde en <figcaption>, fuera del <svg>) y los
+  // números de dedo NUNCA se voltean -- por diseño `drawX` solo mueve coordenadas, nunca aplica un
+  // `transform: scaleX(-1)` al <svg> entero (eso SÍ invertiría los dígitos "del revés"), y cada
+  // `<text>` de este diagrama ya es `text-anchor: middle` (simétrico), así que reposicionar su x
+  // no cambia cómo se lee. `centerX` es el propio punto medio del tablero (nut en 22, borde en
+  // 117), igual patrón que ReducedFretboardDiagram.tsx (AGENTS.md).
+  const drawX = (x: number) => (lefty ? 2 * CHORD_BOARD_CENTER_X - x : x);
+  const fretX = (fret: number) => drawX(baseFretX(fret));
 
   return (
     <figure className={`chord-card${highlight ? ' chord-card--highlight' : ''}`}>
@@ -150,12 +166,12 @@ function ChordDiagram({ chord }: { chord: Chord }) {
         <span className="primary-chord-name">{chord.english}</span> <span className="local-chord-name">({spanishChordLabel(chord)})</span>
       </figcaption>
       <svg className="chord-diagram" viewBox="0 0 143 136" role="img" aria-label={`Acorde ${chord.english} ${spanishChordLabel(chord)}`}>
-        <line className="nut" x1="22" x2="22" y1="18" y2="118" />
+        <line className="nut" x1={drawX(22)} x2={drawX(22)} y1="18" y2="118" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
           <line className="string-line" key={`string-${string}`} x1="22" x2="117" y1={stringY(string)} y2={stringY(string)} />
         ))}
         {[1, 2, 3, 4, 5].map((index) => (
-          <line className="fret-line" key={`fret-${index}`} x1={22 + index * 19} x2={22 + index * 19} y1="18" y2="118" />
+          <line className="fret-line" key={`fret-${index}`} x1={drawX(22 + index * 19)} x2={drawX(22 + index * 19)} y1="18" y2="118" />
         ))}
         {fretInlays.map(({ fret, roman }) => (
           <g key={`inlay-${fret}`} aria-hidden="true">
@@ -164,7 +180,7 @@ function ChordDiagram({ chord }: { chord: Chord }) {
           </g>
         ))}
         {[...(chord.open ?? []), ...(chord.muted ?? [])].map((string) => (
-          <circle className="open-marker" key={`open-${string}`} cx="14" cy={stringY(string)} r="4.5" />
+          <circle className="open-marker" key={`open-${string}`} cx={drawX(14)} cy={stringY(string)} r="4.5" />
         ))}
         {chord.barre ? (
           <g>
@@ -173,7 +189,7 @@ function ChordDiagram({ chord }: { chord: Chord }) {
               width="14"
               rx="7"
               height={Math.abs(stringY(chord.barre.to) - stringY(chord.barre.from)) + 16}
-              x={fretX(chord.barre.fret) - 7}
+              x={lefty ? drawX(baseFretX(chord.barre.fret) + 7) : baseFretX(chord.barre.fret) - 7}
               y={Math.min(stringY(chord.barre.from), stringY(chord.barre.to)) - 8}
             />
             <text className="finger-label" x={fretX(chord.barre.fret)} y={(stringY(chord.barre.from) + stringY(chord.barre.to)) / 2 + 4}>
@@ -196,19 +212,24 @@ function ChordDiagram({ chord }: { chord: Chord }) {
   );
 }
 
-function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
+function PowerChordDiagram({ shape, lefty }: { shape: PowerChordShape; lefty: boolean }) {
+  // Mismo mecanismo que ChordDiagram -- ver el comentario de ahí para por qué nunca se voltean
+  // los textos/números, solo las coordenadas dibujadas.
+  const drawX = (x: number) => (lefty ? 2 * POWER_BOARD_CENTER_X - x : x);
+  const powerFretX = (fret: number) => drawX(basePowerFretX(fret));
+
   return (
     <figure className="power-card">
       <figcaption>
         <span className="primary-chord-name">{shape.name}</span> <span className="local-chord-name">({shape.rootLabel})</span>
       </figcaption>
       <svg className="power-diagram" viewBox="0 0 131 136" role="img" aria-label={`${shape.name}: tónica, quinta y octava`}>
-        <line className="nut" x1="24" x2="24" y1="18" y2="118" />
+        <line className="nut" x1={drawX(24)} x2={drawX(24)} y1="18" y2="118" />
         {[1, 2, 3, 4, 5, 6].map((string) => (
           <line className="string-line" key={`power-string-${string}`} x1="24" x2="119" y1={stringY(string)} y2={stringY(string)} />
         ))}
         {[1, 2, 3, 4, 5].map((index) => (
-          <line className="fret-line" key={`power-fret-${index}`} x1={24 + index * 19} x2={24 + index * 19} y1="18" y2="118" />
+          <line className="fret-line" key={`power-fret-${index}`} x1={drawX(24 + index * 19)} x2={drawX(24 + index * 19)} y1="18" y2="118" />
         ))}
         {fretInlays.map(({ fret, roman }) => (
           <g key={`power-inlay-${fret}`} aria-hidden="true">
@@ -216,15 +237,27 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
             <text className="fret-inlay-label" x={powerFretX(fret)} y="130">{roman}</text>
           </g>
         ))}
-        {shape.notes.map((note) => (
-          <g key={`${shape.name}-${note.string}-${note.fret}`}>
-            <circle className="power-dot" cx={note.fret === 0 ? 16 : powerFretX(note.fret)} cy={stringY(note.string)} r="9" />
-          </g>
-        ))}
+        {shape.notes.map((note) => {
+          const cx = note.fret === 0 ? drawX(16) : powerFretX(note.fret);
+          // Solo la tónica (T) y la octava (8) llevan nombre -- es la misma nota que da nombre al
+          // acorde ("Gm" -> G). La quinta y la tercera (extraNote) se quedan sin nombre a
+          // propósito, para no liar a los primerizos con más letras.
+          const showName = note.label === 'T' || note.label === '8';
+          return (
+            <g key={`${shape.name}-${note.string}-${note.fret}`}>
+              <circle className="power-dot" cx={cx} cy={stringY(note.string)} r="9" />
+              {showName ? (
+                <text className="power-note-label" x={cx} y={stringY(note.string)}>
+                  {shape.name.replace(/m$/, '')}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
         {shape.extraNote ? (
           <circle
             className="power-dot-extra"
-            cx={shape.extraNote.fret === 0 ? 16 : powerFretX(shape.extraNote.fret)}
+            cx={shape.extraNote.fret === 0 ? drawX(16) : powerFretX(shape.extraNote.fret)}
             cy={stringY(shape.extraNote.string)}
             r="5"
           />
@@ -235,6 +268,13 @@ function PowerChordDiagram({ shape }: { shape: PowerChordShape }) {
 }
 
 export default function AcordesPage({ previous, next, quizHref }: LessonPageProps) {
+  // Un único "zurdo" compartido por los 3 grupos (Mayores/Menores/Power chords) -- a petición
+  // explícita del usuario. Hay 3 botones (uno centrado encima de cada rejilla) solo para que sea
+  // rápido pulsarlo desde cualquier punto de la página, pero están conectados: pulsar cualquiera
+  // voltea TODOS los diagramas y los 3 botones muestran el mismo estado.
+  const [lefty, setLefty] = useState(false);
+  const toggleLefty = () => setLefty(l => !l);
+
   return (
     <main className="chords-page">
       <article className="chords-content">
@@ -242,15 +282,15 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           <h1>Acordes básicos</h1>
           <div className="short-copy">
             <p>Un acorde junta 3 o más notas al mismo tiempo.</p>
-            <p>De momento aprendemos acordes mayores y menores para tocar canciones sencillas.</p>
-            <p>Empezaremos aprendiendo los 4 acordes de la siguiente página.</p>
+            <p>Empezaremos con acordes mayores y menores.</p>
+            <p>Primero aprenderemos los 4 acordes de la siguiente página.</p>
           </div>
         </header>
 
         <section className="finger-guide" aria-labelledby="finger-guide-title">
           <div>
             <p>
-              En estos dibujos, los <strong>números</strong> dicen qué <strong>dedos</strong> colocar.
+              Los <strong>números</strong> aquí dicen qué <strong>dedo</strong> colocar.
             </p>
             <p>
               El 1 es el dedo índice y el 4 es el meñique.
@@ -274,9 +314,12 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
             <p className="lesson-kicker">Mayores</p>
             <h2 id="major-title">Acordes mayores</h2>
           </header>
+          <div className="chord-group-handedness">
+            <HandednessToggleButton lefty={lefty} onClick={toggleLefty} />
+          </div>
           <div className="chord-grid">
             {majorChords.map((chord) => (
-              <ChordDiagram chord={chord} key={chord.english} />
+              <ChordDiagram chord={chord} key={chord.english} lefty={lefty} />
             ))}
           </div>
         </section>
@@ -286,9 +329,12 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
             <p className="lesson-kicker">Menores</p>
             <h2 id="minor-title">Acordes menores</h2>
           </header>
+          <div className="chord-group-handedness">
+            <HandednessToggleButton lefty={lefty} onClick={toggleLefty} />
+          </div>
           <div className="chord-grid">
             {minorChords.map((chord) => (
-              <ChordDiagram chord={chord} key={chord.english} />
+              <ChordDiagram chord={chord} key={chord.english} lefty={lefty} />
             ))}
           </div>
         </section>
@@ -299,45 +345,49 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           <div className="shape-copy">
             <p>La figura para los acordes que más usaremos la vemos en <strong>A</strong>, <strong>B</strong>, <strong>Cm</strong>, <strong>E</strong>, <strong>F</strong> y <strong>Gm</strong>.</p>
 
-            <p><strong>TODOS LOS ACORDES BÁSICOS</strong> menos <strong>D</strong> pueden tener básicamente la misma forma.</p>
+            <p>TODOS LOS ACORDES BÁSICOS excepto D <strong>pueden tener la misma forma</strong>.</p>
 
             <p>El punto gris es la nota que falta para que sea Mayor o menor.</p>
           </div>
+          <div className="chord-group-handedness">
+            <HandednessToggleButton lefty={lefty} onClick={toggleLefty} />
+          </div>
           <div className="power-shape-grid" aria-label="E, F, Gm, A, B y Cm como power chords">
             {powerChordShapes.map((shape) => (
-              <PowerChordDiagram key={shape.name} shape={shape} />
+              <PowerChordDiagram key={shape.name} shape={shape} lefty={lefty} />
             ))}
           </div>
         </section>
 
         <section className="practice-strip" aria-label="Forma de practicar">
+          <p className="lesson-kicker">Practicar acordes</p>
+          <p className="lesson-kicker">Luego practicar cambios entre acordes</p>
           <p>
             Los acordes que tenéis que ir practicando para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
           
           </p>
           <p>
-            Mejor forma de EMPEZAR a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
+            <strong>Mejor forma de EMPEZAR</strong> a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... </p><p>Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
           </p>
         </section>
 
         <section className="advanced-bridges" aria-labelledby="advanced-bridges-title">
           <div className="advanced-warning">
             <p id="advanced-bridges-title">Zona más avanzada del temario.</p>
-            <p>Estos enlaces sirven como puente.</p>
-            <p>Si aún cuesta cambiar acordes, puedes dejarlos para más adelante.</p>
+            <p>Si cuesta cambiar acordes o no lo entendemos, dejar para después.</p>
           </div>
           <div className="advanced-link-grid">
             <Link href="/lecciones/temario/figuras-de-acordes">
               <span>Figuras de acordes</span>
-              <small>Para entender cómo se repiten las formas por el mástil.</small>
+              <small> Cómo se repiten las formas por el mástil.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-escala-sol-mayor">
               <span>Acordes de la escala de Sol Mayor</span>
-              <small>Para ver qué acordes salen de una escala concreta.</small>
+              <small> Acordes que salen de una escala concreta.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-con-septima">
               <span>Acordes con séptima</span>
-              <small>Para ampliar los acordes con una cuarta nota.</small>
+              <small> Ampliar los acordes con una nota más.</small>
             </Link>
           </div>
         </section>
@@ -525,9 +575,10 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
 
         .power-note-label {
           dominant-baseline: middle;
-          fill: #080808;
+          /* Gris suave: el nombre es solo orientativo, lo que importa es la forma del acorde. */
+          fill: #9ca3af;
           font-size: 10px;
-          font-weight: 950;
+          font-weight: 700;
           text-anchor: middle;
         }
 
@@ -581,6 +632,12 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         .chord-section-header {
           margin: 0 auto;
           max-width: 760px;
+        }
+
+        .chord-group-handedness {
+          display: flex;
+          justify-content: center;
+          margin: clamp(14px, 2.4vw, 22px) 0;
         }
 
         .chord-grid {

@@ -33,10 +33,22 @@ export default function HorizontalScrollbar({ targetRef }: { targetRef: RefObjec
     el.addEventListener('scroll', update, { passive: true });
     const ro = new ResizeObserver(update);
     ro.observe(el);
+    // `overflow: auto` on `el` means ITS OWN box never changes size just because its content
+    // (the scrolled <svg>) grows or shrinks -- that's the whole point of a scroll container, but
+    // it also means a size-only change in the content (e.g. ReducedFretboardDiagram.tsx widening
+    // its <svg> when tuning pegs appear, with no change to the wrap's own width) never fires the
+    // observer above and the scrollbar silently stays hidden/stale even though scrolling is now
+    // needed. Observing the content element directly (always `el`'s only child in every current
+    // use of this component) catches exactly that case too, without changing anything for the
+    // static-width content this component already handles correctly.
+    const content = el.firstElementChild;
+    const contentRo = content ? new ResizeObserver(update) : null;
+    if (content) contentRo?.observe(content);
     window.addEventListener('resize', update);
     return () => {
       el.removeEventListener('scroll', update);
       ro.disconnect();
+      contentRo?.disconnect();
       window.removeEventListener('resize', update);
     };
   }, [targetRef]);

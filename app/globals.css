@@ -200,6 +200,126 @@ a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz
   background-color: #ffffff;
 }
 
+/* Aspecto moderno del reproductor AlphaTab, en toda la web (nació en la Sala
+   de pruebas). Solo colores, radios, sombras y padding horizontal de la
+   píldora: nada de tamaños, paddings ni margins dentro de .alphatab-surface
+   (cursor, loop y etiquetas de cuerda dependen de esa geometría). Los
+   selectores dependen de la estructura del DOM de AlphaTabPlayer
+   (.alphatab-frame > toolbar > píldora > label); los !important vencen a los
+   style en línea de IconButton. Ver "Estilo experimental en Sala de pruebas"
+   en AlphaTabPlayer.NOTES.md. */
+/* Tinte verde sobre blanco OPACO (no rgba suelto): .alphatab-surface
+   ya era opaca a propósito (ver "Colores de notación y fondo" en
+   AlphaTabPlayer.NOTES.md); aquí se conserva esa opacidad. */
+.alphatab-frame {
+  background: linear-gradient(rgba(4, 120, 87, 0.05), rgba(4, 120, 87, 0.05)), #ffffff !important;
+  border: 1px solid rgba(4, 120, 87, 0.18) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 18px 40px -24px rgba(4, 120, 87, 0.45) !important;
+}
+
+/* Caja de controles "invisible": mismo fondo que el marco, sin borde
+   ni sombra. El fondo se mantiene (no transparent) porque el toolbar
+   es sticky y, al hacer scroll, la notación pasaría por debajo. */
+.alphatab-frame > div:first-child > div {
+  background: linear-gradient(rgba(4, 120, 87, 0.05), rgba(4, 120, 87, 0.05)), #ffffff !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  column-gap: 14px !important;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.alphatab-frame > div:first-child > div > label {
+  color: #064e3b !important;
+  font-weight: 800 !important;
+}
+
+.alphatab-frame button[data-active] {
+  border-radius: 16px !important;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.alphatab-frame button[data-active='false'] {
+  background: #ecfdf5 !important;
+  border: 1px solid #a7f3d0 !important;
+  color: #047857 !important;
+}
+
+.alphatab-frame button[data-active='false']:hover:not(:disabled) {
+  background: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+}
+
+.alphatab-frame button[data-active='true'] {
+  background: #047857 !important;
+  border: 1px solid #047857 !important;
+  color: #ffffff !important;
+}
+
+.alphatab-frame button[data-active]:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range']::-webkit-slider-runnable-track {
+  background: #d1fae5;
+  border-radius: 999px;
+  height: 8px;
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range']::-moz-range-track {
+  background: #d1fae5;
+  border-radius: 999px;
+  height: 8px;
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range']::-moz-range-progress {
+  background: #6ee7b7;
+  border-radius: 999px;
+  height: 8px;
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #047857;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(4, 120, 87, 0.45);
+  height: 18px;
+  margin-top: -5px;
+  width: 18px;
+}
+
+.alphatab-frame > div:first-child > div > label input[type='range']::-moz-range-thumb {
+  background: #047857;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(4, 120, 87, 0.45);
+  height: 12px;
+  width: 12px;
+}
+
+.alphatab-frame .alphatab-surface {
+  background: linear-gradient(rgba(4, 120, 87, 0.06), rgba(4, 120, 87, 0.06)), #ffffff !important;
+  border-radius: 18px;
+}
+
+.alphatab-frame [aria-label='Desplazamiento horizontal de la tablatura'] {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(4, 120, 87, 0.15) !important;
+  scrollbar-color: #6ee7b7 transparent;
+}
+
 /* Modo oscuro a voluntad: invierte toda la página (texto y fondos juntos),
    para que las notas dentro de mástiles/teclados sigan teniendo contraste.
    Las imágenes se contra-invierten para conservar sus colores reales.
