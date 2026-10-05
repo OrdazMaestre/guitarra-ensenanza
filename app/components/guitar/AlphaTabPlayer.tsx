@@ -29,6 +29,13 @@ interface AlphaTabPlayerProps {
   // "Seguir la tablatura" button). Nothing passes it today. See "Programador
   // con anticipación" in AlphaTabPlayer.NOTES.md.
   legacyPlayback?: boolean;
+  // Notation tint (#RRGGBB, dark on the light .alphatab-surface — never a
+  // light colour, see "Colores de notación y fondo" in NOTES): fret numbers,
+  // glyphs, texts, bar lines and the HTML string labels use it; staff lines
+  // and secondary glyphs a translucent version; bar numbers keep their own
+  // accent. Defaults to DEFAULT_NOTATION_COLOR (site-wide green); pass ''
+  // to get AlphaTab's original black/grey/red.
+  notationColor?: string;
   horizontalLeftCrop?: number;
   horizontalBarFit?: {
     barCount: number;
@@ -128,6 +135,13 @@ const COMPACT_TOOLBAR_SLIDER_WIDTH = 97;
 // B at 70% of every other string, on every tablature. Module-level so the
 // default prop value is a stable object.
 const DEFAULT_GUITAR_STRING_VOLUMES: Partial<Record<number, number>> = { 1: 0.595, 2: 0.7 };
+// Bar numbers when `notationColor` is set: the site's own green accent, a
+// step lighter than the notation so they still stand apart (like the
+// default red does against black).
+const NOTATION_BAR_NUMBER_ACCENT = '#047857';
+// Site-wide notation tint (user approved it in the Sala, 2026-10-05): the
+// same dark green as the toolbar labels (.alphatab-frame label in globals.css).
+const DEFAULT_NOTATION_COLOR = '#064e3b';
 const PAGE_LAYOUT_HORIZONTAL_SCROLL_MARGIN_RATIO = 0.22;
 const LINEAR_PLAYBACK_CURSOR_RATIO = 0.34;
 const ANNOTATED_BAR_BASE_WIDTH = 72;
@@ -1126,6 +1140,7 @@ export default function AlphaTabPlayer({
   guitarStringVolumes = DEFAULT_GUITAR_STRING_VOLUMES,
   hiddenNotationElements,
   legacyPlayback = false,
+  notationColor = DEFAULT_NOTATION_COLOR,
   horizontalLeftCrop = 0,
   horizontalBarFit,
   horizontalBarWidth,
@@ -2008,6 +2023,21 @@ export default function AlphaTabPlayer({
         // (línea ~2386, bg-white de Tailwind) es el fondo real detrás del
         // SVG, así que los colores por defecto ya son correctos aquí.
         // No tocar: ver "Colores de notación" en AlphaTabPlayer.NOTES.md.
+        // Excepción opt-in: `notationColor` (oscuro, sobre la misma hoja clara).
+        ...(notationColor
+          ? {
+              resources: {
+                barNumberColor: NOTATION_BAR_NUMBER_ACCENT,
+                barSeparatorColor: notationColor,
+                mainGlyphColor: notationColor,
+                scoreInfoColor: notationColor,
+                // Same alpha AlphaTab uses for its default secondary glyphs (100/255).
+                secondaryGlyphColor: `${notationColor}64`,
+                // ~35% alpha: a green-tinted line about as light as the default #A5A5A5.
+                staffLineColor: `${notationColor}5a`,
+              },
+            }
+          : {}),
       },
       notation: {
         elements: new Map([
@@ -4384,6 +4414,7 @@ export default function AlphaTabPlayer({
               aria-hidden="true"
               className="pointer-events-none absolute text-[12px] font-semibold leading-none text-zinc-900"
               style={{
+                color: notationColor,
                 left: label.x - visualScrollOffset + horizontalExtraVisualOffset,
                 top: label.y,
                 transform: 'translateY(-50%)',

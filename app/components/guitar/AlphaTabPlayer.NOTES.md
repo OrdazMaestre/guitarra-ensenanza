@@ -117,6 +117,12 @@ Formato de cada entrada: qué es, por qué está así, qué se rompe si se toca 
 - **Ojo con el servidor de desarrollo**: tras editar `globals.css`, el `next dev` en marcha siguió sirviendo el CSS viejo (ni `touch` lo despertó; los .tsx sí se recargaban). Hubo que reiniciarlo. Si un cambio de `globals.css` "no aparece", comprobar el CSS servido antes de depurar selectores.
 - Pendiente conocido (no causado por esto): en móvil, los controles flotantes de los mástiles/teclados (`.midi-float-controls`) pueden quedar encima de la barra del reproductor cuando la tablatura va justo debajo.
 
+## Notación teñida de verde (experimento en la Sala, 2026-10-05)
+
+- Prop opcional `notationColor` (`#RRGGBB`): rellena `display.resources` (`mainGlyphColor`, `scoreInfoColor`, `barSeparatorColor` = el color; `secondaryGlyphColor` = color + alpha `64`, el mismo 100/255 que usa AlphaTab por defecto; `staffLineColor` = color + alpha `5a` ≈ 35 %, tan claro como el `#A5A5A5` por defecto; `barNumberColor` = `NOTATION_BAR_NUMBER_ACCENT` `#047857`, un verde un paso más claro para que los números de compás sigan destacando como el rojo por defecto). También tiñe las etiquetas HTML de las cuerdas (`style.color`). `Color.fromJson` de AlphaTab 1.8.2 acepta `#RRGGBBAA`.
+- Compatible con la advertencia de "Colores de notación y fondo": es un color **oscuro** sobre la misma hoja clara. En modo oscuro, el `invert(1) hue-rotate(180deg)` de `.site-shell` lo convierte en verde claro (mismo tono que el texto "Vol 80" del panel). No usar colores claros aquí.
+- Probado primero solo en la sala; el usuario lo aprobó y el mismo día (2026-10-05) pasó a ser **el valor por defecto en toda la web**: `notationColor = DEFAULT_NOTATION_COLOR` (`#064e3b`, el color de los labels de la píldora en `globals.css`). Pasar `notationColor=""` devuelve los colores originales de AlphaTab (negro/gris/rojo). Verificado en las 16 páginas con tablatura: ni un elemento negro/gris/rojo en los SVG, sin overflow horizontal.
+
 ## Cursor y geometría
 
 - `TAB_LINE_SPACING = 12.45`: separación vertical (px) entre líneas de tablatura, usada para colocar las etiquetas de cuerdas (`STRING_LABELS_TOP_TO_BOTTOM`, solo en modo no-compacto). **Hipótesis**: este valor está pixel-ajustado al tamaño de fuente/zoom actual de AlphaTab; si cambia `display.padding`, `rhythmHeight` o el tamaño de fuente global, probablemente haya que re-ajustar esto. *(pendiente confirmar con el usuario)*

@@ -39,9 +39,9 @@ export default function PasosPage() {
             <h2>Niveles</h2>
             <p className="cn-guide-sub">A nuestro ritmo.</p>
             <ul className="cn-levels">
-              <li><span>1</span>Al superar el tema 5</li>
-              <li><span>2</span>Al entender todos los temas principales</li>
-              <li><span>3</span>Al completar todos los apartados (listo para clases avanzadas)</li>
+              <li><span>1</span>Superar el tema 5.</li>
+              <li><span>2</span>Entender el tema 10.</li>
+              <li><span>3</span>Completar TODOS los apartados (listo para clases avanzadas)</li>
             </ul>
           </section>
         </div>

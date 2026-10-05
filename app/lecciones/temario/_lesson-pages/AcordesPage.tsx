@@ -379,15 +379,15 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           <div className="advanced-link-grid">
             <Link href="/lecciones/temario/figuras-de-acordes">
               <span>Figuras de acordes</span>
-              <small> Cómo se repiten las formas por el mástil.</small>
+              <small> Cómo se repiten por el mástil.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-escala-sol-mayor">
-              <span>Acordes de la escala de Sol Mayor</span>
-              <small> Acordes que salen de una escala concreta.</small>
+              <span>Acordes de la escala mayor</span>
+              <small> Cómo se ordenan para formar la escala.</small>
             </Link>
             <Link href="/lecciones/temario/acordes-con-septima">
               <span>Acordes con séptima</span>
-              <small> Ampliar los acordes con una nota más.</small>
+              <small> Añadimos una nota más a estos acordes.</small>
             </Link>
           </div>
         </section>
