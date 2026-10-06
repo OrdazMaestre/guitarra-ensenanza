@@ -1,6 +1,7 @@
 // app/(site)/layout.tsx
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import SiteHomeLink from "./components/SiteHomeLink";
 import ThemeToggle from "./components/ThemeToggle";
@@ -50,6 +51,8 @@ export default function RootLayout({
           {children}
         </div>
         <MaikaelWidget />
+        {/* Solo en Vercel: en Render /_vercel/insights no existe y daría 404. */}
+        {DEPLOY_TARGET === 'vercel' && <Analytics />}
       </body>
     </html>
   );

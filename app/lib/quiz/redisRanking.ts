@@ -10,8 +10,8 @@ export interface RankingEntry {
   totalQuestions: number;
 }
 
-const TOP_N_BY_TOPIC = 10;
-const TOP_N_TORNEO = 20;
+const TOP_N_BY_TOPIC = 25;
+const TOP_N_CAMPEONATO = 50;
 
 // TODOS los modos van por tema (incluye mini-torneo/campeonato desde este arreglo -- antes
 // compartían UNA clave global sin tema, así que un campeonato de 10 preguntas desde una lección
@@ -25,8 +25,12 @@ export function rankingKey(mode: QuizMode, topic: QuizTopic): string {
   return `ranking:${mode}:${topic}`;
 }
 
+// 25 para facil/dificil/mini-torneo, 50 para campeonato (encargo explicito del usuario tras ver
+// cuantos resultados reales habia -- "si siguen siendo numeros igual de faciles de manejar que
+// antes": siguen siendo simples constantes planas, ZCARD/ZREMRANGEBYRANK no cambian de forma con
+// el tamaño del limite, asi que no añaden complejidad real).
 export function topNFor(mode: QuizMode): number {
-  return mode === 'mini-torneo' || mode === 'campeonato' ? TOP_N_TORNEO : TOP_N_BY_TOPIC;
+  return mode === 'campeonato' ? TOP_N_CAMPEONATO : TOP_N_BY_TOPIC;
 }
 
 function scoreFor(puntos: number, tiempoSeg: number): number {
@@ -73,32 +77,87 @@ function ghostEntriesFor(totalQuestions: number): RankingEntry[] {
   });
 }
 
+function paulScoreFor(totalQuestions: number): number {
+  const paul = GHOST_PROFILES.find((g) => g.nombre === 'PAUL')!;
+  const { puntos, tiempoSeg } = paul.computeStats(totalQuestions);
+  return scoreFor(puntos, tiempoSeg);
+}
+
+export interface SubmitResult {
+  entry: RankingEntry;
+  /** false = el resultado era "desastroso" (ver submitScore) y nunca llego a escribirse en Redis
+   * -- el que lo jugo lo ve en la respuesta de este POST, pero un GET posterior no lo traera. */
+  persisted: boolean;
+}
+
 /**
- * Inserta un resultado y recorta al top N (10 por modo×tema, 20 en mini-torneo/campeonato) --
- * SOLO cuenta entradas reales, los fantasmas nunca se guardan aquí (ver ghostEntriesFor).
+ * Registro selectivo ("desastroso" es la palabra clave para referirse a los resultados que este
+ * filtro descarta, encargo explicito del usuario): un resultado NUNCA se persiste en Redis si
+ * ocurre cualquiera de estas dos cosas --
+ *
+ *   (a) su puntuacion queda por debajo del fantasma PAUL (el listón minimo de "intento serio":
+ *       100% de aciertos a 15s/respuesta, sin bonus de rapidez) calculado para el totalQuestions
+ *       EXACTO de esta partida (mismo truco de escala que ghostEntriesFor: PAUL a 10 preguntas no
+ *       es el mismo numero que PAUL a 79).
+ *   (b) ya existe una entrada real con el mismo `nombre` en esta misma clave (mismo modo+tema) y
+ *       el nuevo resultado NO la supera estrictamente -- evita acumular repeticiones del mismo
+ *       jugador (ej. dos "Ada.P.C."): cada nombre guarda como mucho su mejor intento.
+ *
+ * En ambos casos el resultado se sigue devolviendo a quien lo acaba de jugar (puede ver su nombre
+ * en la lista ESA UNICA VEZ, en la respuesta de este mismo POST -- ver QuizResults.tsx, que lo
+ * fusiona en el ranking ya cargado en vez de volver a pedirlo), pero nunca llega a escribirse: la
+ * proxima vez que alguien pida el ranking (un GET, peticion nueva e independiente) no estara.
+ *
+ * Cuando SI se supera un resultado anterior con el mismo nombre, el anterior se borra (ZREM) antes
+ * de insertar el nuevo, para que nunca convivan dos entradas del mismo nombre.
+ *
  * Redis Sorted Set: score = puntos*100000 - tiempoSeg, así que a igualdad de puntos gana quien
  * tuvo menos tiempo (score más alto = mejor puesto). El multiplicador deja margen de sobra frente
  * a cualquier tiempoSeg realista (nunca se acerca a 100000) para que el tiempo nunca "se coma" un
  * punto entero.
  *
- * El recorte comprueba primero ZCARD y solo llama a ZREMRANGEBYRANK cuando de verdad hay más de N
- * miembros, calculando el stop como índice NO negativo (`card - limit - 1`) en vez de confiar en
- * el índice negativo `-(limit+1)` -- con pocos miembros ese índice negativo puede clampear a 0 y
- * borrar una entrada real por error.
+ * El recorte al top N comprueba primero ZCARD y solo llama a ZREMRANGEBYRANK cuando de verdad hay
+ * más de N miembros, calculando el stop como índice NO negativo (`card - limit - 1`) en vez de
+ * confiar en el índice negativo `-(limit+1)` -- con pocos miembros ese índice negativo puede
+ * clampear a 0 y borrar una entrada real por error.
  */
-export async function insertScore(mode: QuizMode, topic: QuizTopic, nombre: string, puntos: number, tiempoSeg: number, totalQuestions: number): Promise<RankingEntry> {
+export async function submitScore(mode: QuizMode, topic: QuizTopic, nombre: string, puntos: number, tiempoSeg: number, totalQuestions: number): Promise<SubmitResult> {
   const key = rankingKey(mode, topic);
+  const newScore = scoreFor(puntos, tiempoSeg);
+
+  const raw = (await upstashCommand('ZREVRANGE', key, 0, -1)) as string[] | null;
+  let existingMember: string | null = null;
+  let existingScore = -Infinity;
+  for (const member of raw ?? []) {
+    const parsed = JSON.parse(member) as RankingEntry;
+    if (parsed.nombre === nombre) {
+      existingMember = member;
+      existingScore = scoreFor(parsed.puntos, parsed.tiempoSeg);
+      break;
+    }
+  }
+
+  const belowPaul = newScore < paulScoreFor(totalQuestions);
+  const sameNameNotImproved = existingMember !== null && newScore <= existingScore;
+
+  if (belowPaul || sameNameNotImproved) {
+    return { entry: { id: crypto.randomUUID(), nombre, puntos, tiempoSeg, totalQuestions }, persisted: false };
+  }
+
+  if (existingMember !== null) {
+    await upstashCommand('ZREM', key, existingMember);
+  }
+
+  const entry: RankingEntry = { id: crypto.randomUUID(), nombre, puntos, tiempoSeg, totalQuestions };
+  await upstashCommand('ZADD', key, newScore, JSON.stringify(entry));
 
   const limit = topNFor(mode);
-  const entry: RankingEntry = { id: crypto.randomUUID(), nombre, puntos, tiempoSeg, totalQuestions };
-
-  await upstashCommand('ZADD', key, scoreFor(puntos, tiempoSeg), JSON.stringify(entry));
   const card = Number(await upstashCommand('ZCARD', key));
   if (card > limit) {
     await upstashCommand('ZREMRANGEBYRANK', key, 0, card - limit - 1);
   }
 
-  return entry;
+  return { entry, persisted: true };
 }
 
 /**

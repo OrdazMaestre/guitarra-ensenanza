@@ -19,6 +19,14 @@ const TIER_LABEL: Record<Exclude<RankingTier, null>, string> = {
   oro: 'Oro',
 };
 
+// Debe coincidir exactamente con scoreFor() en app/lib/quiz/redisRanking.ts (duplicado a mano en
+// vez de importado: ese modulo tambien exporta funciones que usan upstashCommand/variables de
+// entorno de servidor, nada que un componente 'use client' deba arrastrar a su bundle solo para
+// reutilizar esta formula de una linea).
+function scoreFor(puntos: number, tiempoSeg: number): number {
+  return puntos * 100000 - tiempoSeg;
+}
+
 interface QuizResultsProps {
   backHref?: string;
   correctCount: number;
@@ -42,6 +50,7 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
   const [nombre, setNombre] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submittedId, setSubmittedId] = useState<string | null>(null);
+  const [submittedPersisted, setSubmittedPersisted] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   async function loadRanking() {
@@ -87,8 +96,25 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
       setError(data?.error ?? 'No se pudo guardar el resultado.');
       return;
     }
-    setSubmittedId(data?.entry?.id ?? null);
-    await loadRanking();
+    const entry: RankingEntry | undefined = data?.entry;
+    setSubmittedId(entry?.id ?? null);
+    const persisted = data?.persisted !== false;
+    setSubmittedPersisted(persisted);
+    if (persisted) {
+      // Resultado real: lo trae un GET nuevo, que ya incluye la entrada recien guardada.
+      await loadRanking();
+    } else if (entry) {
+      // "Desastroso" (ver submitScore en redisRanking.ts): nunca se escribio en Redis, asi que un
+      // GET nuevo NO lo traeria -- se fusiona a mano en la lista ya cargada para que quien acaba de
+      // jugar vea su nombre ESA UNICA VEZ, en esta misma vista. La proxima vez que alguien pida el
+      // ranking (otra visita, otro intento) ya no estara.
+      setRanking((current) => {
+        const base = current ?? [];
+        const merged = [...base, entry];
+        merged.sort((a, b) => scoreFor(b.puntos, b.tiempoSeg) - scoreFor(a.puntos, a.tiempoSeg));
+        return merged;
+      });
+    }
   }
 
   return (
@@ -131,8 +157,13 @@ export default function QuizResults({ backHref, correctCount, mode, onRetry, sco
           </div>
           {error ? <p className="quiz-name-error">{error}</p> : null}
         </form>
-      ) : (
+      ) : submittedPersisted ? (
         <p className="quiz-name-saved">Guardado en el ranking.</p>
+      ) : (
+        <p className="quiz-name-saved">
+          Puedes ver tu resultado abajo, pero no se ha guardado para la proxima vez: no llega al nivel minimo de PAUL, o ya
+          tenias un resultado mejor guardado con este mismo nombre.
+        </p>
       )}
 
       <div className="quiz-ranking">

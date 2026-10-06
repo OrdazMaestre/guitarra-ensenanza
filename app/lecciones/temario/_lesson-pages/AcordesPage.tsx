@@ -283,8 +283,7 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           <div className="short-copy">
             <p>Un acorde junta 3 o más notas al mismo tiempo.</p>
             <p>Empezaremos con acordes mayores y menores.</p>
-            <p>Primero aprenderemos los 4 acordes de la siguiente página.</p>
-          </div>
+            </div>
         </header>
 
         <section className="finger-guide" aria-labelledby="finger-guide-title">
@@ -305,7 +304,8 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         </section>
 
       <section className="practice-strip" aria-label="Forma de practicar">
-        <p>Los acordes en <strong>VERDE</strong> son los que aprenderemos primero</p>
+        <p><strong>Primero</strong> aprenderemos <strong>los 4 acordes de la siguiente página</strong>.</p>
+          <p>Son los acordes en <strong>VERDE</strong>.</p>
       </section>
 
         <section className="chord-library" aria-labelledby="major-title">

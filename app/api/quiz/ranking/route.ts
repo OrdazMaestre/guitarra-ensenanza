@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { containsProfanity } from '@/app/lib/quiz/profanityFilter';
-import { getTop, insertScore } from '@/app/lib/quiz/redisRanking';
+import { getTop, submitScore } from '@/app/lib/quiz/redisRanking';
 import { isValidQuizMode as isValidMode } from '@/app/lib/quiz/types';
 import { QUIZ_TOPIC_ORDER, type QuizTopic } from '@/app/lecciones/temario/quizTemarioMap';
 
@@ -70,6 +70,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: 'Parametro "totalQuestions" invalido' }, { status: 400 });
   }
 
-  const entry = await insertScore(mode, topic, nombre, puntos, tiempoSeg, totalQuestions);
-  return Response.json({ entry });
+  const { entry, persisted } = await submitScore(mode, topic, nombre, puntos, tiempoSeg, totalQuestions);
+  return Response.json({ entry, persisted });
 }
