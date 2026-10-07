@@ -29,8 +29,8 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
           <header className="tuning-header">
             <h1>Aprendiendo a afinar</h1>
             <p>
-              Ajustamos la tensión de las cuerdas hasta que suene en la nota correcta. </p> 
-              <p>Pulsamos una cuerda, escuchamos, giramos su clavija y volvemos a escuchar.
+              Ajustamos las cuerdas hasta que suenen en la nota correcta. </p> 
+              <p>Pulsamos cuerda, escuchamos, giramos clavija y volvemos a escuchar.
             </p>
           </header>
 
@@ -75,14 +75,14 @@ export default function AfinacionPage({ previous, next, quizHref }: LessonPagePr
 
           <section className="interval-section" aria-labelledby="interval-title">
             <div className="interval-copy">
-              <p className="lesson-kicker">Distancias</p>
-              <h2 id="interval-title">5 semitonos casi siempre entre una cuerda y la siguiente </h2>
+              <p className="lesson-kicker">Distancia entre cuerdas</p>
+              <h2 id="interval-title">5 semitonos casi siempre</h2>
               <p>
                 </p> <p>La excepción está entre <strong>G</strong> y <strong>B</strong>, donde hay <strong>4 semitonos</strong>.
               </p>
               <p>
                 Es la afinación más habitual, por eso se llama <strong>afinación estándar</strong>. </p>
-              <p>Nosotros tocamos en <strong>Mi estándar</strong>, pero hay muchas afinaciones estándar y muchas más que no son estándar</p>
+              <p>Nosotros tocamos en <strong>Mi estándar</strong>, pero hay muchas otras afinaciones.</p>
             </div>
 
             <div className="interval-row" aria-label="Distancias entre cuerdas de la afinación estándar">

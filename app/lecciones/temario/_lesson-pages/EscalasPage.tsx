@@ -46,13 +46,13 @@ export default function EscalasPage({ previous, next, quizHref }: LessonPageProp
             </div>
             <p>La escala menor empieza DOS NOTAS ANTES o cinco después que la escala mayor.</p>
 
-            <p>LA menor es el RELATIVO MENOR de DO mayor porque usan las mismas notas.</p>
+            <p><strong>LA menor es el RELATIVO MENOR de DO mayor</strong> porque usan las mismas notas.</p>
           </div>
         </section>
 
         <section className="question-box" aria-label="Alteraciones">
           <h2>¿Qué notas hay entre medias? ¿Qué es # y b?</h2>
-          <p>Los cuadrados grises son las alteraciones.</p>
+          <p>Son las alteraciones (tema 2).</p>
           <p>En un piano son las teclas negras.</p>
           <p>Las alteraciones son los bemoles (b) y los sostenidos (#).</p>
           <p>Bemol es la nota anterior - Sostenido es la nota siguiente.</p>

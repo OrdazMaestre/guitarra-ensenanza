@@ -103,8 +103,8 @@ export default function LetItBeConAcordesPage({ previous, next, quizHref }: Less
           <h1>Let It Be</h1>
           <div className="short-copy">
             <p>Una canción a base de acordes puede leerse de las dos maneras que vemos abajo.</p>
-            <p>Puedes usar la flecha atrás de la esquina para consultar los acordes.</p>
-            <p>Al final del todo hay enlaces a la canción y a la versión con guitarra.</p>
+            <p>Consulta los acordes en la página anterior o lee la tablatura.</p>
+            <p>Abajo hay enlaces a la canción y a la versión con guitarra.</p>
           </div>
         </header>
 
@@ -133,7 +133,7 @@ export default function LetItBeConAcordesPage({ previous, next, quizHref }: Less
         <section className="lesson-close" aria-label="Resumen">
           <p>Estamos aprendiendo a mezclar acordes y punteo.</p>
           <p>Después del segundo estribillo hay un solo de guitarra.</p>
-          <p>Otra guitarra hace un punteo muy chulo acompañando a la voz durante el último estribillo.</p>
+          <p>Durante el último estribillo hay otro solo acompañando.</p>
           <a href="https://www.youtube.com/watch?v=BTDLIG0RbMQ" target="_blank" rel="noreferrer">
             CANCIÓN COMPLETA
           </a>

@@ -281,7 +281,7 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
         <header className="chords-header">
           <h1>Acordes básicos</h1>
           <div className="short-copy">
-            <p>Un acorde junta 3 o más notas al mismo tiempo.</p>
+            <p><strong>Un acorde junta 3 o más notas al mismo tiempo.</strong></p>
             <p>Empezaremos con acordes mayores y menores.</p>
             </div>
         </header>
@@ -341,13 +341,13 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
 
         <section className="shape-guide" aria-labelledby="shape-guide-title">
           <p className="lesson-kicker">POWER CHORDS</p>
-          <h2 id="shape-guide-title">La forma que más vamos a usar</h2>
+          <h2 id="shape-guide-title">La forma que más usaremos</h2>
           <div className="shape-copy">
-            <p>La figura para los acordes que más usaremos la vemos en <strong>A</strong>, <strong>B</strong>, <strong>Cm</strong>, <strong>E</strong>, <strong>F</strong> y <strong>Gm</strong>.</p>
+            <p>La figura de acorde más usada la vemos en <strong>A</strong>, <strong>B</strong>, <strong>Cm</strong>, <strong>E</strong>, <strong>F</strong> y <strong>Gm</strong>.</p>
 
             <p>TODOS LOS ACORDES BÁSICOS excepto D <strong>pueden tener la misma forma</strong>.</p>
 
-            <p>El punto gris es la nota que falta para que sea Mayor o menor.</p>
+            <p>El punto gris es la nota que falta para ser Mayor o menor.</p>
           </div>
           <div className="chord-group-handedness">
             <HandednessToggleButton lefty={lefty} onClick={toggleLefty} />
@@ -363,11 +363,11 @@ export default function AcordesPage({ previous, next, quizHref }: LessonPageProp
           <p className="lesson-kicker">Practicar acordes</p>
           <p className="lesson-kicker">Luego practicar cambios entre acordes</p>
           <p>
-            Los acordes que tenéis que ir practicando para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
+            Los acordes que debeis practicar para clase son <strong>todos los mayores</strong>, además de <strong>Em</strong> y <strong>Am</strong>.
           
           </p>
           <p>
-            <strong>Mejor forma de EMPEZAR</strong> a practicar: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... </p><p>Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
+            <strong>Mejor forma de EMPEZAR</strong> a practicarlos: <strong>F</strong> - acorde cualquiera - <strong>G</strong> - acorde cualquiera - <strong>F</strong> - acorde cualquiera - <strong>G</strong>... </p><p>Sé que F cuesta mucho pero es muy importante, así que mejor acostumbrarse rápido.
           </p>
         </section>
 
