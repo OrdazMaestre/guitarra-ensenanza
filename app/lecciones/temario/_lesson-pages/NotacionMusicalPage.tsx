@@ -589,6 +589,7 @@ function FullFretboardDiagram() {
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
+          className="midi-kb-toggle"
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >

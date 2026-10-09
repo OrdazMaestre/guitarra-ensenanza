@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+// Estos tests pulsan KEYBOARD, que se oculta en pantallas táctiles (`.midi-kb-toggle` en
+// globals.css). playwright.config.ts activa `hasTouch` para todos; aquí simulamos un ordenador.
+test.use({ hasTouch: false });
+
 // Physical-keyboard chords (KEYBOARD/kbMode) rely on the browser actually
 // receiving every keydown. When a real (non-gaming) keyboard can't report 3+
 // simultaneous keys, the 3rd keydown never reaches the page at all — no app

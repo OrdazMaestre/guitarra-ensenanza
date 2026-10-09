@@ -1,5 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Estos tests pulsan KEYBOARD, que se oculta en pantallas táctiles (`.midi-kb-toggle` en
+// globals.css). playwright.config.ts activa `hasTouch` para todos; aquí simulamos un ordenador.
+test.use({ hasTouch: false });
+
 // The visible keyboard draws "C" twice (once at each end of the octave).
 // Pressing either one — via kbMode OR via mouse/touch — must also light the
 // OTHER C at its own fixed height (bottom-half for the left/lower C, top-half

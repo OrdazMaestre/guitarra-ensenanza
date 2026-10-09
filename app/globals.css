@@ -482,6 +482,22 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
   top: 100%;
 }
 
+/* "En su hueco": lo activa MidiInstrumentChrome.tsx automáticamente cuando la píldora se parte en
+   varias líneas o pisaría el contenido de debajo. Vuelve al flujo normal (reserva su altura y
+   empuja lo siguiente) en vez de taparlo. En pantalla grande no se activa y todo sigue flotando. */
+.midi-float-controls.is-in-flow {
+  position: static;
+}
+
+/* KEYBOARD (tocar con el teclado físico) no sirve en pantallas táctiles sin ratón: se oculta para
+   que la barra ocupe menos. Todo botón KB de un instrumento MIDI debe llevar esta clase. */
+@media (hover: none) and (pointer: coarse) {
+  .midi-kb-toggle,
+  .midi-anchor:has(> .midi-kb-toggle) {
+    display: none !important;
+  }
+}
+
 .midi-float-pill {
   align-items: center;
   background: rgba(255, 255, 255, 0.95);

@@ -1,5 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Estos tests pulsan KEYBOARD, que se oculta en pantallas táctiles (`.midi-kb-toggle` en
+// globals.css). playwright.config.ts activa `hasTouch` para todos; aquí simulamos un ordenador.
+test.use({ hasTouch: false });
+
 async function docHeight(page: Page) {
   return page.evaluate(() => document.documentElement.scrollHeight);
 }
@@ -115,4 +119,54 @@ test('PentatonicaBluesPage: floating controls stay reachable at narrow widths de
   await expect(kbButton).toBeInViewport();
   await kbButton.click();
   expect(await hasHorizontalOverflow(page)).toBe(false);
+});
+
+// Ningún punto de la píldora puede caer encima de contenido ajeno al propio instrumento.
+async function pillsCoveringContent(page: Page) {
+  return page.evaluate(() => {
+    const covering: string[] = [];
+    for (const c of Array.from(document.querySelectorAll('.midi-float-controls'))) {
+      const pill = c.querySelector('.midi-float-pill')!.getBoundingClientRect();
+      if (!pill.height) continue;
+      for (const [fx, fy] of [[0.1, 0.5], [0.5, 0.5], [0.9, 0.5], [0.5, 0.1], [0.5, 0.9]]) {
+        for (const el of document.elementsFromPoint(pill.left + pill.width * fx, pill.top + pill.height * fy)) {
+          if (c.contains(el) || el.contains(c)) continue;
+          if (['HTML', 'BODY', 'MAIN', 'ARTICLE', 'SECTION'].includes(el.tagName)) continue;
+          if (getComputedStyle(el).position === 'fixed') continue;
+          covering.push(el.tagName);
+        }
+      }
+    }
+    return covering;
+  });
+}
+
+test('wide screen: every MIDI control bar keeps floating (no layout push)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  for (const slug of ['sala-de-pruebas', 'notacion-musical', 'afinacion']) {
+    await page.goto(`/lecciones/temario/${slug}`);
+    await page.waitForTimeout(300);
+    expect(await page.locator('.midi-float-controls.is-in-flow').count()).toBe(0);
+  }
+});
+
+test('narrow screen: MIDI control bars never cover other content', async ({ page }) => {
+  for (const width of [360, 600, 850]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const slug of ['sala-de-pruebas', 'notacion-musical', 'afinacion', 'pentatonica']) {
+      await page.goto(`/lecciones/temario/${slug}`);
+      await page.waitForTimeout(300);
+      expect(await pillsCoveringContent(page), `${slug} @ ${width}px`).toEqual([]);
+      expect(await hasHorizontalOverflow(page)).toBe(false);
+    }
+  }
+});
+
+test.describe('touch devices', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 360, height: 800 } });
+  test('KEYBOARD toggle is hidden on touch-only screens', async ({ page }) => {
+    await page.goto('/lecciones/temario/sala-de-pruebas');
+    expect(await page.locator('.midi-kb-toggle').count()).toBeGreaterThan(0);
+    expect(await page.locator('.midi-kb-toggle:visible').count()).toBe(0);
+  });
 });

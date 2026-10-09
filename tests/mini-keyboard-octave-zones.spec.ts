@@ -1,5 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
+// Estos tests pulsan KEYBOARD, que se oculta en pantallas táctiles (`.midi-kb-toggle` en
+// globals.css). playwright.config.ts activa `hasTouch` para todos; aquí simulamos un ordenador.
+test.use({ hasTouch: false });
+
 // MiniKeyboard's physical-keyboard input can reach several octaves of the
 // same note name, but the SVG only draws one (or, for C, two) instance(s) of
 // each. Instead of a plain full-key fill, keyboard-driven presses light a

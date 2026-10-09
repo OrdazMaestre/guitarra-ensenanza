@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+// Estos tests pulsan KEYBOARD, que se oculta en pantallas táctiles (`.midi-kb-toggle` en
+// globals.css). playwright.config.ts activa `hasTouch` para todos; aquí simulamos un ordenador.
+test.use({ hasTouch: false });
+
 // MiniKeyboard's physical-keyboard input (kbMode) covers two simultaneous
 // registers: "grave" (bass, the original bottom-row+home-row keys, now
 // extended with RightShift/Enter for one extra F/F#) and "agudo" (treble,
