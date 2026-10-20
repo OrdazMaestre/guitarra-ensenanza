@@ -694,24 +694,17 @@ export default function NotacionMusicalPage({ previous, next, quizHref }: Lesson
               </div>
             ))}
           </div>
-        <h3>Prueba a tocar los instrumentos de abajo</h3>
+          <h1 className="instrument-title">NOTAS EN EL PIANO</h1>
           <MiniKeyboard className="keyboard-image" />
         </section>
-
         <section className="note-section fretboard-section" aria-labelledby="fretboard-title">
-          <header className="note-section-header">
-          </header>
-       
-          <div className="fretboard-copy">
-            
-          </div>
-
+          <h1 className="instrument-title" id="fretboard-title">NOTAS EN LA GUITARRA</h1>
           <FullFretboardDiagram />
           
           <section className="lesson-close" aria-label="Resumen">
-          <h2>EL MAPA DE LA GUITARRA (cómo memorizarlo).</h2>
-          <p><strong>Trastes 0 y 12 son IGUALES</strong>.</p>
-          <p><strong>Cuerdas 1 y 6 son IGUALES</strong>.</p>
+          <h2>Cómo aprender el mapa de notas en la guitarra.</h2>
+          <p><strong>Las notas de los trastes 0 y 12 son IGUALES</strong>.</p>
+          <p><strong>Las notas de las cuerdas 1 y 6 son IGUALES</strong>.</p>
           <p>TRUCO: Empieza aprendiendo las notas del traste 0.</p>
           <p>El resto las calculamos sabiéndonos el <strong>abecedefgario</strong>.</p>
           </section>
@@ -895,6 +888,28 @@ export default function NotacionMusicalPage({ previous, next, quizHref }: Lesson
         .altered-note {
           background: #d1d5db;
           border-color: #047857;
+        }
+
+        /* Títulos "NOTAS EN EL PIANO/LA GUITARRA": siempre centrados (también en estrecho, donde
+           .note-section pasa a text-align:left) y pegados a su instrumento. */
+        .instrument-title {
+          justify-self: center;
+          margin: 0;
+          text-align: center;
+        }
+
+        .fretboard-section .instrument-title {
+          margin-bottom: calc(-1 * clamp(8px, 1.5vw, 14px));
+        }
+
+        /* Mismo hueco título-instrumento en el piano: anula el gap grande de .note-section y el
+           margin-top propio de .keyboard-image, que separaban demasiado el título de las teclas. */
+        .chromatic-section .instrument-title {
+          margin-bottom: calc(-1 * clamp(14px, 2.5vw, 30px));
+        }
+
+        .instrument-title + .keyboard-image {
+          margin-top: 0;
         }
 
         .keyboard-image {

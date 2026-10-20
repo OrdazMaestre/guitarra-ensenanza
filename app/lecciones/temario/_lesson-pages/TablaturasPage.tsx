@@ -5,6 +5,13 @@ import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
+// Ejercicios del modo "Practicar" (cuerda 1). El 2 sale de /tabs/cumpleanos-feliz-dos-compases.gp.
+const onString1 = (frets: number[]) => frets.map((fret) => ({ string: 1, fret }));
+const practiceExercises = [
+  { label: 'Practicar ejercicio 1', notes: onString1([2, 4, 5, 2, 4, 5, 4, 5, 7, 4, 5, 7, 0, 2, 4, 0, 2, 4]) },
+  { label: 'Practicar ejercicio 2', notes: onString1([0, 0, 2, 0, 5, 4, 0, 0, 2, 0, 7, 5, 0, 0, 12, 9, 5, 4, 2, 10, 10, 9, 5, 7, 5]) },
+];
+
 export default function TablaturasPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="tablature-page">
@@ -46,6 +53,7 @@ export default function TablaturasPage({ previous, next, quizHref }: LessonPageP
                 { fret: 10, string: 1, label: '' },
                 { fret: 12, string: 1, label: '' },
               ]}
+              practiceExercises={practiceExercises}
             />
           </div>
           

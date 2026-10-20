@@ -5,6 +5,21 @@ import QuizButton from '../QuizButton';
 import TemarioPager from '../TemarioPager';
 import type { LessonPageProps } from './types';
 
+// Ejercicio del modo "Practicar" (ver useFretboardPractice.ts). Notas sacadas de
+// /tabs/feliz-navidad.gp, en orden, como [cuerda, traste].
+const practiceExercises = [
+  {
+    label: 'Practicar Feliz Navidad',
+    notes: ([
+      [2, 3], [1, 3], [1, 2], [1, 3], [1, 0],
+      [2, 3], [1, 5], [1, 3], [1, 2], [2, 3],
+      [2, 3], [1, 3], [1, 2], [1, 3], [1, 0],
+      [2, 1], [2, 3], [2, 5], [2, 3], [2, 3], [2, 1],
+      [2, 1], [2, 0],
+    ] as const).map(([string, fret]) => ({ string, fret })),
+  },
+];
+
 export default function TablaturasDosCuerdasPage({ previous, next, quizHref }: LessonPageProps) {
   return (
     <main className="two-strings-page">
@@ -53,6 +68,7 @@ export default function TablaturasDosCuerdasPage({ previous, next, quizHref }: L
                 { fret: 3, string: 2, label: '' },
                 { fret: 5, string: 2, label: '' },
               ]}
+              practiceExercises={practiceExercises}
             />
           </div>
 

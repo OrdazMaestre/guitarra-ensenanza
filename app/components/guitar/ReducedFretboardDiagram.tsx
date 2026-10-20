@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+import { type GuitarTone, playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
+import { type PracticeExercise, useFretboardPractice } from '@/app/lib/useFretboardPractice';
+import { FretboardPracticeStyles, PracticeButtons, PracticeFeedback, PracticeTargetMarker } from './FretboardPractice';
 import HorizontalScrollbar from './HorizontalScrollbar';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
@@ -71,6 +73,7 @@ type GuideDot = {
 
 interface ReducedFretboardDiagramProps {
   allowLeftHanded?: boolean;
+  allowOverdrive?: boolean;
   allowTuning?: boolean;
   ariaLabel: string;
   endFret: number;
@@ -78,6 +81,8 @@ interface ReducedFretboardDiagramProps {
   fretLabelsAbove?: boolean;
   guideDots?: GuideDot[];
   notes: FretboardNote[];
+  // Modo "Practicar ejercicio" (opt-in): un botón por ejercicio, ver useFretboardPractice.ts.
+  practiceExercises?: PracticeExercise[];
   startFret: number;
 }
 
@@ -130,7 +135,7 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, practiceExercises, startFret }: ReducedFretboardDiagramProps) {
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
   // nut, igual sistema que TuningBoard.tsx (arrastre circular -> cents -> MIDI fraccionario), pero
@@ -215,6 +220,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
   const [paintMode, setPaintMode] = useState(false);
   const { marks, toggleMark } = useNoteMarks();
+  const practice = useFretboardPractice(practiceExercises);
+  const registerPracticeNote = practice.registerNote;
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -233,6 +240,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
   useEffect(() => { volumeRef.current = volume; }, [volume]);
   const paintModeRef = useRef(paintMode);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
+  // Sonido (opt-in vía `allowOverdrive`): 'clean' o 'overdrive', ver getOverdriveBus en
+  // guitarAudioEngine.ts. Ref por el mismo motivo que volumeRef/paintModeRef.
+  const [tone, setTone] = useState<GuitarTone>('clean');
+  const toneRef = useRef(tone);
+  useEffect(() => { toneRef.current = tone; }, [tone]);
   const metr = useMetronome();
   useEffect(() => {
     if (!kbMode && !metr.on) return;
@@ -283,18 +295,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
+        registerPracticeNote({ string: entry.string, fret: entry.fret, kind: 'pluck' });
         kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
         syncPositions();
-        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current);
+        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
         else releaseNote(id);
       } else {
         const curEntry = kbKeysHeldRef.current.get(cur.code);
         if (curEntry && entry.fret > curEntry.fret) {
+          registerPracticeNote({ string: entry.string, fret: entry.fret, kind: 'hammer' });
           kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
           syncPositions();
-          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current);
+          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current, toneRef.current);
           const sv = kbStringVoiceRef.current.get(entry.string);
           if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
           else releaseNote(id);
@@ -311,9 +325,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       if (!cur || cur.code !== e.code) return;
       const next = getHighestOnString(entry.string);
       if (next) {
+        registerPracticeNote({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' });
         kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
         syncPositions();
-        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current);
+        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
         else releaseNote(id);
@@ -334,7 +349,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange, lefty]);
+  }, [kbMode, kbRange, lefty, registerPracticeNote]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -406,10 +421,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
       if (ptStringVoiceRef.current.size >= 3) return;
+      registerPracticeNote({ ...pos, kind: 'pluck' });
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
       syncPt();
-      const id = await playNote(midi, false, volumeRef.current);
+      const id = await playNote(midi, false, volumeRef.current, toneRef.current);
       const sv = ptStringVoiceRef.current.get(pos.string);
       if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
       else releaseNote(id);
@@ -417,9 +433,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const curEntry = ptHeldRef.current.get(cur.pid);
       if (curEntry && pos.fret > curEntry.fret) {
+        registerPracticeNote({ ...pos, kind: 'hammer' });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
-        const id = await switchNote(cur.voiceId, midi, false, volumeRef.current);
+        const id = await switchNote(cur.voiceId, midi, false, volumeRef.current, toneRef.current);
         const sv = ptStringVoiceRef.current.get(pos.string);
         if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
@@ -437,17 +454,19 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const sv = ptStringVoiceRef.current.get(pos.string);
       if (sv?.pid === e.pointerId) {
+        registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
         syncPt();
-        const id = await switchNote(sv.voiceId, midi, false, volumeRef.current);
+        const id = await switchNote(sv.voiceId, midi, false, volumeRef.current, toneRef.current);
         const sv2 = ptStringVoiceRef.current.get(pos.string);
         if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
       } else if (sv) {
         const activeEntry = ptHeldRef.current.get(sv.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
+          registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
-          const id = await switchNote(sv.voiceId, midi, false, volumeRef.current);
+          const id = await switchNote(sv.voiceId, midi, false, volumeRef.current, toneRef.current);
           const sv2 = ptStringVoiceRef.current.get(pos.string);
           if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
           else releaseNote(id);
@@ -461,7 +480,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
         const next = getHighestOnPtString(oldStr);
         if (next) {
           ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: -1 });
-          const id = await switchNote(oldVoice.voiceId, next.midi, false, volumeRef.current);
+          const id = await switchNote(oldVoice.voiceId, next.midi, false, volumeRef.current, toneRef.current);
           const sv = ptStringVoiceRef.current.get(oldStr);
           if (sv?.pid === next.pid) ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: id });
           else releaseNote(id);
@@ -472,18 +491,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       }
       const newVoice = ptStringVoiceRef.current.get(pos.string);
       if (!newVoice && ptStringVoiceRef.current.size < 3) {
+        registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
-        const id = await playNote(midi, false, volumeRef.current);
+        const id = await playNote(midi, false, volumeRef.current, toneRef.current);
         const sv = ptStringVoiceRef.current.get(pos.string);
         if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
       } else if (newVoice) {
         const activeEntry = ptHeldRef.current.get(newVoice.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
+          registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
-          const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current);
+          const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current, toneRef.current);
           const sv = ptStringVoiceRef.current.get(pos.string);
           if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
           else releaseNote(id);
@@ -503,9 +524,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
     if (!cur || cur.pid !== e.pointerId) { syncPt(); return; }
     const next = getHighestOnPtString(curEntry.string);
     if (next) {
+      const nextEntry = ptHeldRef.current.get(next.pid);
+      if (nextEntry) registerPracticeNote({ string: nextEntry.string, fret: nextEntry.fret, kind: 'pulloff' });
       ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: -1 });
       syncPt();
-      const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current);
+      const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current, toneRef.current);
       const sv = ptStringVoiceRef.current.get(curEntry.string);
       if (sv?.pid === next.pid) ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: id });
       else releaseNote(id);
@@ -558,7 +581,19 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
   }
 
   return (
+    <>
+    {/* Fuera de .midi-instrument-host a propósito: el aviso flotante de MidiInstrumentChrome se
+        coloca encima del host, y taparía estos botones si vivieran dentro. */}
+    {practiceExercises && (
+      <>
+        <FretboardPracticeStyles />
+        <PracticeButtons activeIndex={practice.activeIndex} exercises={practiceExercises} onToggle={practice.toggle} />
+      </>
+    )}
     <div className="midi-instrument-host">
+    {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
+        salgan centrados DELANTE del mástil aunque la barra de controles vaya en flujo (móvil). */}
+    <div style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}>
     <div className="reduced-fretboard-wrap" ref={scrollRef}>
     <svg
       ref={svgRef}
@@ -670,8 +705,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
           y={stringY(string)}
         />
       ))}
+      <PracticeTargetMarker getX={fretX} getY={stringY} target={practice.target} />
       {interactionOverlay()}
     </svg>
+    </div>
+    <PracticeFeedback feedback={practice.feedback} />
     </div>
     <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
@@ -712,6 +750,16 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
           )}
         </div>
       )}
+      {allowOverdrive && (
+        <button
+          onClick={() => setTone(t => (t === 'clean' ? 'overdrive' : 'clean'))}
+          aria-pressed={tone === 'overdrive'}
+          aria-label="Cambiar sonido clean u overdrive"
+          style={{ background: tone === 'overdrive' ? '#047857' : 'transparent', border: `1.5px solid ${tone === 'overdrive' ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: tone === 'overdrive' ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
+        >
+          {tone === 'overdrive' ? 'OVERDRIVE' : 'CLEAN'}
+        </button>
+      )}
       <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
       <div className="midi-anchor">
         <button
@@ -748,6 +796,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowTuning, ariaLabe
       <MetronomeControls {...metr} />
     </MidiInstrumentChrome>
     </div>
+    </>
   );
 }
 

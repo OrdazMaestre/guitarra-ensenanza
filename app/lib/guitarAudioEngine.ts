@@ -187,8 +187,165 @@ function startOscillatorVoice(midi: number, context: AudioContext, volume = 1.0)
   return id;
 }
 
+// ---------------------------------------------------------------------------
+// Overdrive (opt-in, `tone === 'overdrive'` en playNote/switchNote; hoy solo
+// el mástil de la sala de pruebas vía `allowOverdrive` en
+// ReducedFretboardDiagram). Misma fuente que el clean (samples acústicos
+// Seagull), pasada por una cadena de ampli completa en un ÚNICO bus
+// compartido por todas las voces:
+//   - Distorsionar la SUMA (no cada voz por separado) es lo que hace un ampli
+//     real: quintas/power chords se funden con intermodulación auténtica.
+//     Y una sola cadena es barata en CPU para móviles modestos.
+//   1. Pre-EQ estilo Tube Screamer: highpass 110Hz (aprieta graves ANTES de
+//      saturar — clave partiendo de una acústica con cuerpo resonante, o se
+//      vuelve barro), joroba de medios en 720Hz, lowpass 5.5kHz antes del
+//      clip (los chirridos de cuerda saturados se convierten en "fizz").
+//   2. Dos etapas de saturación (preamp de dos válvulas): la primera
+//      asimétrica (armónicos pares, carácter cálido) y fuerte, la segunda
+//      suave. oversample '4x' en ambas: sin él, los armónicos que crea el
+//      waveshaper por encima de Nyquist se reflejan como aliasing metálico.
+//   3. Simulador de pantalla 1x12" con biquads: highpass 85Hz, -3dB en 400Hz
+//      (des-embarrar), +3dB en 2.2kHz (presencia — es lo que sobrevive en
+//      altavoces de móvil/portátil, que no reproducen graves), y dos lowpass
+//      de 4.8kHz en cascada (24dB/oct, la caída de un cono real; elimina el
+//      fizz digital que delata a un overdrive "de juguete").
+//   4. Sala corta (ConvolverNode con IR sintética, ~10% húmedo): quita la
+//      sequedad de "línea directa" sin emborronar. Mono, sin trucos estéreo.
+//   5. Make-up gain calibrado offline para que el RMS overdrive ≈ clean en el
+//      ataque (medido: +0.9dB; sin salto de volumen al pulsar el botón). En
+//      sustain queda ~+5dB por diseño: un overdrive comprime y alarga la
+//      nota, eso es parte del sonido. Pico con acordes de 3 notas a volumen
+//      máximo: ~0.48, mucho margen. Volumen del slider aplicado
+//      DESPUÉS de saturar (`overdriveOutGain`): antes del clip, bajar el
+//      volumen solo limpiaría el sonido y apenas bajaría (el tanh comprime).
+//      Por eso las voces overdrive entran al bus a nivel fijo.
+//   6. Soft-clip tanh neutro a la salida (como getBassBus), sin
+//      DynamicsCompressorNode (ver el comentario del bajo: reacciona mal a
+//      ataques rápidos; la señal saturada ya llega comprimida).
+// tests/guitar-overdrive.spec.ts replica esta cadena exacta offline (pico
+// sin clipping con acordes a volumen máximo, paridad de RMS con el clean, y
+// que el slider de volumen baje de verdad). Si cambias cualquier valor
+// aquí, actualízalo allí también.
+export type GuitarTone = 'clean' | 'overdrive';
+
+const OD_VOICE_LEVEL = 0.52;
+const OD_DRIVE = 3;
+const OD_SHAPE_K = 6;
+const OD_SHAPE_BIAS = 0.12;
+const OD_STAGE2_GAIN = 0.8;
+const OD_STAGE2_K = 1.5;
+const OD_ROOM_WET = 0.1;
+const OD_MAKEUP = 0.18;
+
+let overdriveIn: GainNode | null = null;
+let overdriveOutGain: GainNode | null = null;
+
+function makeCurve(fn: (x: number) => number, n = 4096): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) curve[i] = fn((i / (n - 1)) * 2 - 1);
+  return curve;
+}
+
+// IR sintética de sala pequeña: ruido con caída exponencial (~0.35s),
+// oscurecido con un paso bajo de un polo para que suene a habitación y no
+// a "chapa".
+function makeRoomImpulse(context: BaseAudioContext): AudioBuffer {
+  const sr = context.sampleRate;
+  const len = Math.floor(sr * 0.35);
+  const buf = context.createBuffer(1, len, sr);
+  const d = buf.getChannelData(0);
+  let lp = 0;
+  for (let i = 0; i < len; i++) {
+    const white = Math.random() * 2 - 1;
+    lp += 0.25 * (white - lp);
+    d[i] = lp * Math.exp((-i / sr) * 12);
+  }
+  return buf;
+}
+
+function biquad(context: BaseAudioContext, type: BiquadFilterType, frequency: number, Q: number, gain = 0): BiquadFilterNode {
+  const f = context.createBiquadFilter();
+  f.type = type;
+  f.frequency.value = frequency;
+  f.Q.value = Q;
+  f.gain.value = gain;
+  return f;
+}
+
+function getOverdriveBus(context: AudioContext): GainNode {
+  if (overdriveIn) return overdriveIn;
+  const input = context.createGain();
+
+  // 1. Pre-EQ (Tube Screamer)
+  const preHp = biquad(context, 'highpass', 110, 0.7);
+  const midHump = biquad(context, 'peaking', 720, 0.8, 6);
+  const preLp = biquad(context, 'lowpass', 5500, 0.7);
+
+  // 2. Dos etapas de saturación
+  const drive = context.createGain();
+  drive.gain.value = OD_DRIVE;
+  const stage1 = context.createWaveShaper();
+  const dcAtZero = Math.tanh(OD_SHAPE_K * OD_SHAPE_BIAS);
+  const norm = Math.tanh(OD_SHAPE_K * (1 + OD_SHAPE_BIAS)) - dcAtZero;
+  stage1.curve = makeCurve((x) => (Math.tanh(OD_SHAPE_K * (x + OD_SHAPE_BIAS)) - dcAtZero) / norm);
+  stage1.oversample = '4x';
+  const stage2Gain = context.createGain();
+  stage2Gain.gain.value = OD_STAGE2_GAIN;
+  const stage2 = context.createWaveShaper();
+  stage2.curve = makeCurve((x) => Math.tanh(OD_STAGE2_K * x) / Math.tanh(OD_STAGE2_K));
+  stage2.oversample = '4x';
+
+  // 3. Pantalla 1x12"
+  const cabHp = biquad(context, 'highpass', 85, 0.7);
+  const cabMud = biquad(context, 'peaking', 400, 1, -3);
+  const cabPresence = biquad(context, 'peaking', 2200, 1, 3);
+  const cabLp1 = biquad(context, 'lowpass', 4800, 0.7);
+  const cabLp2 = biquad(context, 'lowpass', 4800, 0.9);
+
+  // 4. Sala corta (en paralelo con la señal seca)
+  const room = context.createConvolver();
+  room.buffer = makeRoomImpulse(context);
+  const wet = context.createGain();
+  wet.gain.value = OD_ROOM_WET;
+
+  // 5. Make-up + volumen post-saturación
+  const makeup = context.createGain();
+  makeup.gain.value = OD_MAKEUP;
+  const outVol = context.createGain();
+  outVol.gain.value = 1;
+
+  // 6. Soft-clip de seguridad
+  const safety = context.createWaveShaper();
+  safety.curve = getBassSoftClipCurve();
+  safety.oversample = '2x';
+
+  input.connect(preHp);
+  preHp.connect(midHump);
+  midHump.connect(preLp);
+  preLp.connect(drive);
+  drive.connect(stage1);
+  stage1.connect(stage2Gain);
+  stage2Gain.connect(stage2);
+  stage2.connect(cabHp);
+  cabHp.connect(cabMud);
+  cabMud.connect(cabPresence);
+  cabPresence.connect(cabLp1);
+  cabLp1.connect(cabLp2);
+  cabLp2.connect(makeup);
+  cabLp2.connect(room);
+  room.connect(wet);
+  wet.connect(makeup);
+  makeup.connect(outVol);
+  outVol.connect(safety);
+  safety.connect(getMaster(context));
+
+  overdriveIn = input;
+  overdriveOutGain = outVol;
+  return input;
+}
+
 // Fretboard path: guitar sample with pitch correction and natural decay + loop tail.
-function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSample, volume = 1.0): number {
+function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSample, volume = 1.0, tone: GuitarTone = 'clean'): number {
   enforcePolyphony(context);
 
   const now = context.currentTime;
@@ -205,10 +362,16 @@ function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSam
 
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.52 * volume, now + 0.005);
-
   source.connect(gain);
-  gain.connect(getMaster(context));
+  if (tone === 'overdrive') {
+    // Nivel fijo hacia la saturación; el volumen va después (ver getOverdriveBus).
+    gain.gain.linearRampToValueAtTime(OD_VOICE_LEVEL, now + 0.005);
+    gain.connect(getOverdriveBus(context));
+    overdriveOutGain?.gain.setTargetAtTime(volume, now, 0.02);
+  } else {
+    gain.gain.linearRampToValueAtTime(0.52 * volume, now + 0.005);
+    gain.connect(getMaster(context));
+  }
   source.start(now);
 
   const id = voiceCounter++;
@@ -559,7 +722,8 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
 
 // forKeyboard = true  → oscillator (sustain while held, tail on release)
 // forKeyboard = false → guitar sample (for fretboard)
-export async function playNote(midi: number, forKeyboard = false, volume = 1.0): Promise<number> {
+// tone (solo guitarra): 'clean' (por defecto) o 'overdrive' — ver getOverdriveBus.
+export async function playNote(midi: number, forKeyboard = false, volume = 1.0, tone: GuitarTone = 'clean'): Promise<number> {
   const context = getCtx();
   if (context.state === 'suspended') await context.resume();
 
@@ -570,7 +734,7 @@ export async function playNote(midi: number, forKeyboard = false, volume = 1.0):
   await ensureSamples();
   const sample = chooseSample(midi);
   if (!sample) return -1;
-  return startSampleVoice(midi, context, sample, volume);
+  return startSampleVoice(midi, context, sample, volume, tone);
 }
 
 // Graceful release with short tail (call on pointerUp).
@@ -581,10 +745,10 @@ export function releaseNote(id: number): void {
 }
 
 // Quick crossfade for drag: kill old voice and start new one.
-export async function switchNote(oldId: number, newMidi: number, forKeyboard = false, volume = 1.0): Promise<number> {
+export async function switchNote(oldId: number, newMidi: number, forKeyboard = false, volume = 1.0, tone: GuitarTone = 'clean'): Promise<number> {
   if (ctx && oldId >= 0) {
     const old = voices.find((v) => v.id === oldId);
     if (old) killVoice(old, ctx, DRAG_RELEASE_TIME);
   }
-  return playNote(newMidi, forKeyboard, volume);
+  return playNote(newMidi, forKeyboard, volume, tone);
 }

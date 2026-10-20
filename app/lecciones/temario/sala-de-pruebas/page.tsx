@@ -15,6 +15,7 @@ export default function SalaDePruebasPage() {
         <p>Aquí no hay lección.</p>
         <p>Es un espacio libre para probar cosas.</p>
         <p>Tienes un mástil, un teclado y un trozo de tablatura.</p>
+        <p>El mástil puede sonar limpio o con overdrive.</p>
       </header>
 
       <section className="test-room-tuning">
@@ -27,6 +28,7 @@ export default function SalaDePruebasPage() {
         <div className="test-room-fretboard">
           <ReducedFretboardDiagram
             allowLeftHanded
+            allowOverdrive
             allowTuning
             ariaLabel="Mástil de guitarra interactivo del 0 al 12"
             startFret={0}
