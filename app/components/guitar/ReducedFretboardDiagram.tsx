@@ -1,11 +1,14 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { type GuitarTone, playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
-import { type PracticeExercise, useFretboardPractice } from '@/app/lib/useFretboardPractice';
+import { type PracticeExercise, type PracticeNoteEvent, useFretboardPractice } from '@/app/lib/useFretboardPractice';
 import { FretboardPracticeStyles, PracticeButtons, PracticeFeedback, PracticeTargetMarker } from './FretboardPractice';
+import RiffHighway from './riff/RiffHighway';
+import { RiffControls, RiffStyles } from './riff/RiffControls';
+import { useRiffController } from './riff/useRiffController';
 import HorizontalScrollbar from './HorizontalScrollbar';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
@@ -71,6 +74,17 @@ type GuideDot = {
   string?: number;
 };
 
+export interface FretboardGeometry {
+  svg: SVGSVGElement | null;
+  // Coordenadas en unidades del viewBox (pasarlas por svg.getScreenCTM() para píxeles).
+  fretX: (fret: number) => number;
+  stringY: (string: number) => number;
+  // Bordes de cada columna de traste (líneas de traste), en orden lógico de traste.
+  fretLineXs: number[];
+  startFret: number;
+  endFret: number;
+}
+
 interface ReducedFretboardDiagramProps {
   allowLeftHanded?: boolean;
   allowOverdrive?: boolean;
@@ -79,10 +93,18 @@ interface ReducedFretboardDiagramProps {
   endFret: number;
   fretLabels?: boolean;
   fretLabelsAbove?: boolean;
+  // Geometría viva del mástil (coordenadas del viewBox + el <svg>), para dibujar encima cosas
+  // alineadas traste a traste -- la usa la autopista del juego (RiffHighway).
+  geometryRef?: MutableRefObject<FretboardGeometry | null>;
   guideDots?: GuideDot[];
   notes: FretboardNote[];
+  // Llamado con cada nota que suena; puede devolver un volumen relativo (1 = normal).
+  onNoteEvent?: (event: PracticeNoteEvent) => number | void;
   // Modo "Practicar ejercicio" (opt-in): un botón por ejercicio, ver useFretboardPractice.ts.
   practiceExercises?: PracticeExercise[];
+  // Juego tipo Rocksmith (opt-in): añade "JUGAR" a la barra de controles, que despliega los ajustes
+  // y "Empezar"/"Parar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
+  riffGame?: { source: string; initialTrack?: string };
   startFret: number;
 }
 
@@ -135,7 +157,14 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, guideDots = [], notes, practiceExercises, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret }: ReducedFretboardDiagramProps) {
+  // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
+  // partida en sí la arranca "Empezar". Todos los niveles usan el mástil COMPLETO, del mismo
+  // tamaño (decisión del usuario: nada de zoom aunque Principiante solo use los trastes 0-5).
+  const hostRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [gameOpen, setGameOpen] = useState(false);
+  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret, measureRef: hostRef });
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
   // nut, igual sistema que TuningBoard.tsx (arrastre circular -> cents -> MIDI fraccionario), pero
@@ -201,9 +230,25 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const centsRef = useRef(cents);
   useEffect(() => { centsRef.current = cents; }, [cents]);
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
+  // Sin deps a propósito: se republica en cada render (zurdo, clavijas y tamaño cambian `fretX`).
+  // La publica siempre en `localGeometryRef` (la usa la autopista del juego) y, si la pasan, también
+  // en la prop `geometryRef`.
+  const localGeometryRef = useRef<FretboardGeometry | null>(null);
+  useEffect(() => {
+    const geometry: FretboardGeometry = {
+      svg: svgRef.current,
+      fretX,
+      stringY,
+      fretLineXs: Array.from({ length: fretCount + 1 }, (_, index) => drawX(boardX + index * fretWidth)),
+      startFret,
+      endFret,
+    };
+    localGeometryRef.current = geometry;
+    if (geometryRef) geometryRef.current = geometry;
+  });
   const passedFrets = new Set(guideDots.map((d) => d.fret));
   const mergedGuideDots = [
-    ...guideDots,
+    ...guideDots.filter((d) => d.fret >= startFret && d.fret <= endFret),
     ...[3, 5, 7, 9, 12]
       .filter((f) => f >= startFret && f <= endFret && !passedFrets.has(f))
       .map((f) => ({ fret: f })),
@@ -222,6 +267,30 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const { marks, toggleMark } = useNoteMarks();
   const practice = useFretboardPractice(practiceExercises);
   const registerPracticeNote = practice.registerNote;
+  // Cada nota que SUENA pasa por aquí: la cuenta el modo práctica y, si hay `onNoteEvent` (juego
+  // tipo Rocksmith, ver app/lib/riff), este devuelve el volumen relativo con el que debe sonar.
+  // Ref para poder llamarlo desde el useEffect del teclado sin cierres viejos.
+  const onNoteEventRef = useRef(onNoteEvent);
+  useEffect(() => { onNoteEventRef.current = onNoteEvent; }, [onNoteEvent]);
+  // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = panel de "JUGAR" desplegado y autopista
+  // visible; la partida en sí la arranca "Empezar".
+  const riffNoteEvent = riff.game.onNoteEvent;
+  const emitNoteEvent = useCallback((ev: PracticeNoteEvent): number => {
+    registerPracticeNote(ev);
+    const external = onNoteEventRef.current?.(ev) ?? 1;
+    return external * (riffNoteEvent(ev) ?? 1);
+  }, [registerPracticeNote, riffNoteEvent]);
+  const { stop: stopRiff } = riff;
+  // Partida en marcha o en pausa (no terminada).
+  const riffInGame = !!riffGame && gameOpen && (riff.playing || riff.paused);
+  // Ajustes de la partida: delante del juego mientras no se toca; se pliegan al empezar o
+  // continuar, y se despliegan solos al pausar o terminar.
+  const settingsOpen = !riff.playing;
+  function toggleGame() {
+    if (gameOpen) stopRiff();
+    setGameOpen((open) => !open);
+  }
+  const showHighway = !!riffGame && gameOpen && !riff.narrow && !!riff.chart;
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -295,20 +364,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
-        registerPracticeNote({ string: entry.string, fret: entry.fret, kind: 'pluck' });
+        const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'pluck' });
         kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
         syncPositions();
-        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current, toneRef.current);
+        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
         else releaseNote(id);
       } else {
         const curEntry = kbKeysHeldRef.current.get(cur.code);
         if (curEntry && entry.fret > curEntry.fret) {
-          registerPracticeNote({ string: entry.string, fret: entry.fret, kind: 'hammer' });
+          const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'hammer' });
           kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
           syncPositions();
-          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current, toneRef.current);
+          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
           const sv = kbStringVoiceRef.current.get(entry.string);
           if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
           else releaseNote(id);
@@ -325,10 +394,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       if (!cur || cur.code !== e.code) return;
       const next = getHighestOnString(entry.string);
       if (next) {
-        registerPracticeNote({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' });
+        const gain = emitNoteEvent({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' });
         kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
         syncPositions();
-        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current, toneRef.current);
+        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current * gain, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
         else releaseNote(id);
@@ -349,7 +418,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       setKbPositions([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange, lefty, registerPracticeNote]);
+  }, [kbMode, kbRange, lefty, emitNoteEvent]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -421,11 +490,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
       if (ptStringVoiceRef.current.size >= 3) return;
-      registerPracticeNote({ ...pos, kind: 'pluck' });
+      const gain = emitNoteEvent({ ...pos, kind: 'pluck' });
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
       syncPt();
-      const id = await playNote(midi, false, volumeRef.current, toneRef.current);
+      const id = await playNote(midi, false, volumeRef.current * gain, toneRef.current);
       const sv = ptStringVoiceRef.current.get(pos.string);
       if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
       else releaseNote(id);
@@ -433,10 +502,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const curEntry = ptHeldRef.current.get(cur.pid);
       if (curEntry && pos.fret > curEntry.fret) {
-        registerPracticeNote({ ...pos, kind: 'hammer' });
+        const gain = emitNoteEvent({ ...pos, kind: 'hammer' });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
-        const id = await switchNote(cur.voiceId, midi, false, volumeRef.current, toneRef.current);
+        const id = await switchNote(cur.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
         const sv = ptStringVoiceRef.current.get(pos.string);
         if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
@@ -454,19 +523,19 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const sv = ptStringVoiceRef.current.get(pos.string);
       if (sv?.pid === e.pointerId) {
-        registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
+        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
         syncPt();
-        const id = await switchNote(sv.voiceId, midi, false, volumeRef.current, toneRef.current);
+        const id = await switchNote(sv.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
         const sv2 = ptStringVoiceRef.current.get(pos.string);
         if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
       } else if (sv) {
         const activeEntry = ptHeldRef.current.get(sv.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
-          registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
+          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
-          const id = await switchNote(sv.voiceId, midi, false, volumeRef.current, toneRef.current);
+          const id = await switchNote(sv.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
           const sv2 = ptStringVoiceRef.current.get(pos.string);
           if (sv2?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
           else releaseNote(id);
@@ -491,20 +560,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       }
       const newVoice = ptStringVoiceRef.current.get(pos.string);
       if (!newVoice && ptStringVoiceRef.current.size < 3) {
-        registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
+        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
-        const id = await playNote(midi, false, volumeRef.current, toneRef.current);
+        const id = await playNote(midi, false, volumeRef.current * gain, toneRef.current);
         const sv = ptStringVoiceRef.current.get(pos.string);
         if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
         else releaseNote(id);
       } else if (newVoice) {
         const activeEntry = ptHeldRef.current.get(newVoice.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
-          registerPracticeNote({ ...pos, kind: 'slide', from: curEntry });
+          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
-          const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current, toneRef.current);
+          const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
           const sv = ptStringVoiceRef.current.get(pos.string);
           if (sv?.pid === e.pointerId) ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: id });
           else releaseNote(id);
@@ -525,10 +594,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const next = getHighestOnPtString(curEntry.string);
     if (next) {
       const nextEntry = ptHeldRef.current.get(next.pid);
-      if (nextEntry) registerPracticeNote({ string: nextEntry.string, fret: nextEntry.fret, kind: 'pulloff' });
+      const gain = nextEntry ? emitNoteEvent({ string: nextEntry.string, fret: nextEntry.fret, kind: 'pulloff' }) : 1;
       ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: -1 });
       syncPt();
-      const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current, toneRef.current);
+      const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current * gain, toneRef.current);
       const sv = ptStringVoiceRef.current.get(curEntry.string);
       if (sv?.pid === next.pid) ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: id });
       else releaseNote(id);
@@ -584,17 +653,26 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     <>
     {/* Fuera de .midi-instrument-host a propósito: el aviso flotante de MidiInstrumentChrome se
         coloca encima del host, y taparía estos botones si vivieran dentro. */}
+    {riffGame && <RiffStyles />}
     {practiceExercises && (
       <>
         <FretboardPracticeStyles />
         <PracticeButtons activeIndex={practice.activeIndex} exercises={practiceExercises} onToggle={practice.toggle} />
       </>
     )}
-    <div className="midi-instrument-host">
+    <div className="midi-instrument-host" ref={hostRef}>
     {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
         salgan centrados DELANTE del mástil aunque la barra de controles vaya en flujo (móvil). */}
-    <div style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}>
-    <div className="reduced-fretboard-wrap" ref={scrollRef}>
+    <div
+      className={riffGame ? 'riff-stage' : undefined}
+      data-hits={riffGame && gameOpen ? riff.game.hitCount : undefined}
+      data-status={riffGame && gameOpen ? riff.game.status : undefined}
+      ref={stageRef}
+      style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}
+    >
+    {showHighway && <div aria-hidden="true" className="riff-highway-space" />}
+    {/* scroll-margin: al empezar la partida, que también se vea la barra de controles (PAUSA). */}
+    <div className="reduced-fretboard-wrap" ref={scrollRef} style={riffGame ? { scrollMarginBottom: '72px' } : undefined}>
     <svg
       ref={svgRef}
       className="reduced-fretboard"
@@ -639,7 +717,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           r="7"
         />
       ))}
-      {notes.map((note) => (
+      {notes.filter((note) => note.fret >= startFret && note.fret <= endFret).map((note) => (
         <g key={`${note.string}-${note.fret}-${note.label}`}>
           <circle
             className={`reduced-note ${noteToneClass(note)}`}
@@ -710,6 +788,28 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     </svg>
     </div>
     <PracticeFeedback feedback={practice.feedback} />
+    {showHighway && riff.chart && (
+      <RiffHighway
+        activeStrings={riff.profile?.strings}
+        chart={riff.chart}
+        colorBy={riff.profile?.colorBy ?? 'string'}
+        geometryRef={localGeometryRef}
+        previewTime={riff.previewTime}
+        sessionRef={riff.game.sessionRef}
+        stageRef={stageRef}
+      />
+    )}
+    {riffGame && gameOpen && settingsOpen && (
+      <div className="riff-overlay">
+        <RiffControls
+          endFret={endFret}
+          // Que se vea el mástil entero, la autopista encima y la barra (PAUSA) debajo.
+          // Instantáneo a propósito: el 'smooth' lanzado desde un clic real de ratón se cancelaba.
+          onStart={() => scrollRef.current?.scrollIntoView({ block: 'end' })}
+          riff={riff}
+        />
+      </div>
+    )}
     </div>
     <HorizontalScrollbar targetRef={scrollRef} />
     <MidiInstrumentChrome
@@ -720,8 +820,27 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         </span>
       )}
     >
+      {riffGame && (
+        <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">
+          JUGAR
+        </button>
+      )}
+      {/* PAUSA, junto a JUGAR mientras hay partida: la para y despliega los ajustes delante del
+          juego (desde ahí, "Continuar" o "Volver a empezar"). Pulsarla en pausa = continuar. */}
+      {riffInGame && (
+        <button
+          aria-pressed={riff.paused}
+          className="riff-pause-toggle"
+          onClick={() => (riff.paused ? riff.resume() : riff.pause())}
+          type="button"
+        >
+          PAUSA
+        </button>
+      )}
       {allowLeftHanded && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
-      {allowTuning && (
+      {/* Durante la partida (también en pausa), afinación, colores y metrónomo -- que no se usan
+          jugando -- se esconden. CLEAN/OVERDRIVE se queda. */}
+      {allowTuning && !riffInGame && (
         <div className="midi-anchor">
           <button
             onClick={() => setShowTuning(s => !s)}
@@ -760,7 +879,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           {tone === 'overdrive' ? 'OVERDRIVE' : 'CLEAN'}
         </button>
       )}
-      <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />
+      {!riffInGame && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
       <div className="midi-anchor">
         <button
           className="midi-kb-toggle"
@@ -793,7 +912,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           onChange={(e) => setVolume(Number(e.target.value))}
         />
       </label>
-      <MetronomeControls {...metr} />
+      {!riffInGame && <MetronomeControls {...metr} />}
     </MidiInstrumentChrome>
     </div>
     </>

@@ -379,6 +379,85 @@ function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSam
   return id;
 }
 
+// Notas de fondo del juego tipo Rocksmith (app/lib/riff): la canción suena sola aunque el alumno
+// no toque. Van programadas a una hora EXACTA del AudioContext (`at`) con su propio final, y NO
+// entran en `voices`: MAX_VOICES = 3 es la polifonía de lo que toca el alumno, y una nota de fondo
+// nunca debe robarle (ni que le roben) una voz. Cada nota se para sola al acabar.
+export interface GuideNoteHandle {
+  // Sube (o baja) el volumen de esta nota de fondo sin volver a atacarla: si aún no ha empezado,
+  // empezará ya con ese volumen; si está sonando, sube suavemente. Es lo que hace un acierto en
+  // los niveles traducidos del juego ("la pista se abre", como en Rock Band).
+  setVolume(volume: number): void;
+}
+
+export async function scheduleGuideNote(midi: number, at: number, duration: number, volume = 0.35): Promise<GuideNoteHandle | null> {
+  const context = getCtx();
+  await ensureSamples();
+  const sample = chooseSample(midi);
+  if (!sample) return null;
+  const start = Math.max(at, context.currentTime);
+  const end = start + Math.max(0.08, duration);
+  const source = context.createBufferSource();
+  source.buffer = sample.buffer;
+  source.playbackRate.value = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
+  if (sample.loopEnd > sample.loopStart + 8) {
+    source.loop = true;
+    source.loopStart = sample.loopStart / sample.sampleRate;
+    source.loopEnd = sample.loopEnd / sample.sampleRate;
+  }
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(0.52 * volume, start + 0.005);
+  gain.gain.setTargetAtTime(0.0001, end, 0.05);
+  source.connect(gain);
+  gain.connect(getMaster(context));
+  source.start(start);
+  source.stop(end + 0.4);
+  return {
+    setVolume(next: number) {
+      const now = context.currentTime;
+      if (now >= end) return;
+      const g = gain.gain;
+      g.cancelScheduledValues(now);
+      if (now < start) {
+        g.setValueAtTime(0.0001, start);
+        g.linearRampToValueAtTime(0.52 * next, start + 0.005);
+      } else {
+        g.setValueAtTime(Math.max(0.0001, g.value), now);
+        g.linearRampToValueAtTime(0.52 * next, now + 0.03);
+      }
+      g.setTargetAtTime(0.0001, end, 0.05);
+    },
+  };
+}
+
+// "Clac" apagado y SIN afinación (ruido filtrado muy corto) para cuando, en un nivel traducido del
+// juego, el alumno toca un botón equivocado: como el sonido de fallo de Guitar Hero. Al no tener
+// nota, nunca desafina contra la canción de fondo.
+export function playDeadNote(volume = 0.6): void {
+  const context = getCtx();
+  const now = context.currentTime;
+  const length = Math.floor(context.sampleRate * 0.07);
+  const buffer = context.createBuffer(1, length, context.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  const band = context.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 1400;
+  band.Q.value = 1.1;
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.32 * volume, now + 0.003);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+  source.connect(band);
+  band.connect(gain);
+  gain.connect(getMaster(context));
+  source.start(now);
+  source.stop(now + 0.08);
+}
+
 // ---------------------------------------------------------------------------
 // Synth bass (Master of Puppets' 4-string bass track, AlphaTabPlayer.tsx's
 // multiTrack mode). Fully synthesized (no samples), like the metronome/drum

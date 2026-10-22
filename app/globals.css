@@ -62,7 +62,7 @@ video {
   background: #6b7280;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link) {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):not(.portada2-nav-link) {
   animation: link-tilt 2.4s ease-in-out infinite !important;
   color: #047857 !important;
   display: inline-block;
@@ -76,12 +76,12 @@ a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz
   will-change: transform;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):hover,
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):not(.portada2-nav-link):hover,
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):not(.portada2-nav-link):focus-visible {
   color: #dc2626 !important;
 }
 
-a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):focus-visible {
+a:not(.temario-pager-link):not(.site-home-link):not(.quiz-button-link):not(.quiz-back-link):not(.quiz-back-arrow):not(.test-room-button-link):not(.portada2-nav-link):focus-visible {
   outline: 3px solid currentColor;
   outline-offset: 4px;
 }
@@ -336,6 +336,12 @@ html[data-theme='dark'] .site-shell {
 html[data-theme='dark'] .site-shell img,
 html[data-theme='dark'] .site-shell iframe {
   filter: invert(1) hue-rotate(180deg);
+}
+
+/* Excepción: el fondo a lápiz de la portada nueva SÍ se deja invertir con el resto de la página,
+   para que en oscuro quede como un dibujo blanco sobre negro (pizarra) en vez de un recuadro claro. */
+html[data-theme='dark'] .site-shell img.portada2-bg {
+  filter: none;
 }
 
 

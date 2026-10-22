@@ -1,0 +1,90 @@
+import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import * as at from '@coderline/alphatab';
+import { buildChart, type Chart } from '../app/lib/riff/chart';
+import { RIFF_LEVELS } from '../app/lib/riff/levels';
+import { reduceChart } from '../app/lib/riff/reduce';
+
+// Traducción de la tablatura real a niveles sencillos (app/lib/riff/reduce.ts), estilo Guitar Hero.
+
+function chartOf(file: string, track: number): Chart {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+  return buildChart(at, score, track, 24);
+}
+
+const SONGS: Array<[string, string, number]> = [
+  ['Cumpleaños feliz', 'cumpleanos-feliz-dos-compases.gp', 0],
+  ['Feliz Navidad', 'feliz-navidad.gp', 0],
+  ['Master of Puppets (James)', 'prueba-master-of-puppets.gp', 1],
+  ['Master of Puppets (Kirk)', 'prueba-master-of-puppets.gp', 2],
+];
+
+for (const [name, file, track] of SONGS) {
+  for (const level of ['principiante', 'facil'] as const) {
+    test(`${name} en ${level}: botones del nivel, aire entre notas, dirección y repeticiones`, () => {
+      const real = chartOf(file, track);
+      const profile = RIFF_LEVELS[level];
+      const chart = reduceChart(real, profile);
+      const beat = 60 / real.bpm;
+
+      expect(chart.notes.length).toBeGreaterThan(0);
+      expect(chart.notes.length).toBeLessThanOrEqual(real.notes.length);
+      // Se quita como MUCHO la mitad de los golpes (decisión del usuario); Fácil, aún menos.
+      const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
+      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'principiante' ? 0.45 : 0.8);
+      expect(chart.sourceNotes).toBe(real.notes);
+
+      for (const note of chart.notes) {
+        expect(profile.strings).toContain(note.string);
+        expect(note.fret).toBeGreaterThanOrEqual(profile.minFret);
+        expect(note.fret).toBeLessThanOrEqual(profile.maxFret);
+      }
+      // Dentro de una frase: misma nota real -> mismo botón; si sube, a la derecha; si baja, a la
+      // izquierda (comparando la nota guía real de cada golpe).
+      const lead = (i: number) => {
+        const sources = chart.notes[i].sourceIds!.map((id) => real.notes[id]).filter((n) => Math.abs(n.t - chart.notes[i].t) < 0.005);
+        const sorted = sources.sort((a, b) => a.midi - b.midi);
+        const low = sorted[0];
+        const power = sorted.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - low.midi));
+        return power ? low.midi : sorted[sorted.length - 1].midi;
+      };
+      // Sin acordes y nunca más juntas que `minGapBeats` (pulsos) ni que `minGapSeconds`; y una
+      // nota que repite la anterior, nunca antes de `repeatGapSeconds` (fuera "chugs" rápidos).
+      for (let i = 1; i < chart.notes.length; i++) {
+        const gap = chart.notes[i].t - chart.notes[i - 1].t;
+        expect(gap).toBeGreaterThanOrEqual(profile.minGapBeats * beat - 0.06 * beat);
+        expect(gap).toBeGreaterThanOrEqual(profile.minGapSeconds - 0.002);
+        if (lead(i) === lead(i - 1)) expect(gap).toBeGreaterThanOrEqual(profile.repeatGapSeconds - 0.002);
+      }
+
+      let violations = 0;
+      for (let i = 1; i < chart.notes.length; i++) {
+        if (chart.notes[i].phrase !== chart.notes[i - 1].phrase) continue;
+        const dPitch = Math.sign(lead(i) - lead(i - 1));
+        const dFret = Math.sign(chart.notes[i].fret - chart.notes[i - 1].fret);
+        if (dPitch !== dFret) violations++;
+      }
+      // Solo puede romperse cuando una frase tiene más alturas distintas que botones.
+      expect(violations).toBeLessThanOrEqual(Math.ceil(chart.notes.length * 0.05));
+
+      // Cada nota real tiene como mucho un dueño, y los dueños van en orden.
+      const owners = chart.notes.flatMap((n) => n.sourceIds!);
+      expect(new Set(owners).size).toBe(owners.length);
+    });
+  }
+}
+
+test('Fácil: una frase que cabe en la cuerda 6 (trastes 0-12) se coloca EXACTA (mismos intervalos)', () => {
+  const real = chartOf('feliz-navidad.gp', 0);
+  const chart = reduceChart(real, RIFF_LEVELS.facil);
+  // Feliz Navidad va en corcheas: Fácil (negras) se queda con las notas de cada pulso.
+  expect(chart.notes.length).toBeGreaterThan(real.notes.length / 3);
+  const realAt = (i: number) => real.notes.find((n) => Math.abs(n.t - chart.notes[i].t) < 0.005)!.midi;
+  let compared = 0;
+  for (let i = 1; i < chart.notes.length; i++) {
+    if (chart.notes[i].phrase !== chart.notes[i - 1].phrase) continue;
+    expect(chart.notes[i].midi - chart.notes[i - 1].midi).toBe(realAt(i) - realAt(i - 1));
+    compared++;
+  }
+  expect(compared).toBeGreaterThan(3);
+});

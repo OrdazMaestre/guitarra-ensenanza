@@ -26,6 +26,7 @@ export default function SalaDePruebasPage() {
 
       <section className="test-room-instruments">
         <div className="test-room-fretboard">
+          {/* JUGAR (en la barra del mástil) abre el juego tipo Rocksmith con la tablatura de esta sala. */}
           <ReducedFretboardDiagram
             allowLeftHanded
             allowOverdrive
@@ -35,6 +36,7 @@ export default function SalaDePruebasPage() {
             endFret={12}
             fretLabels
             notes={[]}
+            riffGame={{ source: '/tabs/prueba-master-of-puppets.gp', initialTrack: 'Rhythm Guitar (Kirk)' }}
           />
         </div>
 

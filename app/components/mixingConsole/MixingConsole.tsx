@@ -120,6 +120,24 @@ export default function MixingConsole() {
     };
   }, []);
 
+  // Apertura desde fuera (enlace "MÚSICA" de la portada nueva, portada-nueva/PortadaShell.tsx):
+  // un CustomEvent en window en vez de levantar el estado `open` a un contexto, porque este
+  // componente vive montado una sola vez en layout.tsx. Respeta el bloqueo infantil igual que el
+  // botón -- bloqueada, el evento no hace nada. Se dispara dentro del click del enlace, así que el
+  // autoplay de la primera apertura sigue contando como gesto del usuario.
+  useEffect(() => {
+    function handleOpenRequest() {
+      if (locked) return;
+      setOpen(true);
+      if (!hasAutoPlayedOnOpenRef.current) {
+        hasAutoPlayedOnOpenRef.current = true;
+        engine.play();
+      }
+    }
+    window.addEventListener('mixing-console:open', handleOpenRequest);
+    return () => window.removeEventListener('mixing-console:open', handleOpenRequest);
+  }, [locked, engine]);
+
   function selectSong(songId: SongId) {
     engine.selectSong(songId);
     engine.play();

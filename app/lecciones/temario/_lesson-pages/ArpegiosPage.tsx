@@ -11,8 +11,16 @@ type ArpeggioExercise = {
   steps: string[];
 };
 
-const stringX = (stringNumber: number) => 18 + (6 - stringNumber) * 20;
-const fretY = (fret: number) => 22 + (fret - 0.5) * 19;
+// Misma orientación y geometría que los diagramas de temario/acordes (AcordesPage.tsx): girado
+// 90° a la izquierda -- cejuela a la izquierda, trastes de izquierda a derecha, Mi agudo arriba y Mi
+// grave abajo -- para que coincida con los mástiles MIDI del resto del sitio.
+const stringY = (stringNumber: number) => 18 + (stringNumber - 1) * 20;
+const fretX = (fret: number) => 22 + (fret - 0.5) * 19;
+const neckCenterY = (stringY(1) + stringY(6)) / 2;
+const fretInlays = [
+  { fret: 3, roman: 'III' },
+  { fret: 5, roman: 'V' },
+];
 
 function FaMajorChordDiagram() {
   const barre = { fret: 1, from: 6, to: 1, label: '1' };
@@ -27,31 +35,37 @@ function FaMajorChordDiagram() {
       <figcaption>
         <span className="primary-chord-name">F</span> <span className="local-chord-name">(FA Mayor)</span>
       </figcaption>
-      <svg className="chord-diagram" viewBox="0 0 136 124" role="img" aria-label="Acorde F FA Mayor">
-        <line className="nut" x1="18" x2="118" y1="22" y2="22" />
-        {[0, 1, 2, 3, 4, 5].map((index) => (
-          <line className="string-line" key={`string-${index}`} x1={18 + index * 20} x2={18 + index * 20} y1="22" y2="98" />
+      <svg className="chord-diagram" viewBox="0 0 143 136" role="img" aria-label="Acorde F FA Mayor">
+        <line className="nut" x1="22" x2="22" y1="18" y2="118" />
+        {[1, 2, 3, 4, 5, 6].map((string) => (
+          <line className="string-line" key={`string-${string}`} x1="22" x2="117" y1={stringY(string)} y2={stringY(string)} />
         ))}
-        {[1, 2, 3, 4].map((index) => (
-          <line className="fret-line" key={`fret-${index}`} x1="18" x2="118" y1={22 + index * 19} y2={22 + index * 19} />
+        {[1, 2, 3, 4, 5].map((index) => (
+          <line className="fret-line" key={`fret-${index}`} x1={22 + index * 19} x2={22 + index * 19} y1="18" y2="118" />
+        ))}
+        {fretInlays.map(({ fret, roman }) => (
+          <g key={`inlay-${fret}`} aria-hidden="true">
+            <circle className="fret-inlay" cx={fretX(fret)} cy={neckCenterY} r="3" />
+            <text className="fret-inlay-label" x={fretX(fret)} y="130">{roman}</text>
+          </g>
         ))}
         <g>
           <rect
             className="barre"
-            height="14"
+            width="14"
             rx="7"
-            width={Math.abs(stringX(barre.to) - stringX(barre.from)) + 16}
-            x={Math.min(stringX(barre.from), stringX(barre.to)) - 8}
-            y={fretY(barre.fret) - 7}
+            height={Math.abs(stringY(barre.to) - stringY(barre.from)) + 16}
+            x={fretX(barre.fret) - 7}
+            y={Math.min(stringY(barre.from), stringY(barre.to)) - 8}
           />
-          <text className="finger-label" x={(stringX(barre.from) + stringX(barre.to)) / 2} y={fretY(barre.fret) + 4}>
+          <text className="finger-label" x={fretX(barre.fret)} y={(stringY(barre.from) + stringY(barre.to)) / 2 + 4}>
             {barre.label}
           </text>
         </g>
         {markers.map((marker) => (
           <g key={`${marker.string}-${marker.fret}-${marker.finger}`}>
-            <circle className="finger-dot" cx={stringX(marker.string)} cy={fretY(marker.fret)} r="8" />
-            <text className="finger-label" x={stringX(marker.string)} y={fretY(marker.fret) + 4}>
+            <circle className="finger-dot" cx={fretX(marker.fret)} cy={stringY(marker.string)} r="8" />
+            <text className="finger-label" x={fretX(marker.fret)} y={stringY(marker.string) + 4}>
               {marker.finger}
             </text>
           </g>
@@ -317,6 +331,18 @@ export default function ArpegiosPage({ previous, next, quizHref }: LessonPagePro
           fill: #f1f5f9;
           stroke: #047857;
           stroke-width: 2.5;
+        }
+
+        .fret-inlay {
+          fill: #c4c4cb;
+          stroke: none;
+        }
+
+        .fret-inlay-label {
+          fill: #9a9aa2;
+          font-size: 9px;
+          font-weight: 700;
+          text-anchor: middle;
         }
 
         .finger-label {
