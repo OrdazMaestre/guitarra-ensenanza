@@ -45,12 +45,14 @@ export default function PortadaNuevaPage() {
                 </Link>
                 <span className="portada2-strokes portada2-strokes-right" aria-hidden="true">
                   <svg viewBox="0 0 60 60" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                    <g stroke="currentColor" strokeWidth="4">
-                      <path d="M10 18 3 11" />
-                      <path d="M8 30H1" />
-                      <path d="M18 9 17 2" />
+                    <g className="portada2-cursor">
+                      <g className="portada2-cursor-rays" stroke="currentColor" strokeWidth="4">
+                        <path d="M10 18 3 11" />
+                        <path d="M8 30H1" />
+                        <path d="M18 9 17 2" />
+                      </g>
+                      <path d="M20 18 52 34 38 37 46 52 39 55 31 40 21 49Z" fill="#111111" stroke="#ffffff" strokeWidth="2" />
                     </g>
-                    <path d="M20 18 52 34 38 37 46 52 39 55 31 40 21 49Z" fill="#111111" stroke="#ffffff" strokeWidth="2" />
                   </svg>
                 </span>
               </span>
@@ -411,7 +413,11 @@ export default function PortadaNuevaPage() {
           width: 0.32em;
         }
 
+        /* Capa propia por encima del enlace PASOS (su balanceo global crea otra capa que si no
+           taparía al cursor cuando baja a "pulsarlo"). */
         .portada2-strokes-right {
+          position: relative;
+          z-index: 2;
           align-self: flex-start;
           margin-left: 0.06em;
           width: 0.46em;
@@ -420,7 +426,48 @@ export default function PortadaNuevaPage() {
         .portada2-strokes svg {
           display: block;
           height: auto;
+          overflow: visible;
           width: 100%;
+        }
+
+        /* El cursor "hace click" en PASOS cada 4 s: baja hasta la última S, se encoge un momento
+           (la pulsación) y vuelve a su sitio; las rayitas solo se ven en reposo (encima de la S
+           turquesa se perdían). Los px son
+           unidades del viewBox (60 = ancho del svg = 0.46em), así que el recorrido escala con el
+           título en cualquier pantalla. pointer-events: none en .portada2-strokes para que, al
+           pasar por encima de PASOS, el cursor dibujado no robe el click al enlace de verdad. */
+        .portada2-strokes {
+          pointer-events: none;
+        }
+
+        .portada2-cursor {
+          animation: portada2-cursor-click 4s ease-in-out infinite;
+          transform-origin: 20px 18px;
+        }
+
+        .portada2-cursor-rays {
+          animation: portada2-cursor-rays 4s ease-in-out infinite;
+        }
+
+        @keyframes portada2-cursor-click {
+          0%, 8% { transform: translate(0, 0) scale(1); }
+          34% { transform: translate(-50px, 54px) scale(1); }
+          40% { transform: translate(-50px, 54px) scale(0.72); }
+          47%, 60% { transform: translate(-50px, 54px) scale(1); }
+          86%, 100% { transform: translate(0, 0) scale(1); }
+        }
+
+        @keyframes portada2-cursor-rays {
+          0%, 4% { opacity: 1; }
+          12%, 86% { opacity: 0; }
+          96%, 100% { opacity: 1; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .portada2-cursor,
+          .portada2-cursor-rays {
+            animation: none;
+          }
         }
 
         .portada2-title-bottom {

@@ -6,8 +6,7 @@ import type { RiffController } from './useRiffController';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
 // del mástil MIDI (ReducedFretboardDiagram, prop `riffGame`): desplegables de ajustes + "Empezar"
-// y "Parar". Sin puntos ni descalificación: la nota correcta a tiempo (±0,3 s) suena normal; el
-// resto, bajito. Ver app/lib/riff/ y useRiffController.ts.
+// / "Volver a empezar" y "Continuar". Ver app/lib/riff/ y useRiffController.ts.
 
 const SPEEDS = [0.5, 0.75, 1] as const;
 const MODE_LABEL: Record<RiffMode, string> = { ritmo: 'Con ritmo', paso: 'Paso a paso' };
@@ -19,14 +18,15 @@ function shortTrackName(name: string) {
   return name.match(/\(([^)]+)\)/)?.[1] ?? name;
 }
 
+// Orden (decisión del usuario): Pista, Nivel, Velocidad, Ritmo, Compases/bucle, acompañamiento.
+// Las notas que pasan del último traste se siguen recolocando (chart.ts), pero ya sin aviso.
 interface Props {
-  endFret: number;
   // Al pulsar "Empezar" (el mástil lo usa para centrarse en pantalla).
   onStart?: () => void;
   riff: RiffController;
 }
 
-export function RiffControls({ endFret, onStart, riff }: Props) {
+export function RiffControls({ onStart, riff }: Props) {
   // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -77,6 +77,15 @@ export function RiffControls({ endFret, onStart, riff }: Props) {
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
+        {riff.tracks.length > 1 && (
+          <RiffDropdown {...menuProps('pista')} label="Pista" value={currentTrack ? shortTrackName(currentTrack.name) : '—'}>
+            {riff.tracks.map((track) => (
+              <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
+                {track.name}
+              </button>
+            ))}
+          </RiffDropdown>
+        )}
         <RiffDropdown {...menuProps('nivel')} label="Nivel" value={levelLabel(riff.level)}>
           {RIFF_LEVEL_ORDER.map((value) => {
             const available = value === 'experto' || RIFF_LEVELS[value].available;
@@ -87,15 +96,6 @@ export function RiffControls({ endFret, onStart, riff }: Props) {
             );
           })}
         </RiffDropdown>
-        {riff.tracks.length > 1 && (
-          <RiffDropdown {...menuProps('pista')} label="Pista" value={currentTrack ? shortTrackName(currentTrack.name) : '—'}>
-            {riff.tracks.map((track) => (
-              <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
-                {track.name}
-              </button>
-            ))}
-          </RiffDropdown>
-        )}
         <RiffDropdown {...menuProps('velocidad')} label="Velocidad" value={`${Math.round(riff.speed * 100)}%`}>
           {SPEEDS.map((value) => (
             <button aria-pressed={riff.speed === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setSpeed(value))} type="button">
@@ -148,16 +148,6 @@ export function RiffControls({ endFret, onStart, riff }: Props) {
       </div>
 
       {riff.loadError && <p className="riff-note">No se pudo cargar la tablatura.</p>}
-      {chart && chart.movedAboveMaxFret > 0 && (
-        <p className="riff-note">
-          {chart.movedAboveMaxFret} notas pasaban del traste {endFret}.
-          <br />
-          Van en una cuerda más aguda o una octava más grave.
-        </p>
-      )}
-      {chart && chart.skippedAboveMaxFret > 0 && (
-        <p className="riff-note">{chart.skippedAboveMaxFret} notas no caben en este mástil y no salen.</p>
-      )}
       {riff.narrow && (
         <p className="riff-narrow-warning" role="status">
           Esta pantalla es muy estrecha para jugar.
@@ -215,6 +205,30 @@ function clampBar(value: string, maxBar: number) {
 export function RiffStyles() {
   return (
     <style>{`
+      /* Mástil durante la partida (petición del usuario): madera algo transparente; separaciones de
+         trastes, cejuela y círculos en AMARILLO, opacos y con un brillo moderado; las cuerdas del
+         <svg> se esconden porque las dibuja la autopista (RiffHighway) con su color y su
+         transparencia sincronizada con la música. */
+      .riff-live .reduced-board-bg {
+        fill-opacity: 0.78;
+      }
+
+      .riff-live .reduced-string {
+        opacity: 0;
+      }
+
+      .riff-live .reduced-fret,
+      .riff-live .reduced-nut {
+        filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.75));
+        stroke: #facc15;
+      }
+
+      .riff-live .reduced-guide-dot {
+        fill: #facc15;
+        filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.8));
+        opacity: 1;
+      }
+
       .riff-open-toggle {
         background: transparent;
         border: 1.5px solid #047857;
@@ -468,6 +482,17 @@ export function RiffStyles() {
          imágenes, para conservar sus colores reales (oscura). */
       html[data-theme='dark'] .riff-highway {
         filter: invert(1) hue-rotate(180deg);
+      }
+
+      /* ...y durante la partida también el mástil, para que encaje con la autopista (madera oscura,
+         trastes amarillos). Sus números de traste, en blanco: así se leen sobre la página oscura. */
+      html[data-theme='dark'] .riff-live svg.reduced-fretboard {
+        filter: invert(1) hue-rotate(180deg);
+      }
+
+      html[data-theme='dark'] .riff-live .reduced-fret-number,
+      html[data-theme='dark'] .riff-live .reduced-roman-fret {
+        fill: #ffffff;
       }
     `}</style>
   );

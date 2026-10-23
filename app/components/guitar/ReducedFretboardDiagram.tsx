@@ -164,7 +164,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [gameOpen, setGameOpen] = useState(false);
-  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret, measureRef: hostRef });
+  // Posiciones que suenan AHORA (teclado y ratón/dedo), para las notas repetidas con la pulsación
+  // mantenida del juego. Se rellena más abajo, cuando existen los refs de las pulsaciones.
+  const heldPositionsRef = useRef<() => { string: number; fret: number }[]>(() => []);
+  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret, measureRef: hostRef, heldRef: heldPositionsRef });
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
   // nut, igual sistema que TuningBoard.tsx (arrastre circular -> cents -> MIDI fraccionario), pero
@@ -275,6 +278,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = panel de "JUGAR" desplegado y autopista
   // visible; la partida en sí la arranca "Empezar".
   const riffNoteEvent = riff.game.onNoteEvent;
+  // Durante la partida el mástil no suena (ver RiffSession.judge); también la nota a la que vuelve
+  // una cuerda al arrastrar el dedo a otra, que no pasa por emitNoteEvent.
+  const riffPlayingRef = useRef(false);
+  useEffect(() => { riffPlayingRef.current = riff.playing; }, [riff.playing]);
   const emitNoteEvent = useCallback((ev: PracticeNoteEvent): number => {
     registerPracticeNote(ev);
     const external = onNoteEventRef.current?.(ev) ?? 1;
@@ -303,6 +310,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
 
   const kbKeysHeldRef = useRef(new Map<string, { string: number; fret: number; midi: number }>());
   const kbStringVoiceRef = useRef(new Map<number, { code: string; voiceId: number }>());
+  useEffect(() => {
+    heldPositionsRef.current = () => {
+      const held: { string: number; fret: number }[] = [];
+      for (const { code } of kbStringVoiceRef.current.values()) {
+        const entry = kbKeysHeldRef.current.get(code);
+        if (entry) held.push({ string: entry.string, fret: entry.fret });
+      }
+      for (const { pid } of ptStringVoiceRef.current.values()) {
+        const entry = ptHeldRef.current.get(pid);
+        if (entry) held.push({ string: entry.string, fret: entry.fret });
+      }
+      return held;
+    };
+  }, []);
   const [kbPositions, setKbPositions] = useState<{ string: number; fret: number }[]>([]);
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
@@ -549,7 +570,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         const next = getHighestOnPtString(oldStr);
         if (next) {
           ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: -1 });
-          const id = await switchNote(oldVoice.voiceId, next.midi, false, volumeRef.current, toneRef.current);
+          const id = await switchNote(oldVoice.voiceId, next.midi, false, volumeRef.current * (riffPlayingRef.current ? 0 : 1), toneRef.current);
           const sv = ptStringVoiceRef.current.get(oldStr);
           if (sv?.pid === next.pid) ptStringVoiceRef.current.set(oldStr, { pid: next.pid, voiceId: id });
           else releaseNote(id);
@@ -664,8 +685,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
         salgan centrados DELANTE del mástil aunque la barra de controles vaya en flujo (móvil). */}
     <div
-      className={riffGame ? 'riff-stage' : undefined}
+      // `riff-live`: partida en curso o en pausa -> el mástil cambia de aspecto (ver RiffStyles).
+      className={riffGame ? `riff-stage${riffInGame ? ' riff-live' : ''}` : undefined}
       data-hits={riffGame && gameOpen ? riff.game.hitCount : undefined}
+      data-score={riffGame && gameOpen ? riff.game.score : undefined}
       data-status={riffGame && gameOpen ? riff.game.status : undefined}
       ref={stageRef}
       style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}
@@ -793,6 +816,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         activeStrings={riff.profile?.strings}
         chart={riff.chart}
         colorBy={riff.profile?.colorBy ?? 'string'}
+        fretRange={riff.profile ? [riff.profile.minFret, riff.profile.maxFret] : undefined}
+        freeStrings={!!riff.profile?.freeStrings}
         geometryRef={localGeometryRef}
         previewTime={riff.previewTime}
         sessionRef={riff.game.sessionRef}
@@ -802,7 +827,6 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     {riffGame && gameOpen && settingsOpen && (
       <div className="riff-overlay">
         <RiffControls
-          endFret={endFret}
           // Que se vea el mástil entero, la autopista encima y la barra (PAUSA) debajo.
           // Instantáneo a propósito: el 'smooth' lanzado desde un clic real de ratón se cancelaba.
           onStart={() => scrollRef.current?.scrollIntoView({ block: 'end' })}

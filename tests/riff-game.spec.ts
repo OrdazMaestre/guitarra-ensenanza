@@ -13,7 +13,7 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'principiante' | 'facil' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'principiante' | 'facil' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
@@ -56,7 +56,11 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Pista/, /Velocidad/, /Ritmo/, /Compases/, /Modo/], { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Pista/, /Nivel/, /Velocidad/, /Ritmo/, /Compases/, /Modo/], { timeout: 10000 });
+  // Configuración inicial (decisión del usuario): Kirk, Práctica, 50 %, Con ritmo, sin bucle, batería.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Kirk/, /Práctica/, /50%/, /Con ritmo/, /^[^↻]*$/, /Batería/]);
+  // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
+  await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await expect(page.getByTestId('riff-highway')).toHaveCount(1);
@@ -149,7 +153,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['principiante', 'Principiante'], ['facil', 'Fácil']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['principiante', 'Principiante'], ['facil', 'Fácil']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -175,9 +179,13 @@ for (const [level, label] of [['experto', 'Experto'], ['principiante', 'Principi
     await page.mouse.move(0, 0);
     for (const [i, note] of [first, second, third].entries()) {
       if (level !== 'experto') expect(note.string).toBe(6);
-      await tap(page, note.string, note.fret);
+      // Niveles de cuerdas libres: el traste correcto vale en cualquier cuerda.
+      await tap(page, level === 'experto' ? note.string : [1, 3, 5][i], note.fret);
       await expect(panel).toHaveAttribute('data-hits', String(i + 1));
     }
+
+    // Paso a paso no puntúa (decisión del usuario).
+    await expect(panel).toHaveAttribute('data-score', '0');
 
     await page.getByRole('button', { name: 'PAUSA' }).click();
     await expect(panel).toHaveAttribute('data-status', 'paused');
@@ -192,7 +200,7 @@ test('todos los niveles usan el mástil completo (sin zoom), del mismo tamaño',
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
-  for (const label of ['Principiante', 'Fácil', 'Experto']) {
+  for (const label of ['Práctica', 'Principiante', 'Fácil', 'Experto']) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(13);
     const now = (await svg.boundingBox())!;
@@ -225,3 +233,39 @@ for (const width of [360, 1280]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   });
 }
+
+test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las 9 notas', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await choose(page, 'Nivel', 'Principiante');
+  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.getByLabel('Hasta el compás').fill('42');
+  await page.getByLabel('Desde el compás').fill('42');
+  await page.mouse.click(5, 5);
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  const t0 = Date.now();
+  await page.waitForTimeout(200);
+  const p = await page.evaluate((selector) => {
+    const svg = document.querySelector(selector) as SVGSVGElement;
+    const pt = svg.createSVGPoint();
+    pt.x = 22;
+    pt.y = 44 + 5 * (158 / 5);
+    const r = pt.matrixTransform(svg.getScreenCTM()!);
+    return { x: r.x, y: r.y };
+  }, SVG);
+  // 212 bpm al 50 %: 4 negras de cuenta = 2,26 s reales; el compás dura 2,26 s más.
+  const countIn = (4 * 60) / 212 / 0.5;
+  await page.mouse.move(p.x, p.y);
+  await page.waitForTimeout(countIn * 1000 - (Date.now() - t0));
+  await page.mouse.down();
+  await page.waitForTimeout(countIn * 1000 + 200);
+  await page.mouse.up();
+  await expect(stage).toHaveAttribute('data-hits', '9');
+  // La primera según su tiempo (2-4 puntos) y las 8 siguientes, 3 cada una.
+  const score = Number(await stage.getAttribute('data-score'));
+  expect(score).toBeGreaterThanOrEqual(26);
+  expect(score).toBeLessThanOrEqual(28);
+});

@@ -20,7 +20,7 @@ const SONGS: Array<[string, string, number]> = [
 ];
 
 for (const [name, file, track] of SONGS) {
-  for (const level of ['principiante', 'facil'] as const) {
+  for (const level of ['practica', 'principiante', 'facil'] as const) {
     test(`${name} en ${level}: botones del nivel, aire entre notas, dirección y repeticiones`, () => {
       const real = chartOf(file, track);
       const profile = RIFF_LEVELS[level];
@@ -29,9 +29,10 @@ for (const [name, file, track] of SONGS) {
 
       expect(chart.notes.length).toBeGreaterThan(0);
       expect(chart.notes.length).toBeLessThanOrEqual(real.notes.length);
-      // Se quita como MUCHO la mitad de los golpes (decisión del usuario); Fácil, aún menos.
+      // Práctica quita como MUCHO la mitad de los golpes; Principiante y Fácil, como Guitar Hero
+      // Experto, casi ninguno (decisiones del usuario).
       const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
-      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'principiante' ? 0.45 : 0.8);
+      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'practica' ? 0.45 : 0.9);
       expect(chart.sourceNotes).toBe(real.notes);
 
       for (const note of chart.notes) {
@@ -87,4 +88,21 @@ test('Fácil: una frase que cabe en la cuerda 6 (trastes 0-12) se coloca EXACTA 
     compared++;
   }
   expect(compared).toBeGreaterThan(3);
+});
+
+test('Principiante y Fácil conservan el compás 42 de Master of Puppets entero (9 Mi al aire seguidos)', () => {
+  for (const track of [1, 2]) {
+    const real = chartOf('prueba-master-of-puppets.gp', track);
+    const bar = real.bars.find((b) => b.number === 42)!;
+    const inBar = <T extends { t: number }>(notes: T[]) => notes.filter((n) => n.t >= bar.t - 1e-6 && n.t < bar.end - 1e-6);
+    const realOnsets = new Set(inBar(real.notes).map((n) => Math.round(n.t * 1000))).size;
+    expect(realOnsets).toBe(9);
+    for (const level of ['principiante', 'facil'] as const) {
+      const notes = inBar(reduceChart(real, RIFF_LEVELS[level]).notes);
+      expect(notes).toHaveLength(9);
+      // Todas la misma nota (la misma posición): se pueden tocar manteniendo pulsado.
+      expect(new Set(notes.map((n) => `${n.string}/${n.fret}`)).size).toBe(1);
+    }
+    expect(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length).toBeLessThan(9);
+  }
 });

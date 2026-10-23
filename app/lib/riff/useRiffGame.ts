@@ -1,8 +1,8 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playDeadNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { getAudioCurrentTime, type GuideNoteHandle, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
-import type { Chart } from './chart';
+import type { Chart, ChartNote } from './chart';
 import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
 
 // Envuelve RiffSession con el reloj real (AudioContext), el metrónomo y el estado de React.
@@ -11,19 +11,31 @@ import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions,
 
 const TICK_MS = 25;
 const CLICK_LOOKAHEAD_SECONDS = 0.15;
-const DEAD_NOTE_VOLUME = 0.6;
 
 export type RiffGameStatus = 'idle' | RiffStatus;
 
-export function useRiffGame(chart: Chart | null) {
+// Posiciones que suenan AHORA en el mástil (las publica ReducedFretboardDiagram), para las notas
+// repetidas con la pulsación mantenida (RiffSession.autoHold).
+export type HeldPositionsRef = MutableRefObject<() => { string: number; fret: number }[]>;
+
+export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   const sessionRef = useRef<RiffSession | null>(null);
   const [status, setStatus] = useState<RiffGameStatus>('idle');
-  // Solo para tests/depuración (atributo data-hits); de momento no hay puntuación visible.
+  // Solo para tests/depuración (atributos data-hits / data-score): la puntuación se VE en la
+  // autopista, que la lee de la sesión en cada frame.
   const [hitCount, setHitCount] = useState(0);
+  const [score, setScore] = useState(0);
   const timerRef = useRef<number | null>(null);
   // Notas de fondo ya programadas (id de nota real -> control de volumen + cuándo acaba), para
   // poder "abrirlas" cuando se acierta su nota traducida (niveles Principiante..Difícil).
   const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number }>());
+
+  // Un acierto "abre" sus notas reales: las ya programadas suben de volumen (las siguientes saldrán
+  // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
+  const applyHit = useCallback((session: RiffSession, hit: ChartNote, now: number) => {
+    for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(OPEN_GAIN);
+    for (const note of session.playNowFor(hit)) void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN);
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -37,6 +49,7 @@ export function useRiffGame(chart: Chart | null) {
     sessionRef.current = null;
     setStatus('idle');
     setHitCount(0);
+    setScore(0);
   }, [clearTimer]);
 
   const start = useCallback((options: RiffOptions, backing: RiffBacking) => {
@@ -52,6 +65,7 @@ export function useRiffGame(chart: Chart | null) {
     timerRef.current = window.setInterval(() => {
       const now = getAudioCurrentTime();
       session.advance(now);
+      for (const note of session.autoHold(heldRef?.current() ?? [])) applyHit(session, note, now);
       for (const click of session.takeClicks(now, CLICK_LOOKAHEAD_SECONDS)) {
         playMetronomeClick(click.at, click.volume, click.sound);
       }
@@ -65,9 +79,10 @@ export function useRiffGame(chart: Chart | null) {
       }
       setStatus(session.status);
       setHitCount(session.hitAt.size);
+      setScore(session.totalScore);
       if (session.status === 'finished') clearTimer();
     }, TICK_MS);
-  }, [chart, clearTimer]);
+  }, [applyHit, chart, clearTimer, heldRef]);
 
   // PAUSA: congela la canción y calla las notas de fondo ya programadas.
   const pause = useCallback(() => {
@@ -86,26 +101,22 @@ export function useRiffGame(chart: Chart | null) {
     session.resume(getAudioCurrentTime());
     setStatus(session.status);
     setHitCount(session.hitAt.size);
+    setScore(session.totalScore);
   }, []);
 
   // Cambiar de pista o de canción detiene la partida en curso.
   useEffect(() => stop, [chart, stop]);
 
-  // Para el mástil: volumen relativo de su propia nota (solo mientras hay partida). En niveles
-  // traducidos es 0 y lo que suena es la canción real: un acierto "abre" sus notas (las ya
-  // programadas suben de volumen; las siguientes saldrán ya abiertas), un fallo suena a "clac".
+  // Para el mástil: volumen relativo de su propia nota -- 0 mientras hay partida en curso (lo que
+  // suena es la canción real; un acierto "abre" sus notas), 1 en pausa o terminada.
   const onNoteEvent = useCallback((event: PracticeNoteEvent) => {
     const session = sessionRef.current;
     if (!session || session.status === 'finished') return undefined;
     const now = getAudioCurrentTime();
     const result = session.judge(event, now);
-    if (result.deadNote) playDeadNote(DEAD_NOTE_VOLUME);
-    if (result.hit && session.translated) {
-      for (const id of session.openedBy(result.hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(OPEN_GAIN);
-    }
-    for (const note of result.playNow) void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN);
+    if (result.hit) applyHit(session, result.hit, now);
     return result.gain;
-  }, []);
+  }, [applyHit]);
 
-  return { sessionRef, status, hitCount, start, stop, pause, resume, onNoteEvent };
+  return { sessionRef, status, hitCount, score, start, stop, pause, resume, onNoteEvent };
 }

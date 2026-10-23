@@ -2,20 +2,29 @@
 // segundos del AudioContext) para poder probarlo en Node con un reloj simulado. `useRiffGame` lo
 // envuelve con el reloj real, el metrónomo y el estado de React.
 //
-// De momento no hay puntos ni descalificación (petición explícita): cada nota que toca el alumno
-// se juzga solo para decidir su VOLUMEN -- acertada a tiempo (misma cuerda y traste, ±0,3 s) suena
-// normal; cualquier otra cosa suena bajito.
+// Sin descalificación. Durante la partida el mástil NO suena (se solapaba con la canción: decisión
+// del usuario): lo que suena es la canción real, y acertar una nota la "abre" (sube su volumen).
+// En "Con ritmo" cada nota también da PUNTOS (ver `points`); "Paso a paso" no puntúa nada.
 
 import type { Chart, ChartNote, DrumSound } from './chart';
 import { isAdjacentSlide, type PracticeNoteEvent } from '../useFretboardPractice';
 
-export const HIT_WINDOW_SECONDS = 0.3;
-export const HIT_GAIN = 1;
-export const MISS_GAIN = 0.25;
+// Puntuación por nota (decisión del usuario), con márgenes en segundos REALES (también al 50 %):
+// exacta ≤0,2 s = 4 "Perfecto", ≤0,3 = 3, ≤0,5 = 2; cercana (a una casilla) ≤0,3 = 1, ≤0,5 = 0,5;
+// lejana o más tarde, 0. Cada nota puntúa UNA vez: una cercana se puede cambiar por la exacta
+// (nunca se suman) y una pulsación solo cuenta para una nota.
+export const PERFECT_SECONDS = 0.2;
+export const GOOD_SECONDS = 0.3;
+export const HIT_WINDOW_SECONDS = 0.5;
+export const PERFECT_POINTS = 4;
+// Nota repetida con la pulsación MANTENIDA (ver `autoHold`): puntos y hueco máximo (en negras) con la
+// anterior para que cuente -- corcheas y semicorcheas sí, una negra no (decisión del usuario).
+export const HOLD_POINTS = 3;
+export const HOLD_MAX_GAP_QUARTERS = 0.5;
 export const COUNT_IN_BEATS = 4;
 // Volumen de las notas de fondo (la canción sonando sola en modo 'ritmo').
 export const GUIDE_GAIN = 0.35;
-// Niveles traducidos: volumen de los sonidos de la canción "abiertos" por un acierto.
+// Volumen de los sonidos de la canción "abiertos" por un acierto.
 export const OPEN_GAIN = 1;
 // Tras la última nota del tramo, cuánto se deja correr antes de terminar o volver a empezar.
 const END_TAIL_SECONDS = 1;
@@ -35,6 +44,8 @@ export interface RiffOptions {
   // Tramo a tocar, en números de compás (1 = el primero), ambos incluidos.
   fromBar: number;
   toBar: number;
+  // Cuerdas libres (Práctica, Principiante, Fácil): vale el traste correcto en CUALQUIER cuerda.
+  freeStrings?: boolean;
 }
 
 export interface ScheduledClick {
@@ -56,18 +67,35 @@ export interface ScheduledGuideNote {
 }
 
 export interface JudgeResult {
-  // Volumen relativo de la nota que suena en el propio mástil (0 en niveles traducidos: allí lo
-  // que suena es la canción real).
+  // Volumen relativo de la nota que suena en el propio mástil: 0 mientras hay partida en curso, en
+  // TODOS los niveles (decisión del usuario: se solapaba con la canción); lo que suena es la canción
+  // real, que un acierto "abre". En pausa o terminada, 1 (el mástil suena normal).
   gain: number;
   // Nota del chart acertada, o null.
   hit: ChartNote | null;
-  // Niveles traducidos: tocar algo incorrecto suena a "clac" apagado, sin afinación.
-  deadNote: boolean;
-  // Niveles traducidos en 'paso a paso' (sin fondo): notas reales que deben sonar YA al acertar.
+  // En 'paso a paso' (sin fondo): notas reales que deben sonar YA al acertar.
   playNow: { midi: number; duration: number }[];
 }
 
 type Click = { t: number; sound: DrumSound; volume: number };
+
+export interface NoteScore {
+  points: number;
+  exact: boolean;
+  // Tiempo de canción en el que se puntuó (la autopista enseña la etiqueta un rato desde ahí).
+  at: number;
+}
+
+// Puntos de una nota según si es exacta o cercana y su desviación en segundos reales.
+export function points(exact: boolean, deviation: number): number {
+  if (exact) {
+    if (deviation <= PERFECT_SECONDS + 1e-9) return PERFECT_POINTS;
+    if (deviation <= GOOD_SECONDS + 1e-9) return 3;
+    return deviation <= HIT_WINDOW_SECONDS + 1e-9 ? 2 : 0;
+  }
+  if (deviation <= GOOD_SECONDS + 1e-9) return 1;
+  return deviation <= HIT_WINDOW_SECONDS + 1e-9 ? 0.5 : 0;
+}
 
 export class RiffSession {
   readonly notes: ChartNote[];
@@ -75,10 +103,28 @@ export class RiffSession {
   readonly endT: number;
   // id de nota -> tiempo de canción en el que se acertó.
   readonly hitAt = new Map<number, number>();
+  // id de nota -> puntos (solo en "Con ritmo"). Las exactas también están en `hitAt`.
+  readonly scoreOf = new Map<number, NoteScore>();
+  // Pulsación mantenida: clave de posición -> id de la última nota acertada con ella (ver `autoHold`).
+  private readonly holdChains = new Map<string, number>();
   songPos: number;
   status: RiffStatus = 'countin';
   // Cuántas veces se ha reiniciado el tramo en bucle (la vista lo usa para limpiar efectos).
   loopCount = 0;
+  get scoring(): boolean {
+    return this.options.mode === 'ritmo';
+  }
+
+  get totalScore(): number {
+    let total = 0;
+    for (const score of this.scoreOf.values()) total += score.points;
+    return total;
+  }
+
+  get maxScore(): number {
+    return this.notes.length * PERFECT_POINTS;
+  }
+
   // Instante de canción al que lleva la cuenta de entrada en curso: el inicio del tramo, o el
   // compás desde el que se continúa tras una pausa (ver `resume`).
   countInTarget: number;
@@ -103,8 +149,9 @@ export class RiffSession {
     this.notes = chart.notes.filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
     this.translated = !!chart.sourceNotes;
     this.guideNotes = (chart.sourceNotes ?? chart.notes).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
+    // Experto: cada nota es "dueña" de sí misma (acertarla sube su propio sonido de fondo).
     for (const note of this.notes) {
-      for (const sourceId of note.sourceIds ?? []) this.ownerOf.set(sourceId, note.id);
+      for (const sourceId of note.sourceIds ?? [note.id]) this.ownerOf.set(sourceId, note.id);
     }
 
     const beatSeconds = 60 / chart.bpm;
@@ -149,8 +196,12 @@ export class RiffSession {
     bars.forEach((bar, i) => { if (bar.t <= this.songPos + 1e-6) current = i; });
     const target = bars[Math.max(0, current - 1)]?.t ?? this.startT;
     for (const note of this.notes) {
-      if (note.t >= target - 1e-6) this.hitAt.delete(note.id);
+      if (note.t >= target - 1e-6) {
+        this.hitAt.delete(note.id);
+        this.scoreOf.delete(note.id);
+      }
     }
+    this.holdChains.clear();
     this.countInTarget = target;
     this.songPos = target - COUNT_IN_BEATS * (60 / this.chart.bpm);
     this.clickTimes = [...this.countInClicks(target), ...this.songClicks.filter((click) => click.t >= target - 1e-6)];
@@ -199,6 +250,8 @@ export class RiffSession {
 
   private restart(now: number) {
     this.hitAt.clear();
+    this.scoreOf.clear();
+    this.holdChains.clear();
     this.songPos = this.startT - COUNT_IN_BEATS * (60 / this.chart.bpm);
     this.status = 'countin';
     this.countInTarget = this.startT;
@@ -253,9 +306,33 @@ export class RiffSession {
     return out;
   }
 
+  // ¿La nota tocada es la del chart? Misma cuerda y traste; con cuerdas libres, solo el traste.
+  private matches(note: ChartNote, event: PracticeNoteEvent): boolean {
+    return note.fret === event.fret && (!!this.options.freeStrings || note.string === event.string);
+  }
+
+  // ¿A UNA casilla? Con cuerdas libres: el traste de al lado (cualquier cuerda). Si no, la misma
+  // rejilla que los slides: misma cuerda ±1 traste, o cuerda vecina en el mismo traste.
+  private isNear(note: ChartNote, event: PracticeNoteEvent): boolean {
+    if (this.options.freeStrings) return Math.abs(note.fret - event.fret) === 1;
+    return isAdjacentSlide(note, event);
+  }
+
+  // La nota sin acertar más cercana en el tiempo (dentro de la ventana) que cumple `accept`.
+  private closest(window: number, accept: (note: ChartNote) => boolean): ChartNote | null {
+    let best: ChartNote | null = null;
+    for (const note of this.notes) {
+      if (note.t > this.songPos + window) break;
+      if (this.hitAt.has(note.id) || Math.abs(note.t - this.songPos) > window || !accept(note)) continue;
+      if (!best || Math.abs(note.t - this.songPos) < Math.abs(best.t - this.songPos)) best = note;
+    }
+    return best;
+  }
+
   // ids de las notas reales que "abre" acertar la nota traducida `chartNoteId`.
   openedBy(chartNoteId: number): number[] {
-    return this.notes.find((note) => note.id === chartNoteId)?.sourceIds ?? [];
+    const note = this.notes.find((n) => n.id === chartNoteId);
+    return note ? note.sourceIds ?? [note.id] : [];
   }
 
   // Juzga una nota que acaba de tocar el alumno. Experto: devuelve el volumen de SU nota (normal si
@@ -263,37 +340,102 @@ export class RiffSession {
   // canción real y un fallo suena a "clac". Los slides solo cuentan si son a una nota pegada.
   judge(event: PracticeNoteEvent, now: number): JudgeResult {
     this.advance(now);
-    const miss: JudgeResult = { gain: this.translated ? 0 : MISS_GAIN, hit: null, deadNote: this.translated, playNow: [] };
+    const miss: JudgeResult = { gain: 0, hit: null, playNow: [] };
     // En pausa (o terminada) el mástil suena normal y no se juzga nada.
-    if (this.status === 'finished' || this.status === 'paused') return { gain: 1, hit: null, deadNote: false, playNow: [] };
+    if (this.status === 'finished' || this.status === 'paused') return { gain: 1, hit: null, playNow: [] };
     if (event.kind === 'slide' && (!event.from || !isAdjacentSlide(event.from, event))) return miss;
 
     const window = HIT_WINDOW_SECONDS * this.options.speed;
-    let best: ChartNote | null = null;
-    for (const note of this.notes) {
-      if (note.t > this.songPos + window) break;
-      if (this.hitAt.has(note.id) || note.string !== event.string || note.fret !== event.fret) continue;
-      if (Math.abs(note.t - this.songPos) > window) continue;
-      if (!best || Math.abs(note.t - this.songPos) < Math.abs(best.t - this.songPos)) best = note;
+    const deviation = (note: ChartNote) => Math.abs(note.t - this.songPos) / this.options.speed;
+    // La exacta tiene prioridad (y puede cambiar una cercana ya puntuada por sus puntos).
+    let best = this.closest(window, (note) => this.matches(note, event));
+    if (!best && this.scoring) {
+      // Cercana: solo puntos (no abre el sonido), y solo en una nota aún sin puntuar.
+      const near = this.closest(window, (note) => !this.scoreOf.has(note.id) && this.isNear(note, event));
+      if (near) this.scoreOf.set(near.id, { points: points(false, deviation(near)), exact: false, at: this.songPos });
+      return miss;
     }
     // Paso a paso no exige ritmo: la siguiente nota pendiente (o acorde) vale aunque se toque antes
     // de que la canción llegue a ella; la canción salta hasta ahí.
     if (!best && this.options.mode === 'paso') {
       const pending = this.pendingTime();
       best = this.notes.find((note) => pending !== null && Math.abs(note.t - pending) < 0.005 && !this.hitAt.has(note.id)
-        && note.string === event.string && note.fret === event.fret) ?? null;
+        && this.matches(note, event)) ?? null;
       if (best) this.songPos = Math.max(this.songPos, best.t);
     }
     if (!best) return miss;
+    if (this.scoring) this.scoreOf.set(best.id, { points: points(true, deviation(best)), exact: true, at: this.songPos });
     this.hitAt.set(best.id, this.songPos);
-    const hitNote = best;
-    // Sin fondo ('paso'), el acierto hace sonar ya las notas reales de su golpe.
-    const playNow = this.translated && this.options.mode === 'paso'
-      ? this.guideNotes
-        .filter((note) => Math.abs(note.t - hitNote.t) < 0.005)
-        .map((note) => ({ midi: note.midi, duration: Math.max(0.15, note.dur / this.options.speed) }))
-      : [];
-    return { gain: this.translated ? 0 : HIT_GAIN, hit: hitNote, deadNote: false, playNow };
+    this.holdChains.set(this.holdKey(best), best.id);
+    return { gain: 0, hit: best, playNow: this.playNowFor(best) };
+  }
+
+  // Sin fondo ('paso'), un acierto hace sonar ya las notas reales de su golpe.
+  playNowFor(hit: ChartNote): { midi: number; duration: number }[] {
+    if (this.options.mode !== 'paso') return [];
+    return this.guideNotes
+      .filter((note) => Math.abs(note.t - hit.t) < 0.005)
+      .map((note) => ({ midi: note.midi, duration: Math.max(0.15, note.dur / this.options.speed) }));
+  }
+
+  // Posición de una nota para las pulsaciones mantenidas (con cuerdas libres, solo el traste).
+  private holdKey(note: { string: number; fret: number }): string {
+    return this.options.freeStrings ? `f${note.fret}` : `${note.string}/${note.fret}`;
+  }
+
+  // Segundos de canción por negra alrededor de `t` (según las líneas de pulso del chart).
+  private quarterSecondsAt(t: number): number {
+    const beats = this.chart.beats;
+    for (let i = 0; i + 1 < beats.length; i++) {
+      if (beats[i + 1].t > t + 1e-6 || i + 2 === beats.length) {
+        const dq = beats[i + 1].q - beats[i].q;
+        if (dq > 0) return (beats[i + 1].t - beats[i].t) / dq;
+        break;
+      }
+    }
+    return 60 / this.chart.bpm;
+  }
+
+  // Notas repetidas con la pulsación MANTENIDA (decisión del usuario): mientras el alumno sigue
+  // pulsando la posición con la que acertó una nota, la siguiente nota del chart en esa MISMA
+  // posición cuenta sola (HOLD_POINTS) al llegar su momento, si está a una corchea o menos y no hay
+  // otra nota por medio (en su cuerda; con cuerdas libres, ninguna). Así se toca, p. ej., el compás
+  // 42 de Master of Puppets (9 Mi al aire rapidísimos) manteniendo el traste 0. Soltar corta la
+  // cadena. `held` = posiciones que suenan ahora en el mástil. Devuelve las notas acertadas así.
+  autoHold(held: { string: number; fret: number }[]): ChartNote[] {
+    if (this.status !== 'playing' && this.status !== 'countin') return [];
+    const heldKeys = new Set(held.map((pos) => this.holdKey(pos)));
+    const out: ChartNote[] = [];
+    for (const [key, lastId] of [...this.holdChains]) {
+      if (!heldKeys.has(key)) {
+        this.holdChains.delete(key);
+        continue;
+      }
+      let index = this.notes.findIndex((note) => note.id === lastId);
+      while (index >= 0) {
+        const prev = this.notes[index];
+        let nextIndex = -1;
+        for (let i = index + 1; i < this.notes.length; i++) {
+          const note = this.notes[i];
+          if (note.t < prev.t + 0.005) continue;
+          if (this.holdKey(note) === key) { nextIndex = i; break; }
+          // Otra nota por medio (en su cuerda, o cualquiera con cuerdas libres): se corta.
+          if (this.options.freeStrings || note.string === prev.string) break;
+        }
+        const next = this.notes[nextIndex];
+        if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id)) break;
+        if (next.t - prev.t > HOLD_MAX_GAP_QUARTERS * this.quarterSecondsAt(prev.t) + 1e-3) {
+          this.holdChains.delete(key);
+          break;
+        }
+        this.hitAt.set(next.id, this.songPos);
+        if (this.scoring) this.scoreOf.set(next.id, { points: HOLD_POINTS, exact: true, at: this.songPos });
+        this.holdChains.set(key, next.id);
+        out.push(next);
+        index = nextIndex;
+      }
+    }
+    return out;
   }
 }
 

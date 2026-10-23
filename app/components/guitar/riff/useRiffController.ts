@@ -4,7 +4,7 @@ import { buildChart, listGuitarTracks, loadScore, type Chart, type GuitarTrackIn
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { reduceChart } from '@/app/lib/riff/reduce';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
-import { useRiffGame } from '@/app/lib/riff/useRiffGame';
+import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
 // prop `riffGame`): carga del .gp, pista, ajustes, aviso de pantalla estrecha y la partida.
@@ -15,6 +15,8 @@ import { useRiffGame } from '@/app/lib/riff/useRiffGame';
 const MIN_PX_PER_FRET = 44;
 const SIDE_MARGIN_PX = 60;
 
+const DEFAULTS = { level: 'practica' as RiffLevel, speed: 0.5, mode: 'ritmo' as RiffMode, loop: false };
+
 interface Options {
   source?: string;
   initialTrack?: string;
@@ -22,25 +24,29 @@ interface Options {
   endFret: number;
   // Elemento cuyo ancho decide si cabe la autopista (el host del mástil).
   measureRef: RefObject<HTMLElement | null>;
+  // Posiciones que suenan ahora en el mástil (notas repetidas con la pulsación mantenida).
+  heldRef?: HeldPositionsRef;
 }
 
-export function useRiffController({ source, initialTrack, startFret, endFret, measureRef }: Options) {
+export function useRiffController({ source, initialTrack, startFret, endFret, measureRef, heldRef }: Options) {
   const [tracks, setTracks] = useState<GuitarTrackInfo[]>([]);
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [speed, setSpeed] = useState<number>(1);
-  const [mode, setMode] = useState<RiffMode>('ritmo');
-  const [backing, setBacking] = useState<RiffBacking>('metronomo');
-  const [loop, setLoop] = useState(false);
+  // Configuración inicial (decisión del usuario): Kirk, Práctica, 50 %, Con ritmo, sin bucle y
+  // batería (metrónomo si el archivo no trae batería). `resetDefaults` vuelve a ella.
+  const [speed, setSpeed] = useState<number>(DEFAULTS.speed);
+  const [mode, setMode] = useState<RiffMode>(DEFAULTS.mode);
+  const [backing, setBacking] = useState<RiffBacking>('bateria');
+  const [loop, setLoop] = useState(DEFAULTS.loop);
   const [fromBar, setFromBar] = useState(1);
   const [toBar, setToBar] = useState(1);
   const [narrow, setNarrow] = useState(false);
-  // Principiante..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
-  const [level, setLevel] = useState<RiffLevel>('principiante');
+  // Práctica..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
+  const [level, setLevel] = useState<RiffLevel>(DEFAULTS.level);
   const profile = level === 'experto' ? null : RIFF_LEVELS[level];
 
-  const game = useRiffGame(chart);
+  const game = useRiffGame(chart, heldRef);
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.
   const playing = game.status === 'countin' || game.status === 'playing';
   const paused = game.status === 'paused';
@@ -83,7 +89,7 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
       setChart(built);
       setFromBar(1);
       setToBar(Math.max(1, ...built.bars.map((bar) => bar.number)));
-      // Sin pista de batería en el archivo, "Batería" no tiene nada que tocar.
+      // Sin pista de batería en el archivo, "Batería" no tiene nada que tocar: metrónomo.
       setBacking((current) => (current === 'bateria' && built.drums.length === 0 ? 'metronomo' : current));
     });
     return () => { cancelled = true; };
@@ -118,9 +124,22 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     if (narrow) stop();
   }, [narrow, stop]);
 
+  const hasDrums = !!chart && chart.drums.length > 0;
+  function resetDefaults() {
+    const preferred = tracks.find((track) => track.name === initialTrack) ?? tracks[0];
+    if (preferred) setTrackIndex(preferred.index);
+    setLevel(DEFAULTS.level);
+    setSpeed(DEFAULTS.speed);
+    setMode(DEFAULTS.mode);
+    setLoop(DEFAULTS.loop);
+    setBacking(hasDrums ? 'bateria' : 'metronomo');
+    setFromBar(1);
+    setToBar(maxBar);
+  }
+
   function start() {
     setHasStarted(true);
-    game.start({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar) }, backing);
+    game.start({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings }, backing);
   }
 
   return {
@@ -141,6 +160,7 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     canStart: !!chart && !narrow && !playing,
     pause: game.pause,
     resume: game.resume,
+    resetDefaults,
     start,
     stop,
   };
