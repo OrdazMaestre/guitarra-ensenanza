@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart } from '../app/lib/riff/chart';
@@ -13,7 +13,7 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'practica' | 'principiante' | 'facil' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'neofito' | 'principiante' | 'facil' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
@@ -30,6 +30,15 @@ async function tap(page: Page, string: number, fret: number) {
     return { x: r.x, y: r.y };
   }, { selector: SVG, string, fret });
   await page.mouse.click(p.x, p.y);
+}
+
+// Durante la partida, los controles de la barra piden mantenerlos pulsados 2 s (HoldGuard).
+async function hold(page: Page, locator: Locator, ms = 2200) {
+  const box = (await locator.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(ms);
+  await page.mouse.up();
 }
 
 async function openGame(page: Page) {
@@ -56,28 +65,32 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Pista/, /Nivel/, /Velocidad/, /Ritmo/, /Compases/, /Modo/], { timeout: 10000 });
-  // Configuración inicial (decisión del usuario): Kirk, Práctica, 50 %, Con ritmo, sin bucle, batería.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Kirk/, /Práctica/, /50%/, /Con ritmo/, /^[^↻]*$/, /Batería/]);
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Pista/, /Nivel/, /Modo/, /Velocidad/, /Ritmo/, /Compases/], { timeout: 10000 });
+  // Configuración inicial (decisión del usuario): Kirk, Práctica, 75 %, Con ritmo, sin bucle, batería.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Guitarra solista/, /Práctica/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await expect(page.getByTestId('riff-highway')).toHaveCount(1);
 
-  // El panel está DELANTE del juego: encima de la autopista y por delante de ella.
+  // El panel está DELANTE del juego y ENCIMA del mástil (centrado sobre sus cuerdas), compacto.
   const overlay = page.locator('.test-room-fretboard .riff-overlay');
   const box = (await overlay.boundingBox())!;
-  const highway = (await page.getByTestId('riff-highway').boundingBox())!;
-  expect(box.y).toBeGreaterThanOrEqual(highway.y - 1);
-  expect(box.y + box.height).toBeLessThan(highway.y + highway.height);
+  const neck = (await page.locator(SVG).boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(neck.y - 1);
+  expect(box.y + box.height).toBeLessThanOrEqual(neck.y + neck.height + 1);
+  expect(Math.abs(box.y + box.height / 2 - (neck.y + neck.height / 2))).toBeLessThan(4);
+  // Una sola fila de desplegables en escritorio.
+  const toggles = await page.locator('.riff-dd-toggle').evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+  expect(new Set(toggles).size).toBe(1);
   const inFront = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.riff-overlay'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   expect(inFront).toBe(true);
 
   await choose(page, 'Modo', 'Batería');
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Modo' })).toContainText('Batería');
-  await choose(page, 'Velocidad', '75%');
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('75%');
+  await choose(page, 'Velocidad', '100%');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('100%');
 
   // Solo un desplegable abierto, y se cierra al pulsar fuera.
   await page.locator('.riff-dd-toggle', { hasText: 'Pista' }).click();
@@ -112,8 +125,12 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(metronome).toHaveCount(0);
   await expect(pill.getByRole('button', { name: /clean u overdrive/ })).toBeVisible();
 
-  // PAUSA para la partida y despliega los ajustes delante del juego.
+  // Jugando, un toque corto en PAUSA (o en otro control de la barra) no hace nada...
   await pause.click();
+  await page.waitForTimeout(300);
+  await expect(stage).not.toHaveAttribute('data-status', 'paused');
+  // ...hay que mantenerla 2 s: entonces para la partida y despliega los ajustes delante del juego.
+  await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await expect(overlay).toBeVisible();
   await expect(pause).toHaveAttribute('aria-pressed', 'true');
@@ -131,14 +148,14 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveAttribute('aria-pressed', 'false');
 
   // PAUSA otra vez y "Volver a empezar": partida nueva desde el principio.
-  await pause.click();
+  await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await page.getByRole('button', { name: 'Volver a empezar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
   await expect(overlay).toHaveCount(0);
 
   // Cambiar un ajuste en pausa invalida esa partida: ya solo se puede volver a empezar.
-  await pause.click();
+  await hold(page, pause);
   await choose(page, 'Velocidad', '50%');
   await expect(stage).toHaveAttribute('data-status', 'idle');
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
@@ -147,13 +164,13 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
 
   // Cerrar JUGAR quita el panel y la autopista (y para la partida si la hubiera).
   await page.getByRole('button', { name: 'Volver a empezar' }).click();
-  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  await hold(page, page.getByRole('button', { name: 'JUGAR', exact: true }));
   await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect(page.getByTestId('riff-highway')).toHaveCount(0);
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['principiante', 'Principiante'], ['facil', 'Fácil']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['neofito', 'Neófito'], ['principiante', 'Principiante'], ['facil', 'Fácil']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -161,7 +178,7 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
     await openGame(page);
     const panel = page.locator('.test-room-fretboard .riff-stage');
     await choose(page, 'Nivel', label);
-    await choose(page, 'Pista', 'Rhythm Guitar (James)');
+    await choose(page, 'Pista', 'Guitarra rítmica');
     await choose(page, 'Ritmo', 'Paso a paso');
     // Como una persona: bajar hasta el botón y pulsarlo (así "Empezar" puede recolocar la página).
     await page.locator('.riff-actions').scrollIntoViewIfNeeded();
@@ -187,7 +204,7 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
     // Paso a paso no puntúa (decisión del usuario).
     await expect(panel).toHaveAttribute('data-score', '0');
 
-    await page.getByRole('button', { name: 'PAUSA' }).click();
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
     await expect(panel).toHaveAttribute('data-status', 'paused');
   });
 }
@@ -200,7 +217,7 @@ test('todos los niveles usan el mástil completo (sin zoom), del mismo tamaño',
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
-  for (const label of ['Práctica', 'Principiante', 'Fácil', 'Experto']) {
+  for (const label of ['Práctica', 'Neófito', 'Principiante', 'Fácil', 'Experto']) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(13);
     const now = (await svg.boundingBox())!;
@@ -240,6 +257,7 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await openGame(page);
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await choose(page, 'Nivel', 'Principiante');
+  await choose(page, 'Velocidad', '50%');
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await page.getByLabel('Hasta el compás').fill('42');
   await page.getByLabel('Desde el compás').fill('42');
@@ -264,8 +282,137 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await page.waitForTimeout(countIn * 1000 + 200);
   await page.mouse.up();
   await expect(stage).toHaveAttribute('data-hits', '9');
-  // La primera según su tiempo (2-4 puntos) y las 8 siguientes, 3 cada una.
+  // La primera según su tiempo (2-4 puntos) y las 8 siguientes según su hueco: 7 corcheas (+2) y
+  // una semicorchea (+1) = 15.
   const score = Number(await stage.getAttribute('data-score'));
-  expect(score).toBeGreaterThanOrEqual(26);
-  expect(score).toBeLessThanOrEqual(28);
+  expect(score).toBeGreaterThanOrEqual(17);
+  expect(score).toBeLessThanOrEqual(19);
+});
+
+test('jugando, el volumen solo se mueve tras mantenerlo 2 s; en pausa y fuera de partida, al instante', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const slider = page.getByLabel('Volumen de la guitarra');
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+  const box = (await slider.boundingBox())!;
+  const y = box.y + box.height / 2;
+  // Toque corto: nada.
+  await page.mouse.click(box.x + 4, y);
+  await expect(slider).toHaveValue('1');
+  // Mantener 2 s y arrastrar sin soltar: se mueve.
+  await page.mouse.move(box.x + box.width - 3, y);
+  await page.mouse.down();
+  await page.waitForTimeout(2200);
+  await page.mouse.move(box.x + box.width * 0.3, y, { steps: 6 });
+  await page.mouse.up();
+  expect(Number(await slider.inputValue())).toBeCloseTo(0.3, 1);
+  // En pausa vuelve a responder al instante (también DIESTRO, por ejemplo).
+  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await slider.fill('0.8');
+  await expect(slider).toHaveValue('0.8');
+});
+
+test.describe('pantalla táctil', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 1366, height: 900 } });
+  test('jugando, un toque corto con el dedo en PAUSA no hace nada; mantenerlo 2 s, sí', async ({ page }) => {
+    await page.goto(URL);
+    await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'JUGAR', exact: true }).tap();
+    await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 10000 });
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).tap();
+    const stage = page.locator('.test-room-fretboard .riff-stage');
+    await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+    const pause = page.getByRole('button', { name: 'PAUSA' });
+    const box = (await pause.boundingBox())!;
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const client = await page.context().newCDPSession(page);
+    const touch = async (ms: number) => {
+      await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+      await page.waitForTimeout(ms);
+      await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    await touch(150);
+    await page.waitForTimeout(300);
+    await expect(stage).not.toHaveAttribute('data-status', 'paused');
+    await touch(2300);
+    await expect(stage).toHaveAttribute('data-status', 'paused');
+    // Y no se reanuda sola al levantar el dedo.
+    await page.waitForTimeout(400);
+    await expect(stage).toHaveAttribute('data-status', 'paused');
+  });
+});
+
+// Partida tutorial de mecánicas (riffTutorial.ts): una canción remix de principio a fin, que se para
+// sola antes de cada parte para enseñar su mensaje. Se lanza desde el último paso del tutorial del panel.
+async function launchTutorial(page: Page) {
+  await page.locator('.riff-panel .tour-launch').click();
+  const main = page.locator('.tour-bubble .tour-btn-main');
+  while ((await main.textContent()) === 'Siguiente') await main.click();
+  await expect(page.locator('.tour-bubble')).toContainText('Partida de prueba');
+  await main.click();
+}
+
+test('partida de prueba: una sola canción con sus 3 partes, mensajes y animaciones', async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  const card = page.locator('.riff-tutorial-card');
+  await launchTutorial(page);
+
+  // Parte 1: mantener pulsado. La canción entera es una sola partida.
+  await expect(stage).toHaveAttribute('data-tutorial', 'section-0');
+  await expect(card).toContainText('Mantener pulsado');
+  await expect(card).toContainText('Parte 1 de 3');
+  await card.getByRole('button', { name: '¡A tocar!' }).click();
+  await expect(stage).toHaveAttribute('data-tutorial', 'playing');
+  await expect(stage).toHaveAttribute('data-repetition', '1/1');
+
+  // Parada automática antes de la parte 2: tapping (dos punteros, nunca dos cursores).
+  await expect(stage).toHaveAttribute('data-tutorial', 'section-1', { timeout: 60_000 });
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await expect(card).toContainText('Tapping');
+  await expect(card.locator('svg[data-animation="tapping"]')).toBeVisible();
+  for (let i = 0; i < 6; i++) {
+    expect(await card.locator('svg[data-animation="tapping"] path[fill="#ffffff"]').count()).toBeLessThanOrEqual(1);
+    await page.waitForTimeout(400);
+  }
+  await card.getByRole('button', { name: '¡A tocar!' }).click();
+  await expect(stage).toHaveAttribute('data-status', 'countin');
+  // Las 2 vueltas de 9-12 tardan bastante más que un instante (no se salta la parte).
+  await page.waitForTimeout(5000);
+  await expect(stage).toHaveAttribute('data-tutorial', 'playing');
+
+  // Parada antes de la parte 3: deslizar.
+  await expect(stage).toHaveAttribute('data-tutorial', 'section-2', { timeout: 60_000 });
+  await expect(card.locator('svg[data-animation="slide"]')).toBeVisible();
+  await card.getByRole('button', { name: '¡A tocar!' }).click();
+
+  // Final: vuelve el panel de ajustes.
+  await expect(stage).toHaveAttribute('data-tutorial', 'end', { timeout: 60_000 });
+  await expect(card).toContainText('¡Lo has conseguido!');
+  await card.getByRole('button', { name: 'Terminar' }).click();
+  await expect(page.locator('.riff-panel')).toBeVisible();
+  await expect(stage).not.toHaveAttribute('data-tutorial');
+});
+
+test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  await launchTutorial(page);
+  await page.locator('.riff-tutorial-card').getByRole('button', { name: '¡A tocar!' }).click();
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+  await hold(page, page.getByRole('button', { name: 'JUGAR', exact: true }));
+  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
+  await expect(page.locator('.riff-panel')).toBeVisible();
 });

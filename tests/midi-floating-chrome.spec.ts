@@ -132,7 +132,11 @@ async function pillsCoveringContent(page: Page) {
         for (const el of document.elementsFromPoint(pill.left + pill.width * fx, pill.top + pill.height * fy)) {
           if (c.contains(el) || el.contains(c)) continue;
           if (['HTML', 'BODY', 'MAIN', 'ARTICLE', 'SECTION'].includes(el.tagName)) continue;
-          if (getComputedStyle(el).position === 'fixed') continue;
+          // Lo que flota fijo en la pantalla (o vive dentro de algo fijo, como el botón de MAIkael)
+          // no es contenido de la página: pasa por encima de todo al hacer scroll.
+          let fixed = false;
+          for (let a: Element | null = el; a && !fixed; a = a.parentElement) fixed = getComputedStyle(a).position === 'fixed';
+          if (fixed) continue;
           covering.push(el.tagName);
         }
       }
@@ -143,7 +147,8 @@ async function pillsCoveringContent(page: Page) {
 
 test('wide screen: every MIDI control bar keeps floating (no layout push)', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  for (const slug of ['sala-de-pruebas', 'notacion-musical', 'afinacion']) {
+  // conceptos-basicos: un mástil SIN juego (la píldora se partía si HoldGuard perdía su display: contents).
+  for (const slug of ['sala-de-pruebas', 'notacion-musical', 'afinacion', 'conceptos-basicos']) {
     await page.goto(`/lecciones/temario/${slug}`);
     await page.waitForTimeout(300);
     expect(await page.locator('.midi-float-controls.is-in-flow').count()).toBe(0);

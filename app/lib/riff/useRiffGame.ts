@@ -25,6 +25,10 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   // autopista, que la lee de la sesión en cada frame.
   const [hitCount, setHitCount] = useState(0);
   const [score, setScore] = useState(0);
+  // Vuelta del tramo en curso (con `repeats`, "2/6"); null sin partida.
+  const [repetition, setRepetition] = useState<string | null>(null);
+  // Parada automática en la que espera (RiffOptions.breaks), o null.
+  const [atBreak, setAtBreak] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
   // Notas de fondo ya programadas (id de nota real -> control de volumen + cuándo acaba), para
   // poder "abrirlas" cuando se acierta su nota traducida (niveles Principiante..Difícil).
@@ -50,6 +54,8 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     setStatus('idle');
     setHitCount(0);
     setScore(0);
+    setRepetition(null);
+    setAtBreak(null);
   }, [clearTimer]);
 
   const start = useCallback((options: RiffOptions, backing: RiffBacking) => {
@@ -80,6 +86,8 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       setStatus(session.status);
       setHitCount(session.hitAt.size);
       setScore(session.totalScore);
+      setRepetition(`${session.repetition}/${session.repeats}`);
+      setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
     }, TICK_MS);
   }, [applyHit, chart, clearTimer, heldRef]);
@@ -100,6 +108,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     if (!session) return;
     session.resume(getAudioCurrentTime());
     setStatus(session.status);
+    setAtBreak(session.stoppedAtBreak);
     setHitCount(session.hitAt.size);
     setScore(session.totalScore);
   }, []);
@@ -118,5 +127,5 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     return result.gain;
   }, [applyHit]);
 
-  return { sessionRef, status, hitCount, score, start, stop, pause, resume, onNoteEvent };
+  return { sessionRef, status, hitCount, score, repetition, atBreak, start, stop, pause, resume, onNoteEvent };
 }

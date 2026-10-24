@@ -36,11 +36,18 @@ export default function SalaDePruebasPage() {
             endFret={12}
             fretLabels
             notes={[]}
-            riffGame={{ source: '/tabs/prueba-master-of-puppets.gp', initialTrack: 'Rhythm Guitar (Kirk)' }}
+            riffGame={{
+              source: '/tabs/prueba-master-of-puppets.gp',
+              initialTrack: 'Rhythm Guitar (Kirk)',
+              // Las dos pistas se llaman "Rhythm Guitar", pero en este trozo (empieza en el solo)
+              // Kirk toca la solista: S; James, la rítmica: R.
+              trackRoles: { 'Rhythm Guitar (Kirk)': 'S', 'Rhythm Guitar (James)': 'R' },
+            }}
+            tutorial
           />
         </div>
 
-        <MiniKeyboard className="test-room-keyboard" />
+        <MiniKeyboard className="test-room-keyboard" tutorial />
       </section>
 
       <section className="test-room-tab">

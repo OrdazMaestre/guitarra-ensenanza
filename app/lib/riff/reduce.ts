@@ -123,6 +123,13 @@ function pickByGrid(onsets: Onset[], slots: number[], profile: LevelProfile): On
       const gapSeconds = onset.t - prev.t;
       if (gapSeconds < profile.minGapSeconds - 1e-3) continue;
       if (onset.lead.midi === prev.lead.midi && gapSeconds < profile.repeatGapSeconds - 1e-3) continue;
+      // Tope de densidad (notas por segundo real, la medida de Guitar Hero): en 1 s nunca más de
+      // `maxNotesPerSecond`. Solo frena los pasajes más densos; el resto queda igual.
+      if (profile.maxNotesPerSecond) {
+        let inWindow = 0;
+        for (let k = kept.length - 1; k >= 0 && onset.t - kept[k].t < 1 - 1e-3; k--) inWindow++;
+        if (inWindow >= profile.maxNotesPerSecond) continue;
+      }
     }
     kept.push(onset);
   }

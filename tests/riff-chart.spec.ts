@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart, listGuitarTracks, type Chart } from '../app/lib/riff/chart';
-import { points, RiffSession, type RiffOptions } from '../app/lib/riff/session';
+import { holdPoints, points, RiffSession, type RiffOptions } from '../app/lib/riff/session';
 import { fretColor } from '../app/lib/riff/colors';
-import { RIFF_LEVELS } from '../app/lib/riff/levels';
+import { RIFF_LEVELS, RIFF_LEVEL_GROUPS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
 
 // Fases 1.1 y 1.2 del juego tipo Rocksmith: chart sacado del .gp y motor con reloj simulado.
@@ -93,6 +93,51 @@ function fakeChart(): Chart {
 }
 
 const ritmo: RiffOptions = { speed: 1, mode: 'ritmo', loop: false, fromBar: 1, toBar: 1 };
+
+test('motor: `repeats` toca el tramo N veces seguidas y SUMA los puntos de todas las vueltas', () => {
+  // fakeChart: 3 notas en 1 compás de 4/4 a 60 bpm; cuenta de entrada 4 s.
+  const s = new RiffSession(fakeChart(), { ...ritmo, repeats: 3 }, 100, 'nada');
+  expect(s.repeats).toBe(3);
+  expect(s.maxScore).toBe(3 * 4 * 3);
+  const seen: number[] = [];
+  let firstLapScored = false;
+  for (let real = 100; real < 140 && s.status !== 'finished'; real += 0.025) {
+    s.advance(real);
+    if (!seen.includes(s.repetition)) seen.push(s.repetition);
+    // En cada vuelta se acierta la primera nota (cuerda 1, traste 2) justo a tiempo.
+    if (s.status === 'playing' && Math.abs(s.songPos - 0) < 0.013 && !s.hitAt.has(0)) {
+      s.judge({ string: 1, fret: 2, kind: 'pluck' }, real);
+      if (s.repetition === 1) firstLapScored = s.totalScore === 4;
+    }
+  }
+  expect(firstLapScored).toBe(true);
+  expect(seen).toEqual([1, 2, 3]);
+  expect(s.status).toBe('finished');
+  // 4 puntos por vuelta, sumados (no se pierden al empezar la vuelta siguiente).
+  expect(s.totalScore).toBe(12);
+});
+
+test('motor: `breaks` para la partida sola en cada parada; al seguir, cuenta de entrada SIN retroceder', () => {
+  // twoBarChart: 2 compases de 4/4 a 60 bpm. Parada en t = 4 (inicio del compás 2).
+  const s = new RiffSession(twoBarChart(), { ...ritmo, toBar: 2, breaks: [4] }, 100, 'metronomo');
+  for (let real = 100; real < 107.9; real += 0.025) s.advance(real);
+  expect(s.status).toBe('playing');
+  s.advance(108.1); // t = 4,1 -> se queda en 4
+  expect(s.status).toBe('paused');
+  expect(s.stoppedAtBreak).toBe(1);
+  expect(s.songPos).toBe(4);
+  s.advance(120);
+  expect(s.songPos).toBe(4);
+  // Seguir: cuenta de entrada de 4 negras desde t = 4 (no un compás atrás).
+  s.resume(120);
+  expect(s.stoppedAtBreak).toBeNull();
+  expect(s.status).toBe('countin');
+  expect(s.countInTarget).toBe(8);
+  expect(s.songPos).toBe(4);
+  expect(s.takeClicks(120, 0.1).length).toBe(1);
+  s.advance(124.5);
+  expect(s.status).toBe('playing');
+});
 
 test('motor: acierto dentro de ±0,5 s suena normal; fuera o nota equivocada, bajito', () => {
   // Reloj real empieza en 100; cuenta de entrada de 4 s -> la nota 0 cae en real = 104.
@@ -401,7 +446,7 @@ function bar42(level: 'principiante' | 'facil') {
   return { session, realAt, notes: session.notes };
 }
 
-test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera según su tiempo y el resto, 3 cada una', () => {
+test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera según su tiempo y el resto según su hueco', () => {
   for (const level of ['principiante', 'facil'] as const) {
     const { session, realAt, notes } = bar42(level);
     expect(notes).toHaveLength(9);
@@ -413,8 +458,9 @@ test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera segú
       session.autoHold([{ string: 5, fret: first.fret }]);
     }
     expect(session.hitAt.size).toBe(9);
-    expect([...session.scoreOf.values()].map((s) => s.points)).toEqual([4, 3, 3, 3, 3, 3, 3, 3, 3]);
-    expect(session.totalScore).toBe(28);
+    // Corcheas +2; la última llega a una semicorchea, +1.
+    expect([...session.scoreOf.values()].map((s) => s.points)).toEqual([4, 2, 2, 2, 2, 2, 2, 2, 1]);
+    expect(session.totalScore).toBe(19);
   }
 });
 
@@ -435,27 +481,34 @@ test('mantener: al soltar, las siguientes ya no cuentan solas (hay que volver a 
   expect(session.hitAt.size).toBe(4);
 });
 
-test('mantener: una nota repetida lenta (una negra) o con otra nota por medio no se completa sola', () => {
-  // 60 bpm: notas del mismo traste a 1 s (una negra) -> no cuentan solas.
+test('mantener: puntos según el hueco con la anterior (decisión del usuario)', () => {
+  // semicorchea (o menos) +1, corchea +2, negra +1, blanca o más +½; lo intermedio, al valor más largo.
+  expect([0.125, 0.25, 1 / 3, 0.5, 0.75, 1, 1.5, 2, 4, 8].map(holdPoints)).toEqual([1, 1, 2, 2, 1, 1, 0.5, 0.5, 0.5, 0.5]);
+});
+
+test('mantener: cuenta siempre, quede lo que quede; una nota distinta por medio corta la cadena', () => {
+  // 60 bpm (negra = 1 s), todas en la cuerda 6.
   const note = (id: number, t: number, fret: number) => ({ id, t, dur: 0.2, string: 6, fret, midi: 40 + fret, palmMute: false, tech: [] });
-  const slow: Chart = { ...twoBarChart(), notes: [note(0, 0, 0), note(1, 1, 0), note(2, 1.5, 3), note(3, 1.75, 0), note(4, 2, 0)] };
-  const s = new RiffSession(slow, { ...ritmo, toBar: 2 }, 0, 'nada');
+  const chart: Chart = { ...twoBarChart(), notes: [note(0, 0, 0), note(1, 1, 0), note(2, 3, 0), note(3, 3.5, 3), note(4, 3.75, 0), note(5, 4, 0)] };
+  const s = new RiffSession(chart, { ...ritmo, toBar: 2 }, 0, 'nada');
   s.judge({ string: 6, fret: 0, kind: 'pluck' }, 4);
-  for (let real = 4; real <= 5.7; real += 0.025) {
+  for (let real = 4; real <= 7.7; real += 0.025) {
     s.advance(real);
     s.autoHold([{ string: 6, fret: 0 }]);
   }
-  expect(s.hitAt.size).toBe(1);
-  // Nota 3 (t=1,75) y nota 4 (t=2), a una corchea: SÍ, una vez acertada la 3.
-  s.judge({ string: 6, fret: 0, kind: 'pluck' }, 5.75);
-  for (let real = 5.75; real <= 6.1; real += 0.025) {
+  // Nota 1 a una negra: +1. Nota 2 a una blanca: +½.
+  expect(s.scoreOf.get(1)?.points).toBe(1);
+  expect(s.scoreOf.get(2)?.points).toBe(0.5);
+  // La nota 3 (traste 3) va por medio: la 4 ya no cuenta sola, aunque se siga pulsando el 0.
+  expect(s.hitAt.has(3)).toBe(false);
+  expect(s.hitAt.has(4)).toBe(false);
+  // Se vuelve a pulsar en la 4 y se mantiene: la 5, a una semicorchea, +1.
+  s.judge({ string: 6, fret: 0, kind: 'pluck' }, 7.75);
+  for (let real = 7.75; real <= 8.1; real += 0.025) {
     s.advance(real);
     s.autoHold([{ string: 6, fret: 0 }]);
   }
-  expect(s.hitAt.has(4)).toBe(true);
-  expect(s.scoreOf.get(4)?.points).toBe(3);
-  // Lo mismo con una nota distinta por medio (1 -> 3 -> 0 de 1 a 1,75): la 2 (traste 3) no se toca.
-  expect(s.hitAt.has(2)).toBe(false);
+  expect(s.scoreOf.get(5)?.points).toBe(1);
 });
 
 test('mantener: en paso a paso también avanza solo (sin puntos)', () => {
@@ -492,4 +545,23 @@ test('motor: Experto en paso a paso, el acierto hace sonar ya su nota real', () 
   const s = new RiffSession(fakeChart(), { ...ritmo, mode: 'paso' }, 0, 'nada');
   s.advance(10);
   expect(s.judge({ string: 1, fret: 2, kind: 'pluck' }, 10).playNow.map((n) => n.midi)).toEqual([66]);
+});
+
+// --- Verificación final (Actualización 1).
+
+test('verificación: cuerdas libres SOLO en el modo trastes (no en Medio, Difícil ni Experto)', () => {
+  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.freeStrings).map(([k]) => k)).toEqual(['practica', 'neofito', 'principiante', 'facil']);
+  // El modo trastes son justo esos niveles; el modo cuerdas, los demás.
+  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'trastes')!.levels).toEqual(['practica', 'neofito', 'principiante', 'facil']);
+  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'cuerdas')!.levels).toEqual(['medio', 'dificil', 'experto']);
+  // Experto no tiene perfil: useRiffController le pasa freeStrings: false (profile null).
+  expect('experto' in RIFF_LEVELS).toBe(false);
+});
+
+test('verificación: al 50 % el metrónomo, la batería y la cuenta de entrada van a la mitad de velocidad', () => {
+  const metro = new RiffSession(fakeChart(), { ...ritmo, speed: 0.5 }, 10, 'metronomo').takeClicks(10, 20);
+  // 4 de cuenta + 4 pulsos del compás, uno cada 2 s reales (60 bpm al 50 %).
+  expect(metro.map((c) => c.at)).toEqual([10, 12, 14, 16, 18, 20, 22, 24]);
+  const drums = new RiffSession(fakeChart(), { ...ritmo, speed: 0.5 }, 10, 'bateria').takeClicks(10, 20);
+  expect(drums.slice(4).map((c) => [c.at, c.sound])).toEqual([[18, 'kick'], [19, 'cymbal']]);
 });

@@ -5,6 +5,8 @@ import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/gui
 import { useMetronome } from '@/app/lib/useMetronome';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
+import { KEYBOARD_TOUR, TutorialButton } from './ButtonTour';
+import { KeyboardToggleLabel } from './InstrumentIcons';
 
 // Key geometry copied exactly from doce-notas-teclado.svg / patron-tonos-semitonos.svg
 const WHITE_KEYS = [
@@ -83,6 +85,8 @@ const KB_KEYMAP: Record<string, number> = {
 
 interface Props {
   className?: string;
+  // Botón "Tutorial" encima del teclado: enseña los botones de su barra (sala de pruebas).
+  tutorial?: boolean;
   showEnharmonics?: boolean; // true → shows # and b names on black keys (Escalas)
   showScaleArrows?: boolean; // true → shows tone/semitone arrows below (Escalas)
 }
@@ -163,7 +167,8 @@ function cSibling(rectMidi: number): { rectMidi: number; zone: KbZone } | undefi
   return undefined;
 }
 
-export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows }: Props) {
+export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows, tutorial }: Props) {
+  const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const ptVoicesRef = useRef(new Map<number, { midi: number; voiceId: number }>());
   const [ptPressedMidis, setPtPressedMidis] = useState<Set<number>>(new Set());
@@ -332,7 +337,12 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
 
   return (
     <div className={className} style={{ display: 'block' }}>
-    <div className="midi-instrument-host">
+    {tutorial && (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+        <TutorialButton rootRef={hostRef} steps={KEYBOARD_TOUR} />
+      </div>
+    )}
+    <div className="midi-instrument-host" ref={hostRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 700 ${viewH}`}
@@ -500,7 +510,7 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          KEYBOARD
+          <KeyboardToggleLabel />
         </button>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '46px', textAlign: 'right' }}>

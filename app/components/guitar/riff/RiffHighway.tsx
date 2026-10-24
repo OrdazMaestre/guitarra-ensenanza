@@ -24,6 +24,8 @@ const HIT_FX_SECONDS = 0.35;
 // Etiquetas de puntos ("¡Perfecto!", "+3"...): cuánto duran (segundos reales) y cuántas a la vez.
 const SCORE_LABEL_SECONDS = 0.8;
 const MAX_SCORE_LABELS = 4;
+// Cuerdas libres: las 6 cuerdas, medio transparentes (decisión del usuario).
+const FREE_STRING_ALPHA = 0.5;
 const MISS_FADE_SECONDS = 0.45;
 const TOP_MARGIN = 10;
 // Desde cuántos segundos antes de llegar se dibuja la guía de aterrizaje.
@@ -264,12 +266,13 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // Cuerdas de colores sobre el mástil mientras se juega (las del <svg> se esconden con la clase
       // `riff-live`). En Experto, las que no se van a usar se vuelven transparentes y recuperan su
       // tono el segundo anterior a su próxima nota (`stringAlpha`, mismo reloj que las gemas). Con
-      // cuerdas libres se ven todas: cualquiera vale. Brillo moderado (sombra de su color).
+      // cuerdas libres, las 6 medio transparentes (cualquiera vale; lo que manda es la columna del
+      // traste). Brillo moderado (sombra de su color).
       if (session) {
         for (const string of stringsKey.split(',').map(Number)) {
           const y = toY(0, geo.stringY(string));
           ctx.strokeStyle = RIFF_STRING_COLORS[string];
-          ctx.globalAlpha = freeStrings ? 0.9 : stringAlpha(notesOnString(chart.notes, string), songPos, speed);
+          ctx.globalAlpha = freeStrings ? FREE_STRING_ALPHA : stringAlpha(notesOnString(chart.notes, string), songPos, speed);
           ctx.shadowColor = RIFF_STRING_COLORS[string];
           ctx.shadowBlur = 6;
           ctx.lineWidth = 3;

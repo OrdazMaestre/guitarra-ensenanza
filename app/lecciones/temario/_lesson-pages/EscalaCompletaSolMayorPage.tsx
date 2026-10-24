@@ -13,6 +13,7 @@ import HorizontalScrollbar from '@/app/components/guitar/HorizontalScrollbar';
 import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
+import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -526,7 +527,7 @@ function ScaleFretboard({
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          KEYBOARD
+          <KeyboardToggleLabel />
         </button>
         {kbMode && (
           <div className="midi-dropdown">

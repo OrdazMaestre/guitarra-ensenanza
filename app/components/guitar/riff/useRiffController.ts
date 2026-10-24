@@ -5,6 +5,8 @@ import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { reduceChart } from '@/app/lib/riff/reduce';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
+import { buildRemix } from '@/app/lib/riff/remix';
+import { RIFF_TUTORIAL } from './riffTutorial';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
 // prop `riffGame`): carga del .gp, pista, ajustes, aviso de pantalla estrecha y la partida.
@@ -15,7 +17,7 @@ import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 const MIN_PX_PER_FRET = 44;
 const SIDE_MARGIN_PX = 60;
 
-const DEFAULTS = { level: 'practica' as RiffLevel, speed: 0.5, mode: 'ritmo' as RiffMode, loop: false };
+const DEFAULTS = { level: 'practica' as RiffLevel, speed: 0.75, mode: 'ritmo' as RiffMode, loop: false };
 
 interface Options {
   source?: string;
@@ -33,7 +35,7 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
   const [loadError, setLoadError] = useState(false);
-  // Configuración inicial (decisión del usuario): Kirk, Práctica, 50 %, Con ritmo, sin bucle y
+  // Configuración inicial (decisión del usuario): Kirk, Práctica, 75 %, Con ritmo, sin bucle y
   // batería (metrónomo si el archivo no trae batería). `resetDefaults` vuelve a ella.
   const [speed, setSpeed] = useState<number>(DEFAULTS.speed);
   const [mode, setMode] = useState<RiffMode>(DEFAULTS.mode);
@@ -44,9 +46,19 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
   const [narrow, setNarrow] = useState(false);
   // Práctica..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
   const [level, setLevel] = useState<RiffLevel>(DEFAULTS.level);
-  const profile = level === 'experto' ? null : RIFF_LEVELS[level];
+  // Partida tutorial (riffTutorial.ts): su canción remix sustituye al chart mientras dura, y sus
+  // paradas automáticas (`breaks`) separan las partes. `tutorialOn` = tutorial abierto.
+  // Con pantalla estrecha no hay juego: el tutorial queda apagado (y al ensancharse, vuelve a su
+  // primera tarjeta, porque la partida se paró).
+  const [tutorialWanted, setTutorialOn] = useState(false);
+  const [remixState, setTutorialRemix] = useState<{ chart: Chart; breaks: number[] } | null>(null);
+  const tutorialOn = tutorialWanted && !narrow;
+  const tutorialRemix = tutorialOn ? remixState : null;
+  const activeChart = tutorialRemix?.chart ?? chart;
+  // En el tutorial el mástil del juego es el de modo trastes 0-5 (Neófito y Principiante).
+  const profile = tutorialRemix ? RIFF_LEVELS.principiante : level === 'experto' ? null : RIFF_LEVELS[level];
 
-  const game = useRiffGame(chart, heldRef);
+  const game = useRiffGame(activeChart, heldRef);
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.
   const playing = game.status === 'countin' || game.status === 'playing';
   const paused = game.status === 'paused';
@@ -97,9 +109,9 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
 
   const maxBar = useMemo(() => (chart ? Math.max(1, ...chart.bars.map((bar) => bar.number)) : 1), [chart]);
   const previewTime = useMemo(() => {
-    const bar = chart?.bars.find((b) => b.number >= fromBar);
+    const bar = tutorialRemix ? tutorialRemix.chart.bars[0] : chart?.bars.find((b) => b.number >= fromBar);
     return (bar?.t ?? 0) - 0.4;
-  }, [chart, fromBar]);
+  }, [chart, fromBar, tutorialRemix]);
 
   // Aviso de pantalla estrecha: se mide el ancho REAL del mástil (cubre móvil vertical, pantallas
   // pequeñas y ventanas estrechas por igual), no el tipo de dispositivo.
@@ -124,6 +136,52 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     if (narrow) stop();
   }, [narrow, stop]);
 
+  // Partida tutorial de mecánicas. La tarjeta que se ve delante del mástil:
+  // - 'section-k': mensajes de la parte k (antes de empezar, o parada en el silencio previo);
+  // - 'pause': PAUSA pulsada a mitad de una parte; 'end': canción terminada; null: tocando.
+  type TutorialCard = `section-${number}` | 'pause' | 'end';
+  let tutorialCard: TutorialCard | null = null;
+  if (tutorialOn) {
+    if (game.status === 'idle') tutorialCard = 'section-0';
+    else if (game.status === 'paused') tutorialCard = game.atBreak !== null ? `section-${game.atBreak}` : 'pause';
+    else if (game.status === 'finished') tutorialCard = 'end';
+  }
+
+  function startTutorial() {
+    if (trackIndex === null || !source) return;
+    setTutorialOn(true);
+    setTutorialRemix(null);
+    setHasStarted(true);
+    // La canción remix: cada parte con las notas de su nivel, de la pista elegida.
+    void loadScore(source).then(({ at, score }) => {
+      const real = buildChart(at, score, trackIndex, 24);
+      const remix = buildRemix(RIFF_TUTORIAL.map((part) => ({
+        chart: reduceChart(real, RIFF_LEVELS[part.level as Exclude<RiffLevel, 'experto'>]),
+        fromBar: part.fromBar,
+        toBar: part.toBar,
+        repeats: part.repeats,
+      })));
+      setTutorialRemix(remix);
+    });
+  }
+
+  // "¡A tocar!": la primera vez arranca la canción; en una parada, sigue desde el silencio.
+  function playTutorial() {
+    if (!tutorialRemix) return;
+    if (game.status === 'paused') {
+      game.resume();
+      return;
+    }
+    const lastBar = tutorialRemix.chart.bars[tutorialRemix.chart.bars.length - 1].number;
+    game.start({ speed, mode: 'ritmo', loop: false, fromBar: 1, toBar: lastBar, freeStrings: true, breaks: tutorialRemix.breaks }, backing);
+  }
+
+  function exitTutorial() {
+    setTutorialOn(false);
+    setTutorialRemix(null);
+    stop();
+  }
+
   const hasDrums = !!chart && chart.drums.length > 0;
   function resetDefaults() {
     const preferred = tracks.find((track) => track.name === initialTrack) ?? tracks[0];
@@ -145,7 +203,7 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
   return {
     level, setLevel, profile,
     tracks, trackIndex, setTrackIndex,
-    chart, loadError,
+    chart: activeChart, loadError,
     speed, setSpeed,
     mode, setMode,
     backing, setBacking,
@@ -163,6 +221,12 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     resetDefaults,
     start,
     stop,
+    tutorialOn,
+    tutorialReady: !!tutorialRemix,
+    tutorialCard,
+    startTutorial,
+    playTutorial,
+    exitTutorial,
   };
 }
 

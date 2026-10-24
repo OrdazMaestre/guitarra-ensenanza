@@ -4,6 +4,7 @@ import * as at from '@coderline/alphatab';
 import { buildChart, type Chart } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
+import { buildRemix, REMIX_GAP_QUARTERS } from '../app/lib/riff/remix';
 
 // Traducción de la tablatura real a niveles sencillos (app/lib/riff/reduce.ts), estilo Guitar Hero.
 
@@ -20,7 +21,7 @@ const SONGS: Array<[string, string, number]> = [
 ];
 
 for (const [name, file, track] of SONGS) {
-  for (const level of ['practica', 'principiante', 'facil'] as const) {
+  for (const level of ['practica', 'neofito', 'principiante', 'facil'] as const) {
     test(`${name} en ${level}: botones del nivel, aire entre notas, dirección y repeticiones`, () => {
       const real = chartOf(file, track);
       const profile = RIFF_LEVELS[level];
@@ -32,7 +33,15 @@ for (const [name, file, track] of SONGS) {
       // Práctica quita como MUCHO la mitad de los golpes; Principiante y Fácil, como Guitar Hero
       // Experto, casi ninguno (decisiones del usuario).
       const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
-      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'practica' ? 0.45 : 0.9);
+      // Neófito, como el "Hard" de Guitar Hero: 65-70 % de las notas en Master of Puppets (decisión
+      // del usuario); las canciones lentas casi no se tocan.
+      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'practica' ? 0.45 : level === 'neofito' ? 0.65 : 0.9);
+      if (level === 'neofito' && file.includes('master-of-puppets')) expect(chart.notes.length / onsets).toBeLessThanOrEqual(0.7);
+      if (profile.maxNotesPerSecond) {
+        for (let i = 0; i < chart.notes.length; i++) {
+          expect(chart.notes.filter((n) => n.t <= chart.notes[i].t && chart.notes[i].t - n.t < 1 - 1e-3).length).toBeLessThanOrEqual(profile.maxNotesPerSecond);
+        }
+      }
       expect(chart.sourceNotes).toBe(real.notes);
 
       for (const note of chart.notes) {
@@ -104,5 +113,52 @@ test('Principiante y Fácil conservan el compás 42 de Master of Puppets entero 
       expect(new Set(notes.map((n) => `${n.string}/${n.fret}`)).size).toBe(1);
     }
     expect(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length).toBeLessThan(9);
+    // Neófito quita parte de los "chugs", pero menos que Práctica.
+    const neofito = inBar(reduceChart(real, RIFF_LEVELS.neofito).notes).length;
+    expect(neofito).toBeLessThan(9);
+    expect(neofito).toBeGreaterThan(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length);
+  }
+});
+
+// Canción "remix" de la partida tutorial (riffTutorial.ts), fabricada nota a nota.
+test('remix: compás 42 ×6, silencio, 9-12 ×2 (Neófito), silencio, 9-12 ×2 (Principiante), como una sola canción', () => {
+  const real = chartOf('prueba-master-of-puppets.gp', 2);
+  const neofito = reduceChart(real, RIFF_LEVELS.neofito);
+  const principiante = reduceChart(real, RIFF_LEVELS.principiante);
+  const { chart, breaks } = buildRemix([
+    { chart: neofito, fromBar: 42, toBar: 42, repeats: 6 },
+    { chart: neofito, fromBar: 9, toBar: 12, repeats: 2 },
+    { chart: principiante, fromBar: 9, toBar: 12, repeats: 2 },
+  ]);
+  // 6 + 1 + 8 + 1 + 8 compases, numerados 1..24, seguidos sin huecos ni solapes.
+  expect(chart.bars.map((b) => b.number)).toEqual(Array.from({ length: 24 }, (_, i) => i + 1));
+  chart.bars.forEach((bar, i) => { if (i > 0) expect(bar.t).toBeCloseTo(chart.bars[i - 1].end, 6); });
+  expect(chart.duration).toBeCloseTo(chart.bars[23].end, 6);
+  // Las paradas, al principio de los dos compases de silencio, que no tienen notas.
+  expect(breaks).toHaveLength(2);
+  expect(breaks[0]).toBeCloseTo(chart.bars[6].t, 6);
+  expect(breaks[1]).toBeCloseTo(chart.bars[15].t, 6);
+  const beat = 60 / chart.bpm;
+  for (const t of breaks) expect(chart.notes.filter((n) => n.t >= t - 1e-6 && n.t < t + REMIX_GAP_QUARTERS * beat - 1e-6)).toHaveLength(0);
+  // Notas: ids 0..n-1 en orden, tiempos crecientes; cada tramo trae exactamente las de su nivel.
+  chart.notes.forEach((n, i) => {
+    expect(n.id).toBe(i);
+    if (i > 0) expect(n.t).toBeGreaterThanOrEqual(chart.notes[i - 1].t);
+  });
+  const count = (c: typeof real, from: number, to: number) => {
+    const bars = c.bars.filter((b) => b.number >= from && b.number <= to);
+    return c.notes.filter((n) => n.t >= bars[0].t - 1e-6 && n.t < bars[bars.length - 1].end - 1e-6).length;
+  };
+  const inBars = (from: number, to: number) => chart.notes.filter((n) => n.t >= chart.bars[from - 1].t - 1e-6 && n.t < chart.bars[to - 1].end - 1e-6).length;
+  expect(inBars(1, 6)).toBe(6 * count(neofito, 42, 42));
+  expect(inBars(8, 15)).toBe(2 * count(neofito, 9, 12));
+  expect(inBars(17, 24)).toBe(2 * count(principiante, 9, 12));
+  // Las notas reales de fondo, renumeradas: cada `sourceIds` apunta a una nota real del remix
+  // que suena desde su golpe (nunca antes).
+  for (const n of chart.notes) {
+    for (const id of n.sourceIds ?? []) {
+      expect(chart.sourceNotes![id].id).toBe(id);
+      expect(chart.sourceNotes![id].t).toBeGreaterThanOrEqual(n.t - 1e-6);
+    }
   }
 });

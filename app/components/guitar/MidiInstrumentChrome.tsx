@@ -47,10 +47,15 @@ export default function MidiInstrumentChrome({ belowNote, warning, children }: {
       const style = getComputedStyle(pill);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
         + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      // Los envoltorios `display: contents` (p. ej. HoldGuard) no tienen caja: se mira dentro.
       let tallestChild = 0;
-      for (const child of Array.from(pill.children)) {
-        tallestChild = Math.max(tallestChild, child.getBoundingClientRect().height);
-      }
+      const visit = (el: Element) => {
+        for (const child of Array.from(el.children)) {
+          if (getComputedStyle(child).display === 'contents') visit(child);
+          else tallestChild = Math.max(tallestChild, child.getBoundingClientRect().height);
+        }
+      };
+      visit(pill);
       const wrapped = pillRect.height > tallestChild + padding + 4;
 
       // 2) ¿Pisaría el siguiente contenido? Siguiente elemento visible subiendo desde el host.

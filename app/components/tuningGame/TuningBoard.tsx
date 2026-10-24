@@ -13,6 +13,7 @@ import {
   midiToNoteName,
   type StringNumber,
 } from '@/app/lib/tuningGame/pitch';
+import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
 
 // Cuerda 1 = Mi agudo (arriba), cuerda 6 = Mi grave (abajo) -- misma convención y mismo orden
 // visual que ReducedFretboardDiagram.tsx, para que las dos mástiles de la página se lean igual.
@@ -792,7 +793,7 @@ export default function TuningBoard() {
             onClick={() => setKbMode(m => !m)}
             style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
           >
-            KEYBOARD
+            <KeyboardToggleLabel />
           </button>
           {kbMode && (
             <div className="midi-dropdown">

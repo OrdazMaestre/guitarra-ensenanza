@@ -17,10 +17,17 @@ export const PERFECT_SECONDS = 0.2;
 export const GOOD_SECONDS = 0.3;
 export const HIT_WINDOW_SECONDS = 0.5;
 export const PERFECT_POINTS = 4;
-// Nota repetida con la pulsación MANTENIDA (ver `autoHold`): puntos y hueco máximo (en negras) con la
-// anterior para que cuente -- corcheas y semicorcheas sí, una negra no (decisión del usuario).
-export const HOLD_POINTS = 3;
-export const HOLD_MAX_GAP_QUARTERS = 0.5;
+// Nota repetida con la pulsación MANTENIDA (ver `autoHold`): cuenta SIEMPRE, quede lo que quede
+// hasta ella, pero puntúa según el hueco con la anterior (decisión del usuario, para que mantener
+// compense solo cuando hace falta): semicorchea (o menos) +1, corchea +2, negra +1, blanca o más +½.
+// Los huecos intermedios (corchea con puntillo, tresillos...) van al valor siguiente más largo.
+export function holdPoints(gapQuarters: number): number {
+  const eps = 0.02;
+  if (gapQuarters <= 0.25 + eps) return 1;
+  if (gapQuarters <= 0.5 + eps) return 2;
+  if (gapQuarters <= 1 + eps) return 1;
+  return 0.5;
+}
 export const COUNT_IN_BEATS = 4;
 // Volumen de las notas de fondo (la canción sonando sola en modo 'ritmo').
 export const GUIDE_GAIN = 0.35;
@@ -46,6 +53,13 @@ export interface RiffOptions {
   toBar: number;
   // Cuerdas libres (Práctica, Principiante, Fácil): vale el traste correcto en CUALQUIER cuerda.
   freeStrings?: boolean;
+  // Tocar el tramo N veces seguidas (partida tutorial); los puntos de cada vuelta se SUMAN. Sin
+  // esto, una sola vez (o infinitas con `loop`, que en cada vuelta empieza de cero).
+  repeats?: number;
+  // Paradas automáticas (instantes de canción, de menor a mayor): al llegar a cada una la partida
+  // se pone en pausa sola (`stoppedAtBreak`), y al continuar NO retrocede: arranca una cuenta de
+  // entrada de 4 negras desde ahí (en un remix, el compás de silencio que hay en cada parada).
+  breaks?: number[];
 }
 
 export interface ScheduledClick {
@@ -116,14 +130,30 @@ export class RiffSession {
   }
 
   get totalScore(): number {
-    let total = 0;
+    let total = this.bankedScore;
     for (const score of this.scoreOf.values()) total += score.points;
     return total;
   }
 
   get maxScore(): number {
-    return this.notes.length * PERFECT_POINTS;
+    return this.notes.length * PERFECT_POINTS * this.repeats;
   }
+
+  // Vueltas del tramo (`options.repeats`) y en cuál va (1 = la primera).
+  get repeats(): number {
+    return Math.max(1, this.options.repeats ?? 1);
+  }
+
+  get repetition(): number {
+    return Math.min(this.repeats, this.loopCount + 1);
+  }
+
+  // Puntos de las vueltas ya terminadas (con `repeats`).
+  private bankedScore = 0;
+
+  // Parada automática en la que está esperando (1 = la primera de `options.breaks`), o null.
+  stoppedAtBreak: number | null = null;
+  private nextBreak = 0;
 
   // Instante de canción al que lleva la cuenta de entrada en curso: el inicio del tramo, o el
   // compás desde el que se continúa tras una pausa (ver `resume`).
@@ -191,6 +221,10 @@ export class RiffSession {
   // sin salirse del tramo), con cuenta de entrada. Las notas desde ahí vuelven a estar por tocar.
   resume(now: number): void {
     if (this.status !== 'paused') return;
+    if (this.stoppedAtBreak !== null) {
+      this.continueFromBreak(now);
+      return;
+    }
     const bars = this.chart.bars.filter((bar) => bar.t >= this.startT - 1e-6 && bar.t < this.endT - 1e-6);
     let current = 0;
     bars.forEach((bar, i) => { if (bar.t <= this.songPos + 1e-6) current = i; });
@@ -207,6 +241,19 @@ export class RiffSession {
     this.clickTimes = [...this.countInClicks(target), ...this.songClicks.filter((click) => click.t >= target - 1e-6)];
     this.nextClick = 0;
     this.nextGuide = this.guideNotes.findIndex((note) => note.t >= target - 1e-6);
+    if (this.nextGuide < 0) this.nextGuide = this.guideNotes.length;
+    this.status = 'countin';
+    this.lastReal = now;
+  }
+
+  // Tras una parada automática: cuenta de entrada de 4 negras desde donde se paró, sin retroceder.
+  private continueFromBreak(now: number): void {
+    const target = this.songPos + COUNT_IN_BEATS * (60 / this.chart.bpm);
+    this.stoppedAtBreak = null;
+    this.countInTarget = target;
+    this.clickTimes = [...this.countInClicks(target), ...this.songClicks.filter((click) => click.t >= target - 1e-6)];
+    this.nextClick = 0;
+    this.nextGuide = this.guideNotes.findIndex((note) => note.t >= this.songPos - 1e-6);
     if (this.nextGuide < 0) this.nextGuide = this.guideNotes.length;
     this.status = 'countin';
     this.lastReal = now;
@@ -234,6 +281,14 @@ export class RiffSession {
       const pending = this.pendingTime();
       if (pending !== null) next = Math.min(next, pending);
     }
+    const stop = this.options.breaks?.[this.nextBreak];
+    if (stop !== undefined && next >= stop - 1e-6) {
+      this.songPos = stop;
+      this.nextBreak++;
+      this.stoppedAtBreak = this.nextBreak;
+      this.status = 'paused';
+      return;
+    }
     this.songPos = next;
     this.status = this.songPos >= this.countInTarget ? 'playing' : 'countin';
 
@@ -242,6 +297,9 @@ export class RiffSession {
     if (this.songPos >= finishAt) {
       if (this.options.loop) {
         this.restart(now);
+      } else if (this.loopCount + 1 < this.repeats) {
+        this.bankedScore = this.totalScore;
+        this.restart(now);
       } else {
         this.status = 'finished';
       }
@@ -249,6 +307,8 @@ export class RiffSession {
   }
 
   private restart(now: number) {
+    this.nextBreak = 0;
+    this.stoppedAtBreak = null;
     this.hitAt.clear();
     this.scoreOf.clear();
     this.holdChains.clear();
@@ -398,8 +458,8 @@ export class RiffSession {
 
   // Notas repetidas con la pulsación MANTENIDA (decisión del usuario): mientras el alumno sigue
   // pulsando la posición con la que acertó una nota, la siguiente nota del chart en esa MISMA
-  // posición cuenta sola (HOLD_POINTS) al llegar su momento, si está a una corchea o menos y no hay
-  // otra nota por medio (en su cuerda; con cuerdas libres, ninguna). Así se toca, p. ej., el compás
+  // posición cuenta sola al llegar su momento (puntos según el hueco: `holdPoints`), sin límite de
+  // distancia, si no hay otra nota por medio (en su cuerda; con cuerdas libres, ninguna). Así se toca, p. ej., el compás
   // 42 de Master of Puppets (9 Mi al aire rapidísimos) manteniendo el traste 0. Soltar corta la
   // cadena. `held` = posiciones que suenan ahora en el mástil. Devuelve las notas acertadas así.
   autoHold(held: { string: number; fret: number }[]): ChartNote[] {
@@ -424,12 +484,9 @@ export class RiffSession {
         }
         const next = this.notes[nextIndex];
         if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id)) break;
-        if (next.t - prev.t > HOLD_MAX_GAP_QUARTERS * this.quarterSecondsAt(prev.t) + 1e-3) {
-          this.holdChains.delete(key);
-          break;
-        }
         this.hitAt.set(next.id, this.songPos);
-        if (this.scoring) this.scoreOf.set(next.id, { points: HOLD_POINTS, exact: true, at: this.songPos });
+        const points = holdPoints((next.t - prev.t) / this.quarterSecondsAt(prev.t));
+        if (this.scoring) this.scoreOf.set(next.id, { points, exact: true, at: this.songPos });
         this.holdChains.set(key, next.id);
         out.push(next);
         index = nextIndex;

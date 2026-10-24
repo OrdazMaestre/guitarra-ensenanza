@@ -1,8 +1,10 @@
 'use client';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { levelLabel, RIFF_LEVEL_ORDER, RIFF_LEVELS } from '@/app/lib/riff/levels';
+import { levelLabel, RIFF_LEVEL_GROUPS, RIFF_LEVELS } from '@/app/lib/riff/levels';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
+import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
+import { BackingIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
 // del mástil MIDI (ReducedFretboardDiagram, prop `riffGame`): desplegables de ajustes + "Empezar"
@@ -12,21 +14,23 @@ const SPEEDS = [0.5, 0.75, 1] as const;
 const MODE_LABEL: Record<RiffMode, string> = { ritmo: 'Con ritmo', paso: 'Paso a paso' };
 const BACKING_LABEL: Record<RiffBacking, string> = { metronomo: 'Metrónomo', bateria: 'Batería', nada: 'Sin nada' };
 type MenuId = 'nivel' | 'pista' | 'velocidad' | 'ritmo' | 'compases' | 'modo';
+const ROLE_LABEL: Record<TrackRole, string> = { S: 'Guitarra solista', R: 'Guitarra rítmica' };
 
-// "Rhythm Guitar (James)" -> "James", para que el botón del desplegable sea corto.
-function shortTrackName(name: string) {
-  return name.match(/\(([^)]+)\)/)?.[1] ?? name;
-}
-
-// Orden (decisión del usuario): Pista, Nivel, Velocidad, Ritmo, Compases/bucle, acompañamiento.
+// Orden (decisión del usuario): Pista, Nivel, acompañamiento, Velocidad, Ritmo, Compases/bucle.
 // Las notas que pasan del último traste se siguen recolocando (chart.ts), pero ya sin aviso.
+// En el panel solo se ven ICONOS (petición del usuario: ahorrar espacio); el nombre de cada ajuste
+// y su valor siguen en aria-label, en `title` y en texto oculto. En los menús, icono + nombre.
 interface Props {
   // Al pulsar "Empezar" (el mástil lo usa para centrarse en pantalla).
   onStart?: () => void;
   riff: RiffController;
+  // Papel de cada pista (nombre de pista -> S solista / R rítmica), sin el nombre del músico. Si
+  // falta, se deduce del nombre ("Lead"/"Solo" = S; lo demás, R).
+  trackRoles?: Record<string, TrackRole>;
 }
 
-export function RiffControls({ onStart, riff }: Props) {
+export function RiffControls({ onStart, riff, trackRoles }: Props) {
+  const roleOf = (name: string): TrackRole => trackRoles?.[name] ?? (/lead|solo/i.test(name) ? 'S' : 'R');
   // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -78,39 +82,67 @@ export function RiffControls({ onStart, riff }: Props) {
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
         {riff.tracks.length > 1 && (
-          <RiffDropdown {...menuProps('pista')} label="Pista" value={currentTrack ? shortTrackName(currentTrack.name) : '—'}>
+          <RiffDropdown {...menuProps('pista')} icon={<TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pista" value={currentTrack ? ROLE_LABEL[roleOf(currentTrack.name)] : '—'}>
             {riff.tracks.map((track) => (
               <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
-                {track.name}
+                <TrackIcon role={roleOf(track.name)} />
+                {ROLE_LABEL[roleOf(track.name)]}
               </button>
             ))}
           </RiffDropdown>
         )}
-        <RiffDropdown {...menuProps('nivel')} label="Nivel" value={levelLabel(riff.level)}>
-          {RIFF_LEVEL_ORDER.map((value) => {
-            const available = value === 'experto' || RIFF_LEVELS[value].available;
-            return (
-              <button aria-pressed={riff.level === value} className="riff-chip" disabled={!available} key={value} onClick={() => pick(() => riff.setLevel(value))} type="button">
-                {levelLabel(value)}{available ? '' : ' (pronto)'}
-              </button>
-            );
-          })}
+        <RiffDropdown {...menuProps('nivel')} icon={<LevelIcon level={riff.level} />} label="Nivel" value={levelLabel(riff.level)}>
+          {/* Dos modos, uno por columna: Trastes (vale cualquier cuerda) y Cuerdas. */}
+          <div className="riff-level-groups">
+            {RIFF_LEVEL_GROUPS.map((group) => (
+              <div aria-label={group.label} className="riff-level-group" key={group.id} role="group">
+                <span className="riff-level-heading">{group.label}</span>
+                {group.levels.map((value) => {
+                  const available = value === 'experto' || RIFF_LEVELS[value].available;
+                  return (
+                    <button aria-pressed={riff.level === value} className="riff-chip" disabled={!available} key={value} onClick={() => pick(() => riff.setLevel(value))} type="button">
+                      <LevelIcon level={value} />
+                      {levelLabel(value)}{available ? '' : ' (pronto)'}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </RiffDropdown>
-        <RiffDropdown {...menuProps('velocidad')} label="Velocidad" value={`${Math.round(riff.speed * 100)}%`}>
+        <RiffDropdown {...menuProps('modo')} icon={<BackingIcon backing={riff.backing} />} label="Modo" value={BACKING_LABEL[riff.backing]}>
+          {(['metronomo', 'bateria', 'nada'] as const).map((value) => (
+            <button
+              aria-pressed={riff.backing === value}
+              className="riff-chip"
+              disabled={value === 'bateria' && !!chart && chart.drums.length === 0}
+              key={value}
+              onClick={() => pick(() => riff.setBacking(value))}
+              type="button"
+            >
+              <BackingIcon backing={value} />
+              {BACKING_LABEL[value]}
+            </button>
+          ))}
+        </RiffDropdown>
+        <RiffDropdown {...menuProps('velocidad')} icon={<SpeedIcon speed={riff.speed} />} label="Velocidad" value={`${Math.round(riff.speed * 100)}%`}>
           {SPEEDS.map((value) => (
             <button aria-pressed={riff.speed === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setSpeed(value))} type="button">
+              <SpeedIcon speed={value} />
               {Math.round(value * 100)}%
             </button>
           ))}
         </RiffDropdown>
-        <RiffDropdown {...menuProps('ritmo')} label="Ritmo" value={MODE_LABEL[riff.mode]}>
+        <RiffDropdown {...menuProps('ritmo')} icon={<ModeIcon mode={riff.mode} />} label="Ritmo" value={MODE_LABEL[riff.mode]}>
           {(['ritmo', 'paso'] as const).map((value) => (
             <button aria-pressed={riff.mode === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setMode(value))} type="button">
+              <ModeIcon mode={value} />
               {MODE_LABEL[value]}
             </button>
           ))}
         </RiffDropdown>
-        <RiffDropdown {...menuProps('compases')} label="Compases" value={`${from}–${to}${riff.loop ? ' ↻' : ''}`}>
+        {/* Solo el icono del bucle: normal si se repite, tachado si no. */}
+        <RiffDropdown {...menuProps('compases')} icon={<LoopIcon loop={riff.loop} />} label="Compases" value={`${from}–${to}${riff.loop ? ' en bucle' : ''}`}>
           <div className="riff-bars">
             <label>
               Del
@@ -121,21 +153,10 @@ export function RiffControls({ onStart, riff }: Props) {
               <input aria-label="Hasta el compás" max={riff.maxBar} min={1} onChange={(e) => riff.setToBar(clampBar(e.target.value, riff.maxBar))} type="number" value={riff.toBar} />
             </label>
           </div>
-          <button aria-pressed={riff.loop} className="riff-chip" onClick={() => riff.setLoop((l) => !l)} type="button">Repetir en bucle</button>
-        </RiffDropdown>
-        <RiffDropdown {...menuProps('modo')} label="Modo" value={BACKING_LABEL[riff.backing]}>
-          {(['metronomo', 'bateria', 'nada'] as const).map((value) => (
-            <button
-              aria-pressed={riff.backing === value}
-              className="riff-chip"
-              disabled={value === 'bateria' && !!chart && chart.drums.length === 0}
-              key={value}
-              onClick={() => pick(() => riff.setBacking(value))}
-              type="button"
-            >
-              {BACKING_LABEL[value]}
-            </button>
-          ))}
+          <button aria-pressed={riff.loop} className="riff-chip" onClick={() => riff.setLoop((l) => !l)} type="button">
+            <LoopIcon loop={riff.loop} />
+            Repetir en bucle
+          </button>
         </RiffDropdown>
       </div>
 
@@ -145,6 +166,17 @@ export function RiffControls({ onStart, riff }: Props) {
         </button>
         {/* Continuar: retoma la partida en pausa un compás antes, con cuenta de entrada. */}
         <button className="riff-action riff-action-stop" disabled={!riff.paused} onClick={continueGame} type="button">Continuar</button>
+        {/* Tutorial del panel: antes, vuelve a la configuración de base (petición del usuario). */}
+        <TutorialButton
+          // Al final, la partida tutorial de mecánicas (riffTutorial.ts).
+          finish={{ label: '¡A jugar!', run: () => { onStart?.(); riff.startTutorial(); } }}
+          onStart={() => {
+            setOpenMenu(null);
+            riff.resetDefaults();
+          }}
+          rootRef={panelRef}
+          steps={RIFF_PANEL_TOUR}
+        />
       </div>
 
       {riff.loadError && <p className="riff-note">No se pudo cargar la tablatura.</p>}
@@ -162,6 +194,7 @@ export function RiffControls({ onStart, riff }: Props) {
 interface DropdownProps {
   children: ReactNode;
   disabled: boolean;
+  icon: ReactNode;
   id: MenuId;
   label: string;
   onToggle: () => void;
@@ -169,9 +202,9 @@ interface DropdownProps {
   value: string;
 }
 
-// Desplegable de los ajustes: un botón "Etiqueta valor ▾" y, debajo, una columna flotante con
-// las opciones.
-function RiffDropdown({ children, disabled, id, label, onToggle, open, value }: DropdownProps) {
+// Desplegable de los ajustes: un botón "icono ▾" (nombre y valor ocultos a la vista) y, encima,
+// una columna flotante con las opciones.
+function RiffDropdown({ children, disabled, icon, id, label, onToggle, open, value }: DropdownProps) {
   return (
     <div className="riff-dd">
       <button
@@ -181,8 +214,10 @@ function RiffDropdown({ children, disabled, id, label, onToggle, open, value }: 
         className="riff-dd-toggle"
         disabled={disabled}
         onClick={onToggle}
+        title={`${label}: ${value}`}
         type="button"
       >
+        {icon}
         <span className="riff-dd-label">{label}</span>
         <span className="riff-dd-value">{value}</span>
         <span aria-hidden="true" className="riff-dd-caret">▾</span>
@@ -268,6 +303,8 @@ export function RiffStyles() {
 
       /* Panel de ajustes de la partida: DELANTE del juego (encima de la autopista), no colgando de la
          barra de controles. Se pliega al empezar/continuar y se despliega al pausar o terminar. */
+      /* Compacto y ENCIMA del mástil (centrado sobre sus cuerdas; ReducedFretboardDiagram calcula
+         el 'top'), dejando la autopista libre por encima. */
       .riff-overlay {
         background: #ffffff;
         border: 1px solid #d1d5db;
@@ -275,10 +312,10 @@ export function RiffStyles() {
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
         left: 50%;
         max-width: calc(100% - 16px);
-        padding: 12px;
+        padding: 8px 10px;
         position: absolute;
         top: 10px;
-        transform: translateX(-50%);
+        transform: translate(-50%, -50%);
         width: max-content;
         z-index: 30;
       }
@@ -286,7 +323,7 @@ export function RiffStyles() {
       .riff-panel {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         min-width: 0;
       }
 
@@ -294,7 +331,7 @@ export function RiffStyles() {
         align-items: center;
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 6px;
         justify-content: center;
         min-width: 0;
       }
@@ -303,8 +340,14 @@ export function RiffStyles() {
         position: relative;
       }
 
+      .riff-dd-toggle,
+      .riff-chip,
+      .riff-action {
+        white-space: nowrap;
+      }
+
       .riff-dd-toggle {
-        align-items: baseline;
+        align-items: center;
         background: #ffffff;
         border: 1.5px solid #9ca3af;
         border-radius: 999px;
@@ -312,9 +355,28 @@ export function RiffStyles() {
         cursor: pointer;
         display: inline-flex;
         font-size: 12px;
-        gap: 6px;
+        gap: 5px;
         line-height: 1.3;
-        padding: 6px 12px;
+        padding: 4px 10px 4px 8px;
+      }
+
+      .riff-icon {
+        color: #047857;
+        display: block;
+        flex: none;
+      }
+
+      .riff-chip[aria-pressed='true'] .riff-icon {
+        color: #ffffff;
+      }
+
+      /* La letra S/R va recortada en el clavijero: toma el color del fondo del botón. */
+      .riff-track-letter {
+        fill: #ffffff;
+      }
+
+      .riff-chip[aria-pressed='true'] .riff-track-letter {
+        fill: #047857;
       }
 
       .riff-dd-toggle[aria-expanded='true'] {
@@ -326,14 +388,16 @@ export function RiffStyles() {
         opacity: 0.55;
       }
 
-      .riff-dd-label {
-        color: #6b7280;
-        font-weight: 700;
-      }
-
+      /* Nombre y valor, solo para lectores de pantalla (y para el 'title'): se ve el icono. */
+      .riff-dd-label,
       .riff-dd-value {
-        color: #047857;
-        font-weight: 900;
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        white-space: nowrap;
+        width: 1px;
       }
 
       .riff-dd-caret {
@@ -350,19 +414,47 @@ export function RiffStyles() {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        /* Hacia ARRIBA: el panel está sobre el mástil y encima hay sitio (la autopista). */
+        bottom: 100%;
         left: 50%;
-        margin-top: 6px;
+        margin-bottom: 6px;
         max-width: calc(100vw - 32px);
         padding: 8px;
+        /* Ancho por su contenido, no por el botón que lo ancla (si no, las dos columnas de Nivel
+           se apilaban). */
+        width: max-content;
         position: absolute;
-        top: 100%;
         transform: translateX(-50%);
         white-space: nowrap;
         z-index: 20;
       }
 
+      .riff-level-groups {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      .riff-level-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .riff-level-heading {
+        color: #047857;
+        font-size: 12px;
+        font-weight: 900;
+        text-align: center;
+        text-transform: uppercase;
+      }
+
       .riff-chip {
+        align-items: center;
         background: transparent;
+        display: inline-flex;
+        gap: 8px;
         border: 1.5px solid #9ca3af;
         border-radius: 999px;
         color: #374151;
@@ -408,7 +500,9 @@ export function RiffStyles() {
       }
 
       .riff-actions {
+        align-items: center;
         display: flex;
+        flex-wrap: wrap;
         gap: 10px;
         justify-content: center;
       }
@@ -416,11 +510,11 @@ export function RiffStyles() {
       .riff-action {
         border-radius: 999px;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 950;
         letter-spacing: 0.08em;
-        min-height: 40px;
-        padding: 6px 22px;
+        min-height: 34px;
+        padding: 4px 18px;
         text-transform: uppercase;
       }
 

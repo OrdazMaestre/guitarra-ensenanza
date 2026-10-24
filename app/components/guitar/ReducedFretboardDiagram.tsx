@@ -1,5 +1,5 @@
 'use client';
-import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type MutableRefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { type GuitarTone, playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -8,14 +8,19 @@ import { type PracticeExercise, type PracticeNoteEvent, useFretboardPractice } f
 import { FretboardPracticeStyles, PracticeButtons, PracticeFeedback, PracticeTargetMarker } from './FretboardPractice';
 import RiffHighway from './riff/RiffHighway';
 import { RiffControls, RiffStyles } from './riff/RiffControls';
+import { RiffTutorialCard } from './riff/RiffTutorialCard';
 import { useRiffController } from './riff/useRiffController';
 import HorizontalScrollbar from './HorizontalScrollbar';
 import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
+import HoldGuard, { HoldGuardStyles } from './HoldGuard';
+import { FRETBOARD_TOUR, TutorialButton } from './ButtonTour';
+import type { TrackRole } from './riff/RiffIcons';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
+import { KeyboardToggleLabel } from './InstrumentIcons';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -104,7 +109,9 @@ interface ReducedFretboardDiagramProps {
   practiceExercises?: PracticeExercise[];
   // Juego tipo Rocksmith (opt-in): añade "JUGAR" a la barra de controles, que despliega los ajustes
   // y "Empezar"/"Parar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
-  riffGame?: { source: string; initialTrack?: string };
+  riffGame?: { source: string; initialTrack?: string; trackRoles?: Record<string, TrackRole> };
+  // Botón "Tutorial" encima del mástil: enseña los botones de su barra (sala de pruebas).
+  tutorial?: boolean;
   startFret: number;
 }
 
@@ -157,7 +164,7 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
   // partida en sí la arranca "Empezar". Todos los niveles usan el mástil COMPLETO, del mismo
   // tamaño (decisión del usuario: nada de zoom aunque Principiante solo use los trastes 0-5).
@@ -287,14 +294,40 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const external = onNoteEventRef.current?.(ev) ?? 1;
     return external * (riffNoteEvent(ev) ?? 1);
   }, [registerPracticeNote, riffNoteEvent]);
-  const { stop: stopRiff } = riff;
   // Partida en marcha o en pausa (no terminada).
   const riffInGame = !!riffGame && gameOpen && (riff.playing || riff.paused);
+  // Panel de ajustes ENCIMA del mástil (petición del usuario): centrado sobre el <svg>, sin salirse
+  // por arriba del escenario (en móvil el mástil es bajito y el panel puede ser más alto).
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [overlayTop, setOverlayTop] = useState<number | null>(null);
+  const overlayOpen = !!riffGame && gameOpen && !riff.playing;
+  useLayoutEffect(() => {
+    if (!overlayOpen) return;
+    const place = () => {
+      const stage = stageRef.current;
+      const svg = svgRef.current;
+      const overlay = overlayRef.current;
+      if (!stage || !svg || !overlay) return;
+      const svgRect = svg.getBoundingClientRect();
+      const center = svgRect.top - stage.getBoundingClientRect().top + svgRect.height / 2;
+      setOverlayTop(Math.max(overlay.offsetHeight / 2 + 4, center));
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    if (stageRef.current) observer.observe(stageRef.current);
+    if (overlayRef.current) observer.observe(overlayRef.current);
+    window.addEventListener('resize', place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', place);
+    };
+  }, [overlayOpen]);
   // Ajustes de la partida: delante del juego mientras no se toca; se pliegan al empezar o
   // continuar, y se despliegan solos al pausar o terminar.
   const settingsOpen = !riff.playing;
   function toggleGame() {
-    if (gameOpen) stopRiff();
+    // Cerrar JUGAR para la partida y sale de la partida tutorial si la había.
+    if (gameOpen) riff.exitTutorial();
     setGameOpen((open) => !open);
   }
   const showHighway = !!riffGame && gameOpen && !riff.narrow && !!riff.chart;
@@ -675,11 +708,17 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     {/* Fuera de .midi-instrument-host a propósito: el aviso flotante de MidiInstrumentChrome se
         coloca encima del host, y taparía estos botones si vivieran dentro. */}
     {riffGame && <RiffStyles />}
+    {riffGame && <HoldGuardStyles />}
     {practiceExercises && (
       <>
         <FretboardPracticeStyles />
         <PracticeButtons activeIndex={practice.activeIndex} exercises={practiceExercises} onToggle={practice.toggle} />
       </>
+    )}
+    {tutorial && (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+        <TutorialButton rootRef={hostRef} steps={FRETBOARD_TOUR} />
+      </div>
     )}
     <div className="midi-instrument-host" ref={hostRef}>
     {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
@@ -690,6 +729,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       data-hits={riffGame && gameOpen ? riff.game.hitCount : undefined}
       data-score={riffGame && gameOpen ? riff.game.score : undefined}
       data-status={riffGame && gameOpen ? riff.game.status : undefined}
+      data-tutorial={riffGame && gameOpen && riff.tutorialOn ? riff.tutorialCard ?? 'playing' : undefined}
+      data-repetition={riffGame && gameOpen && riff.game.repetition ? riff.game.repetition : undefined}
       ref={stageRef}
       style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}
     >
@@ -825,13 +866,17 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       />
     )}
     {riffGame && gameOpen && settingsOpen && (
-      <div className="riff-overlay">
-        <RiffControls
-          // Que se vea el mástil entero, la autopista encima y la barra (PAUSA) debajo.
-          // Instantáneo a propósito: el 'smooth' lanzado desde un clic real de ratón se cancelaba.
-          onStart={() => scrollRef.current?.scrollIntoView({ block: 'end' })}
-          riff={riff}
-        />
+      <div className="riff-overlay" ref={overlayRef} style={overlayTop === null ? undefined : { top: `${overlayTop}px` }}>
+        {/* Partida tutorial: sus mensajes (o su pausa) en lugar del panel de ajustes. */}
+        {riff.tutorialOn ? <RiffTutorialCard riff={riff} /> : (
+          <RiffControls
+            // Que se vea el mástil entero, la autopista encima y la barra (PAUSA) debajo.
+            // Instantáneo a propósito: el 'smooth' lanzado desde un clic real de ratón se cancelaba.
+            onStart={() => scrollRef.current?.scrollIntoView({ block: 'end' })}
+            riff={riff}
+            trackRoles={riffGame.trackRoles}
+          />
+        )}
       </div>
     )}
     </div>
@@ -844,6 +889,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         </span>
       )}
     >
+      {/* Mientras la partida corre, cada control de la barra (PAUSA incluida) pide mantenerlo
+          pulsado 2 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
+      <HoldGuard active={!!riffGame && gameOpen && riff.playing}>
       {riffGame && (
         <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">
           JUGAR
@@ -910,7 +958,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >
-          KEYBOARD
+          <KeyboardToggleLabel />
         </button>
         {kbMode && (
           <div className="midi-dropdown">
@@ -937,6 +985,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         />
       </label>
       {!riffInGame && <MetronomeControls {...metr} />}
+      </HoldGuard>
     </MidiInstrumentChrome>
     </div>
     </>
