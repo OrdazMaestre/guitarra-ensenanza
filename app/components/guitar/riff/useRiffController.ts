@@ -55,8 +55,8 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
   const tutorialOn = tutorialWanted && !narrow;
   const tutorialRemix = tutorialOn ? remixState : null;
   const activeChart = tutorialRemix?.chart ?? chart;
-  // En el tutorial el mástil del juego es el de modo trastes 0-5 (Neófito y Principiante).
-  const profile = tutorialRemix ? RIFF_LEVELS.principiante : level === 'experto' ? null : RIFF_LEVELS[level];
+  // En el tutorial el mástil del juego es el de modo trastes 0-5 (Fácil y Medio).
+  const profile = tutorialRemix ? RIFF_LEVELS.medio : level === 'experto' ? null : RIFF_LEVELS[level];
 
   const game = useRiffGame(activeChart, heldRef);
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.

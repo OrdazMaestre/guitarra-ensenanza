@@ -31,7 +31,7 @@ export interface ChartNote {
   // Si la nota original no cabía en el mástil (traste > maxFret) y se recolocó: 'string' = misma
   // altura en una cuerda más aguda; 'octave' = una octava más grave.
   moved?: 'string' | 'octave';
-  // Solo en charts TRADUCIDOS (niveles Principiante..Difícil, ver reduce.ts): ids de las notas de
+  // Solo en charts TRADUCIDOS (todos los niveles menos Experto, ver reduce.ts): ids de las notas de
   // la canción original (`Chart.sourceNotes`) que "son de" esta nota -- desde su golpe hasta la
   // siguiente nota traducida -- y la frase a la que pertenece.
   sourceIds?: number[];

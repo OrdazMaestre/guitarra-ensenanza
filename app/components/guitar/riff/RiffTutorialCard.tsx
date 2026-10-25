@@ -18,7 +18,6 @@ export function RiffTutorialCard({ riff }: { riff: RiffController }) {
       <TutorialCardStyles />
       {section && sectionIndex !== null ? (
         <>
-          <p className="riff-tutorial-part">Partida de prueba · Parte {sectionIndex + 1} de {RIFF_TUTORIAL.length}</p>
           <h3 className="riff-tutorial-title">{section.title}</h3>
           {section.animation && <TutorialAnimationView kind={section.animation} />}
           {section.lines.map((line) => <p className="riff-tutorial-line" key={line}>{line}</p>)}
@@ -53,7 +52,7 @@ export function RiffTutorialCard({ riff }: { riff: RiffController }) {
 // derecha; cambian de aspecto al azar, pero NUNCA hay dos cursores a la vez (con un ratón solo se
 // puede pulsar un sitio): cursor+mano, mano+cursor o mano+mano. El de la izquierda (la nota
 // grave) MANTIENE el clic; el de la derecha pulsa una y otra vez. Slide: uno solo, que alterna cursor/mano en cada pasada
-// y va de izquierda a derecha manteniendo el clic.
+// y va de izquierda a derecha y vuelve, siempre manteniendo el clic.
 
 type Pointer = 'cursor' | 'hand';
 const TAPPING_FORMS: Array<[Pointer, Pointer]> = [['cursor', 'hand'], ['hand', 'cursor'], ['hand', 'hand']];
@@ -219,8 +218,9 @@ function TutorialCardStyles() {
         animation: riff-anim-tap 0.7s ease-in-out infinite;
       }
 
+      /* Ida y vuelta (alternate): cada pasada va al lado contrario arrastrando, sin saltar atrás. */
       .riff-anim-slide {
-        animation: riff-anim-slide 2.4s ease-in-out infinite;
+        animation: riff-anim-slide 2.4s ease-in-out infinite alternate;
       }
 
       @keyframes riff-anim-tap {
@@ -237,7 +237,7 @@ function TutorialCardStyles() {
       /* De la casilla izquierda a la derecha, con una pausa en cada punta. */
       @keyframes riff-anim-slide {
         0%, 15% { transform: translateX(66px); }
-        75%, 100% { transform: translateX(186px); }
+        85%, 100% { transform: translateX(186px); }
       }
 
       @media (prefers-reduced-motion: reduce) {

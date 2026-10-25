@@ -1,5 +1,5 @@
 'use client';
-import { type RefObject, useEffect, useLayoutEffect, useState } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 // Tutorial de botones (petición del usuario): recorre, uno a uno, los botones de una barra o panel
@@ -26,8 +26,6 @@ const anyOf = (...finders: Array<(root: HTMLElement) => Element | null>) => (roo
   }
   return null;
 };
-// Deslizador de volumen: se resalta su <label> entera ("Vol 100" + barra).
-const slider = (label: string) => (root: HTMLElement) => root.querySelector(`input[aria-label="${label}"]`)?.closest('label') ?? null;
 const metronome = anyOf(byLabel('Activar metrónomo'), byLabel('Desactivar metrónomo'));
 const keyboardToggle = (root: HTMLElement) => root.querySelector('.midi-kb-toggle');
 
@@ -36,15 +34,13 @@ export const FRETBOARD_TOUR: TourStep[] = [
   { title: 'Diestro o zurdo', lines: ['Da la vuelta al mástil.', 'Úsalo si tocas con la otra mano.'], find: anyOf(byLabel('Cambiar a modo zurdo'), byLabel('Cambiar a modo diestro')) },
   { title: 'Afinar', lines: ['Cambia la afinación de las cuerdas.', 'Puedes elegir otras afinaciones.'], find: byLabel('Afinar el mástil') },
   { title: 'CLEAN / OVERDRIVE', lines: ['Cambia el sonido.', 'CLEAN suena limpio.', 'OVERDRIVE suena a rock.'], find: byLabel('Cambiar sonido clean u overdrive') },
-  { title: 'Colores', lines: ['Pinta notas de colores.', 'Actívalo y toca una nota.', 'Se marca en todo el mástil.'], find: anyOf(byLabel('Activar marcador de notas'), byLabel('Desactivar marcador de notas')) },
+  { title: 'Colores', lines: ['Pinta notas para ver dónde se repiten.'], find: anyOf(byLabel('Activar marcador de notas'), byLabel('Desactivar marcador de notas')) },
   { title: 'KEYBOARD', lines: ['Toca con el teclado del ordenador.', 'Graves y Agudas cambian la zona.'], find: keyboardToggle },
-  { title: 'Volumen', lines: ['Sube o baja el sonido de la guitarra.'], find: slider('Volumen de la guitarra') },
   { title: 'Metrónomo', lines: ['Marca el pulso, como un reloj.', 'Ábrelo para cambiar la velocidad.'], find: metronome },
 ];
 
 export const KEYBOARD_TOUR: TourStep[] = [
   { title: 'KEYBOARD', lines: ['Toca el piano con el teclado del ordenador.', 'Hay dos filas: graves y agudos.'], find: keyboardToggle },
-  { title: 'Volumen', lines: ['Sube o baja el sonido del piano.'], find: slider('Volumen del teclado') },
   { title: 'Metrónomo', lines: ['Marca el pulso, como un reloj.', 'Ábrelo para cambiar la velocidad.'], find: metronome },
 ];
 
@@ -144,7 +140,6 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
         role="dialog"
         style={below ? { left, top: rect.bottom + PAD + 10, width } : { bottom: vh - rect.top + PAD + 10, left, width }}
       >
-        <p className="tour-count">{index + 1} / {shown.length}</p>
         <h3 className="tour-title">{step.title}</h3>
         {step.lines.map((line) => <p className="tour-line" key={line}>{line}</p>)}
         <div className="tour-nav">
@@ -197,11 +192,28 @@ export function TutorialButton({ className, finish, onStart, rootRef, steps }: B
         }}
         type="button"
       >
-        <span aria-hidden="true" className="tour-launch-icon">?</span>
         Tutorial
       </button>
       {shown && <ButtonTour finish={finish} onClose={() => setShown(null)} rootRef={rootRef} steps={shown} />}
     </>
+  );
+}
+
+// Botón "Tutorial" de un instrumento MIDI, en su propia fila arriba a la derecha (todos los
+// instrumentos de la web lo llevan, petición del usuario). Va DENTRO de su `.midi-instrument-host`
+// (primer hijo) y recorre los botones de ese instrumento; los pasos cuyo botón no tiene ese
+// instrumento se saltan solos (ver TutorialButton).
+export function InstrumentTutorial({ steps }: { steps: TourStep[] }) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  const rootRef = useMemo<RefObject<HTMLElement | null>>(() => ({
+    get current() {
+      return rowRef.current?.closest<HTMLElement>('.midi-instrument-host') ?? null;
+    },
+  }), []);
+  return (
+    <div className="instrument-tutorial-row" ref={rowRef}>
+      <TutorialButton rootRef={rootRef} steps={steps} />
+    </div>
   );
 }
 
@@ -218,21 +230,45 @@ function TourStyles() {
         display: inline-flex;
         font-size: 13px;
         font-weight: 900;
-        gap: 6px;
         line-height: 1.3;
-        padding: 4px 12px 4px 5px;
+        padding: 4px 14px;
+        position: relative;
       }
 
-      .tour-launch-icon {
-        align-items: center;
-        background: #047857;
-        border-radius: 999px;
-        color: #ffffff;
-        display: inline-flex;
-        font-size: 12px;
-        height: 20px;
-        justify-content: center;
-        width: 20px;
+      /* Brillo que late (petición del usuario): verde; en modo oscuro, amarillo. El modo oscuro
+         invierte toda la web con un filtro (invert + hue-rotate) y por ese camino ningún color sale
+         amarillo intenso: rgb(144, 105, 0) es el que, ya invertido, se ve más amarillo (dorado,
+         ~rgb(188, 149, 44)). Va en su propia capa (::before) para no tocar el botón. */
+      .tour-launch::before {
+        animation: tour-launch-glow 2s ease-in-out infinite;
+        border-radius: inherit;
+        content: '';
+        inset: 0;
+        pointer-events: none;
+        position: absolute;
+        --tour-glow: rgba(16, 185, 129, 0.8);
+      }
+
+      html[data-theme='dark'] .tour-launch::before {
+        --tour-glow: rgb(144, 105, 0);
+      }
+
+      @keyframes tour-launch-glow {
+        0%, 100% { box-shadow: 0 0 2px 0 var(--tour-glow); }
+        50% { box-shadow: 0 0 14px 4px var(--tour-glow); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .tour-launch::before {
+          animation: none;
+          box-shadow: 0 0 10px 3px var(--tour-glow);
+        }
+      }
+
+      .instrument-tutorial-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 8px;
       }
 
       .tour-layer {
@@ -263,14 +299,6 @@ function TourStyles() {
         color: #111827;
         padding: 14px 16px 12px;
         position: fixed;
-      }
-
-      .tour-count {
-        color: #047857;
-        font-size: 12px;
-        font-weight: 900;
-        letter-spacing: 0.1em;
-        margin: 0 0 4px;
       }
 
       .tour-title {

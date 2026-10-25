@@ -14,6 +14,7 @@ import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/N
 import { HandednessToggleButton, KeyboardLeftyNote } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
+import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -927,6 +928,7 @@ function ScaleWithChordPositions() {
 
   return (
     <div className="midi-instrument-host">
+      <InstrumentTutorial steps={FRETBOARD_TOUR} />
     <div className="position-scroll" ref={scrollRef}>
     <figure className="position-map" aria-label="Acordes con séptima colocados sobre el mástil de Sol Mayor">
       <svg

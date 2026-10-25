@@ -6,7 +6,7 @@ import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import { type PracticeExercise, type PracticeNoteEvent, useFretboardPractice } from '@/app/lib/useFretboardPractice';
 import { FretboardPracticeStyles, PracticeButtons, PracticeFeedback, PracticeTargetMarker } from './FretboardPractice';
-import RiffHighway from './riff/RiffHighway';
+import RiffHighway, { formatScore } from './riff/RiffHighway';
 import { RiffControls, RiffStyles } from './riff/RiffControls';
 import { RiffTutorialCard } from './riff/RiffTutorialCard';
 import { useRiffController } from './riff/useRiffController';
@@ -110,7 +110,8 @@ interface ReducedFretboardDiagramProps {
   // Juego tipo Rocksmith (opt-in): añade "JUGAR" a la barra de controles, que despliega los ajustes
   // y "Empezar"/"Parar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
   riffGame?: { source: string; initialTrack?: string; trackRoles?: Record<string, TrackRole> };
-  // Botón "Tutorial" encima del mástil: enseña los botones de su barra (sala de pruebas).
+  // Botón "Tutorial" encima del mástil: enseña los botones de su barra. Por defecto, sí (todos los
+  // instrumentos MIDI de la web lo llevan, petición del usuario); `false` lo quita.
   tutorial?: boolean;
   startFret: number;
 }
@@ -122,6 +123,9 @@ const romanFretLabels: Record<number, string> = {
   9: 'IX',
   12: 'XII',
 };
+
+// Niveles del juego que se estiran: los de 6 trastes (0-5). Fácil (0-10) usa el mástil normal.
+const STRETCH_MAX_FRET = 5;
 
 function fretMarkerX(boardX: number, fretWidth: number, startFret: number, fret: number) {
   if (startFret === 0 && fret === 0) {
@@ -164,17 +168,22 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, endFret, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
-  // partida en sí la arranca "Empezar". Todos los niveles usan el mástil COMPLETO, del mismo
-  // tamaño (decisión del usuario: nada de zoom aunque Principiante solo use los trastes 0-5).
+  // partida en sí la arranca "Empezar". El mástil ocupa siempre lo mismo en pantalla; en los niveles
+  // de 6 trastes (0-5) se ESTIRA en el eje X (decisión del usuario): solo se dibujan esos trastes y
+  // cada uno es más ancho, para que juntos midan lo que el mástil completo (no se agranda: el alto,
+  // las cuerdas y los textos no cambian).
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [gameOpen, setGameOpen] = useState(false);
   // Posiciones que suenan AHORA (teclado y ratón/dedo), para las notas repetidas con la pulsación
   // mantenida del juego. Se rellena más abajo, cuando existen los refs de las pulsaciones.
   const heldPositionsRef = useRef<() => { string: number; fret: number }[]>(() => []);
-  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret, measureRef: hostRef, heldRef: heldPositionsRef });
+  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
+  const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
+  const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret <= STRETCH_MAX_FRET && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
+  const endFret = stretchTo ?? fullEndFret;
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
   // nut, igual sistema que TuningBoard.tsx (arrastre circular -> cents -> MIDI fraccionario), pero
@@ -191,7 +200,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const PEG_AREA_WIDTH = 66;
   const PEG_X = 24;
   const boardX = 42 + (allowTuning && showTuning ? PEG_AREA_WIDTH : 0);
-  const fretWidth = 58;
+  // Estirado: el mismo ancho total de tablero con menos trastes.
+  const fretWidth = (58 * fullFretCount) / fretCount;
   const boardHeight = 158;
   const stringGap = boardHeight / 5;
   // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda
@@ -881,6 +891,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     )}
     </div>
     <HorizontalScrollbar targetRef={scrollRef} />
+    {/* Puntos de la partida, entre el mástil y la barra de controles (decisión del usuario): rojo
+        intenso con brillo amarillo. La fila existe mientras JUGAR está abierto, para que el mástil
+        no salte al empezar. */}
+    {riffGame && gameOpen && (
+      <p aria-live="polite" className="riff-score" data-testid="riff-score">
+        {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
+      </p>
+    )}
     <MidiInstrumentChrome
       belowNote={allowLeftHanded && kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
@@ -890,7 +908,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       )}
     >
       {/* Mientras la partida corre, cada control de la barra (PAUSA incluida) pide mantenerlo
-          pulsado 2 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
+          pulsado 1 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
       <HoldGuard active={!!riffGame && gameOpen && riff.playing}>
       {riffGame && (
         <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">

@@ -436,7 +436,7 @@ test('puntos: continuar tras pausa y el bucle vuelven a dejar las notas por punt
 
 // --- Notas repetidas con la pulsación MANTENIDA.
 
-function bar42(level: 'principiante' | 'facil') {
+function bar42(level: 'medio' | 'avanzado') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   const chart = reduceChart(buildChart(at, score, 2, 24), RIFF_LEVELS[level]);
   const options: RiffOptions = { speed: 0.5, mode: 'ritmo', loop: false, fromBar: 42, toBar: 42, freeStrings: true };
@@ -447,7 +447,7 @@ function bar42(level: 'principiante' | 'facil') {
 }
 
 test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera según su tiempo y el resto según su hueco', () => {
-  for (const level of ['principiante', 'facil'] as const) {
+  for (const level of ['medio', 'avanzado'] as const) {
     const { session, realAt, notes } = bar42(level);
     expect(notes).toHaveLength(9);
     const first = notes[0];
@@ -465,7 +465,7 @@ test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera segú
 });
 
 test('mantener: al soltar, las siguientes ya no cuentan solas (hay que volver a pulsar)', () => {
-  const { session, realAt, notes } = bar42('principiante');
+  const { session, realAt, notes } = bar42('medio');
   session.judge({ string: 6, fret: notes[0].fret, kind: 'pluck' }, realAt(notes[0].t));
   let real = realAt(notes[0].t);
   for (; real <= realAt(notes[3].t) + 0.01; real += 0.025) {
@@ -512,9 +512,9 @@ test('mantener: cuenta siempre, quede lo que quede; una nota distinta por medio 
 });
 
 test('mantener: en paso a paso también avanza solo (sin puntos)', () => {
-  const { notes } = bar42('principiante');
+  const { notes } = bar42('medio');
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
-  const chart = reduceChart(buildChart(at, score, 2, 24), RIFF_LEVELS.principiante);
+  const chart = reduceChart(buildChart(at, score, 2, 24), RIFF_LEVELS.medio);
   const s = new RiffSession(chart, { speed: 0.5, mode: 'paso', loop: false, fromBar: 42, toBar: 42, freeStrings: true }, 0, 'nada');
   s.advance(100);
   s.judge({ string: 6, fret: notes[0].fret, kind: 'pluck' }, 100);
@@ -550,10 +550,10 @@ test('motor: Experto en paso a paso, el acierto hace sonar ya su nota real', () 
 // --- Verificación final (Actualización 1).
 
 test('verificación: cuerdas libres SOLO en el modo trastes (no en Medio, Difícil ni Experto)', () => {
-  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.freeStrings).map(([k]) => k)).toEqual(['practica', 'neofito', 'principiante', 'facil']);
+  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.freeStrings).map(([k]) => k)).toEqual(['practica', 'facil', 'medio', 'avanzado']);
   // El modo trastes son justo esos niveles; el modo cuerdas, los demás.
-  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'trastes')!.levels).toEqual(['practica', 'neofito', 'principiante', 'facil']);
-  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'cuerdas')!.levels).toEqual(['medio', 'dificil', 'experto']);
+  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'trastes')!.levels).toEqual(['practica', 'facil', 'medio', 'avanzado']);
+  expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'cuerdas')!.levels).toEqual(['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'experto']);
   // Experto no tiene perfil: useRiffController le pasa freeStrings: false (profile null).
   expect('experto' in RIFF_LEVELS).toBe(false);
 });

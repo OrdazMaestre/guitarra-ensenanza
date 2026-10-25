@@ -120,7 +120,7 @@ export default function MixingConsole() {
     };
   }, []);
 
-  // Apertura desde fuera (enlace "MÚSICA" de la portada nueva, portada-nueva/PortadaShell.tsx):
+  // Apertura desde fuera (enlace "MÚSICA" de la portada, app/lecciones/temario/PortadaShell.tsx):
   // un CustomEvent en window en vez de levantar el estado `open` a un contexto, porque este
   // componente vive montado una sola vez en layout.tsx. Respeta el bloqueo infantil igual que el
   // botón -- bloqueada, el evento no hace nada. Se dispara dentro del click del enlace, así que el

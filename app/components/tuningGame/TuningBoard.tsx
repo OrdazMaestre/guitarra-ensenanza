@@ -14,6 +14,7 @@ import {
   type StringNumber,
 } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
+import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
 
 // Cuerda 1 = Mi agudo (arriba), cuerda 6 = Mi grave (abajo) -- misma convención y mismo orden
 // visual que ReducedFretboardDiagram.tsx, para que las dos mástiles de la página se lean igual.
@@ -610,6 +611,7 @@ export default function TuningBoard() {
 
   return (
     <div className="midi-instrument-host">
+      <InstrumentTutorial steps={FRETBOARD_TOUR} />
       <div className="tuning-game-controls" role="group" aria-label="Dificultad del juego de afinar a oído">
         {DIFFICULTIES.map(d => (
           <button

@@ -51,7 +51,7 @@ export interface RiffOptions {
   // Tramo a tocar, en números de compás (1 = el primero), ambos incluidos.
   fromBar: number;
   toBar: number;
-  // Cuerdas libres (Práctica, Principiante, Fácil): vale el traste correcto en CUALQUIER cuerda.
+  // Cuerdas libres (modo trastes): vale el traste correcto en CUALQUIER cuerda.
   freeStrings?: boolean;
   // Tocar el tramo N veces seguidas (partida tutorial); los puntos de cada vuelta se SUMAN. Sin
   // esto, una sola vez (o infinitas con `loop`, que en cada vuelta empieza de cero).

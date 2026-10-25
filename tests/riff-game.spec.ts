@@ -13,7 +13,7 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'practica' | 'neofito' | 'principiante' | 'facil' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
@@ -24,7 +24,10 @@ async function tap(page: Page, string: number, fret: number) {
   const p = await page.evaluate(({ selector, string, fret }) => {
     const svg = document.querySelector(selector) as SVGSVGElement;
     const pt = svg.createSVGPoint();
-    pt.x = fret === 0 ? 22 : 42 + (fret - 0.5) * 58;
+    // Centro del traste entre sus dos líneas (en los niveles de 6 trastes el mástil se estira y
+    // cada traste es más ancho); el 0, a la izquierda de la cejuela.
+    const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
+    pt.x = fret === 0 ? lines[0] - 20 : (lines[fret - 1] + lines[fret]) / 2;
     pt.y = 44 + (string - 1) * (158 / 5);
     const r = pt.matrixTransform(svg.getScreenCTM()!);
     return { x: r.x, y: r.y };
@@ -32,8 +35,8 @@ async function tap(page: Page, string: number, fret: number) {
   await page.mouse.click(p.x, p.y);
 }
 
-// Durante la partida, los controles de la barra piden mantenerlos pulsados 2 s (HoldGuard).
-async function hold(page: Page, locator: Locator, ms = 2200) {
+// Durante la partida, los controles de la barra piden mantenerlos pulsados 1 s (HoldGuard).
+async function hold(page: Page, locator: Locator, ms = 1200) {
   const box = (await locator.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
@@ -129,7 +132,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await pause.click();
   await page.waitForTimeout(300);
   await expect(stage).not.toHaveAttribute('data-status', 'paused');
-  // ...hay que mantenerla 2 s: entonces para la partida y despliega los ajustes delante del juego.
+  // ...hay que mantenerla 1 s: entonces para la partida y despliega los ajustes delante del juego.
   await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await expect(overlay).toBeVisible();
@@ -170,7 +173,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['neofito', 'Neófito'], ['principiante', 'Principiante'], ['facil', 'Fácil']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -209,7 +212,7 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
   });
 }
 
-test('todos los niveles usan el mástil completo (sin zoom), del mismo tamaño', async ({ page }) => {
+test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   const fretNumbers = page.locator('.test-room-fretboard .reduced-fret-number');
@@ -217,9 +220,10 @@ test('todos los niveles usan el mástil completo (sin zoom), del mismo tamaño',
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
-  for (const label of ['Práctica', 'Neófito', 'Principiante', 'Fácil', 'Experto']) {
+  // Modo trastes Práctica, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
+  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
-    await expect(fretNumbers).toHaveCount(13);
+    await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
     expect(Math.round(now.width)).toBe(Math.round(before.width));
     expect(Math.round(now.height)).toBe(Math.round(before.height));
@@ -256,7 +260,7 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await page.goto(URL);
   await openGame(page);
   const stage = page.locator('.test-room-fretboard .riff-stage');
-  await choose(page, 'Nivel', 'Principiante');
+  await choose(page, 'Nivel', 'Medio');
   await choose(page, 'Velocidad', '50%');
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await page.getByLabel('Hasta el compás').fill('42');
@@ -289,7 +293,7 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   expect(score).toBeLessThanOrEqual(19);
 });
 
-test('jugando, el volumen solo se mueve tras mantenerlo 2 s; en pausa y fuera de partida, al instante', async ({ page }) => {
+test('jugando, el volumen solo se mueve tras mantenerlo 1 s; en pausa y fuera de partida, al instante', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
@@ -303,10 +307,10 @@ test('jugando, el volumen solo se mueve tras mantenerlo 2 s; en pausa y fuera de
   // Toque corto: nada.
   await page.mouse.click(box.x + 4, y);
   await expect(slider).toHaveValue('1');
-  // Mantener 2 s y arrastrar sin soltar: se mueve.
+  // Mantener 1 s y arrastrar sin soltar: se mueve.
   await page.mouse.move(box.x + box.width - 3, y);
   await page.mouse.down();
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(1200);
   await page.mouse.move(box.x + box.width * 0.3, y, { steps: 6 });
   await page.mouse.up();
   expect(Number(await slider.inputValue())).toBeCloseTo(0.3, 1);
@@ -319,7 +323,7 @@ test('jugando, el volumen solo se mueve tras mantenerlo 2 s; en pausa y fuera de
 
 test.describe('pantalla táctil', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 1366, height: 900 } });
-  test('jugando, un toque corto con el dedo en PAUSA no hace nada; mantenerlo 2 s, sí', async ({ page }) => {
+  test('jugando, un toque corto con el dedo en PAUSA no hace nada; mantenerlo 1 s, sí', async ({ page }) => {
     await page.goto(URL);
     await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
     await page.getByRole('button', { name: 'JUGAR', exact: true }).tap();
@@ -340,7 +344,11 @@ test.describe('pantalla táctil', () => {
     await touch(150);
     await page.waitForTimeout(300);
     await expect(stage).not.toHaveAttribute('data-status', 'paused');
-    await touch(2300);
+    // Medio segundo tampoco basta.
+    await touch(600);
+    await page.waitForTimeout(300);
+    await expect(stage).not.toHaveAttribute('data-status', 'paused');
+    await touch(1300);
     await expect(stage).toHaveAttribute('data-status', 'paused');
     // Y no se reanuda sola al levantar el dedo.
     await page.waitForTimeout(400);
@@ -369,8 +377,7 @@ test('partida de prueba: una sola canción con sus 3 partes, mensajes y animacio
 
   // Parte 1: mantener pulsado. La canción entera es una sola partida.
   await expect(stage).toHaveAttribute('data-tutorial', 'section-0');
-  await expect(card).toContainText('Mantener pulsado');
-  await expect(card).toContainText('Parte 1 de 3');
+  await expect(card).toContainText('MANTÉN PULSADO');
   await card.getByRole('button', { name: '¡A tocar!' }).click();
   await expect(stage).toHaveAttribute('data-tutorial', 'playing');
   await expect(stage).toHaveAttribute('data-repetition', '1/1');
@@ -378,7 +385,7 @@ test('partida de prueba: una sola canción con sus 3 partes, mensajes y animacio
   // Parada automática antes de la parte 2: tapping (dos punteros, nunca dos cursores).
   await expect(stage).toHaveAttribute('data-tutorial', 'section-1', { timeout: 60_000 });
   await expect(stage).toHaveAttribute('data-status', 'paused');
-  await expect(card).toContainText('Tapping');
+  await expect(card).toContainText('TAPEA');
   await expect(card.locator('svg[data-animation="tapping"]')).toBeVisible();
   for (let i = 0; i < 6; i++) {
     expect(await card.locator('svg[data-animation="tapping"] path[fill="#ffffff"]').count()).toBeLessThanOrEqual(1);
@@ -415,4 +422,44 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
   await expect(page.locator('.riff-panel')).toBeVisible();
+});
+
+test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el mástil y la barra MIDI', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const score = page.getByTestId('riff-score');
+  await expect(score).toBeVisible();
+  await expect(score).toHaveText('');
+  await choose(page, 'Velocidad', '50%');
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(score).toHaveText('0 puntos', { timeout: 5000 });
+  // Entre el mástil y la barra de controles.
+  const svgBox = (await page.locator(SVG).boundingBox())!;
+  const scoreBox = (await score.boundingBox())!;
+  const pillBox = (await page.locator('.test-room-fretboard .midi-float-pill').boundingBox())!;
+  expect(scoreBox.y).toBeGreaterThanOrEqual(svgBox.y + svgBox.height - 1);
+  expect(pillBox.y).toBeGreaterThanOrEqual(scoreBox.y + scoreBox.height - 1);
+  // Rojo intenso con brillo amarillo.
+  const style = await score.evaluate((el) => getComputedStyle(el));
+  expect(style.color).toBe('rgb(220, 38, 38)');
+  expect(style.textShadow).toContain('rgb(250, 204, 21)');
+  // Sobre el mástil no se pintan cuerdas: la fila de la cuerda 3, en el centro de un traste, tiene
+  // el tono tenue del traste (no el verde de la cuerda 3).
+  const pixel = await page.evaluate((selector) => {
+    const svg = document.querySelector(selector) as SVGSVGElement;
+    const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
+    const pt = svg.createSVGPoint();
+    pt.x = (lines[2] + lines[3]) / 2;
+    pt.y = 44 + 2 * (158 / 5);
+    const r = pt.matrixTransform(svg.getScreenCTM()!);
+    const canvas = document.querySelector('canvas[data-testid="riff-highway"]') as HTMLCanvasElement;
+    const box = canvas.getBoundingClientRect();
+    const scale = canvas.width / box.width;
+    return canvas.getContext('2d')!.getImageData(Math.round((r.x - box.left) * scale), Math.round((r.y - box.top) * scale), 1, 1).data[3];
+  }, SVG);
+  // Una cuerda dibujada sería opaca (alfa 255): ahí solo hay el tinte tenue del traste (alfa ~0,1),
+  // como mucho más su columna iluminada cuando llega una nota.
+  expect(pixel).toBeGreaterThan(0);
+  expect(pixel).toBeLessThan(140);
 });

@@ -10,7 +10,8 @@ async function walk(page: Page, expectedTitles: string[], lastButton = '¡Listo!
   const bubble = page.getByRole('dialog', { name: /^Tutorial:/ });
   for (const [i, title] of expectedTitles.entries()) {
     await expect(bubble).toHaveAttribute('aria-label', `Tutorial: ${title}`);
-    await expect(bubble).toContainText(`${i + 1} / ${expectedTitles.length}`);
+    // Sin número de paso (petición del usuario).
+    expect(await bubble.textContent()).not.toMatch(/\d+ \/ \d+/);
     // El botón resaltado se ve en pantalla.
     const highlight = (await page.locator('.tour-highlight').boundingBox())!;
     expect(highlight.y).toBeGreaterThanOrEqual(0);
@@ -25,14 +26,15 @@ test('tutorial del mástil: recorre los botones de su barra', async ({ page }) =
   await page.goto(URL);
   const button = page.locator('.test-room-fretboard').getByRole('button', { name: 'Tutorial' });
   await button.click();
-  await walk(page, ['JUGAR', 'Diestro o zurdo', 'Afinar', 'CLEAN / OVERDRIVE', 'Colores', 'KEYBOARD', 'Volumen', 'Metrónomo']);
+  await walk(page, ['JUGAR', 'Diestro o zurdo', 'Afinar', 'CLEAN / OVERDRIVE', 'Colores', 'KEYBOARD', 'Metrónomo']);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('tutorial del teclado: KEYBOARD, volumen y metrónomo; Escape lo cierra', async ({ page }) => {
+test('tutorial del teclado: KEYBOARD y metrónomo (sin volumen); Escape lo cierra', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await page.locator('.test-room-keyboard').getByRole('button', { name: 'Tutorial' }).click();
-  await walk(page, ['KEYBOARD', 'Volumen', 'Metrónomo']);
+  await walk(page, ['KEYBOARD', 'Metrónomo']);
   await page.locator('.test-room-keyboard').getByRole('button', { name: 'Tutorial' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await page.keyboard.press('Escape');
@@ -63,7 +65,77 @@ test.describe('pantalla táctil', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 400, height: 800 } });
   test('el tutorial del mástil se salta KEYBOARD (no se ve sin teclado físico)', async ({ page }) => {
     await page.goto(URL);
-    await page.locator('.test-room-fretboard').getByRole('button', { name: 'Tutorial' }).tap();
-    await walk(page, ['JUGAR', 'Diestro o zurdo', 'Afinar', 'CLEAN / OVERDRIVE', 'Colores', 'Volumen', 'Metrónomo']);
+    // Hasta que la página está hidratada, el toque no hace nada: se repite hasta que abre.
+    await expect(async () => {
+      await page.locator('.test-room-fretboard').getByRole('button', { name: 'Tutorial' }).tap();
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 15000 });
+    await walk(page, ['JUGAR', 'Diestro o zurdo', 'Afinar', 'CLEAN / OVERDRIVE', 'Colores', 'Metrónomo']);
   });
+});
+
+test('Colores: el globo dice para qué sirve, en una frase', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await page.locator('.test-room-fretboard').getByRole('button', { name: 'Tutorial' }).click();
+  const bubble = page.getByRole('dialog', { name: /^Tutorial:/ });
+  while ((await bubble.getAttribute('aria-label')) !== 'Tutorial: Colores') await bubble.getByRole('button', { name: 'Siguiente' }).click();
+  await expect(bubble).toContainText('Pinta notas para ver dónde se repiten.');
+});
+
+// Todos los instrumentos MIDI de la web llevan su botón "Tutorial" (petición del usuario): dentro
+// de su `.midi-instrument-host` (diagramas propios de cada lección) o justo encima (mástil y
+// teclado compartidos). Cada uno enseña solo los botones que tiene ese instrumento.
+const MIDI_PAGES = [
+  '/lecciones/temario/conceptos-basicos',
+  '/lecciones/temario/tablaturas',
+  '/lecciones/temario/notacion-musical',
+  '/lecciones/temario/escalas',
+  '/lecciones/temario/afinacion',
+  '/lecciones/temario/escala-completa-sol-mayor',
+  '/lecciones/temario/acordes-escala-sol-mayor',
+  '/lecciones/temario/acordes-con-septima',
+  '/lecciones/temario/figuras-de-acordes',
+  '/lecciones/temario/pentatonica',
+  '/lecciones/temario/pentatonica-blues',
+];
+
+for (const path of MIDI_PAGES) {
+  test(`cada instrumento MIDI de ${path} tiene su tutorial`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(path);
+    const hosts = page.locator('.midi-instrument-host');
+    await expect(hosts.first()).toBeAttached({ timeout: 15000 });
+    const missing = await hosts.evaluateAll((els) => els.filter((host) => {
+      const inside = host.querySelector(':scope > .instrument-tutorial-row .tour-launch');
+      const before = host.previousElementSibling?.querySelector('.tour-launch');
+      return !inside && !before;
+    }).length);
+    expect(missing).toBe(0);
+    // El primero abre su recorrido, sobre un botón de SU barra.
+    const launch = page.locator('.tour-launch').first();
+    await launch.scrollIntoViewIfNeeded();
+    await launch.click();
+    const bubble = page.getByRole('dialog', { name: /^Tutorial:/ });
+    await expect(bubble).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(bubble).toHaveCount(0);
+  });
+}
+
+test('portada: la guitarra y el teclado del menú Midis llevan su tutorial', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto('/lecciones/temario');
+  for (const name of ['Guitarra', 'Teclado']) {
+    if ((await page.locator('#portada2-midis').count()) === 0) await page.getByRole('button', { name: 'Midis' }).click();
+    await page.locator('#portada2-midis').getByRole('button', { name }).click();
+    const section = page.locator('.portada2-instrument');
+    const launch = section.getByRole('button', { name: 'Tutorial' });
+    await launch.scrollIntoViewIfNeeded();
+    await launch.click();
+    const bubble = page.getByRole('dialog', { name: /^Tutorial:/ });
+    await expect(bubble).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(bubble).toHaveCount(0);
+  }
 });

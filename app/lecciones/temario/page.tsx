@@ -1,17 +1,15 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Caveat_Brush, Poppins, Space_Mono } from 'next/font/google';
-import { RenderTopNotice, VercelLimitNotice } from '../../../components/DeploymentNotice';
+import { RenderTopNotice, VercelLimitNotice } from '../../components/DeploymentNotice';
 import PortadaShell from './PortadaShell';
 
-// Portada NUEVA en pruebas. Solo se llega desde el botón "Portada" de la sala de pruebas (ver
-// SiteHomeLink.tsx); la portada real sigue siendo ../page.tsx hasta que esta esté terminada.
-// Las tipografías se cargan solo aquí para no cambiar nada del resto de la web.
+// Portada de la web. Las tipografías se cargan solo aquí para no cambiar nada del resto de la web.
 const brush = Caveat_Brush({ subsets: ['latin'], weight: '400', variable: '--portada2-brush' });
 const mono = Space_Mono({ subsets: ['latin'], weight: ['400', '700'], variable: '--portada2-mono' });
 const body = Poppins({ subsets: ['latin'], weight: ['400', '600', '700'], variable: '--portada2-body' });
 
-export default function PortadaNuevaPage() {
+export default function TemarioPage() {
   return (
     <main className="portada2-main">
       <PortadaShell className={`${brush.variable} ${mono.variable} ${body.variable}`}>
@@ -338,8 +336,10 @@ export default function PortadaNuevaPage() {
           mask-composite: intersect;
         }
 
+        /* Sin tope de ancho (petición del usuario): los párrafos ocupan todo el ancho de la pantalla
+           encima del dibujo; el título no se estira porque es width: max-content. */
         .portada2-copy {
-          max-width: 600px;
+          max-width: 100%;
           min-width: 0;
           position: relative;
           width: 100%;
@@ -384,7 +384,7 @@ export default function PortadaNuevaPage() {
         .portada2-title-pasos {
           align-items: center;
           display: flex !important;
-          font-size: clamp(76px, 10vw, 148px);
+          font-size: clamp(86px, 11.4vw, 168px);
           margin: 0.04em 0 0.02em 0.22em;
           transform: rotate(-4deg);
           transform-origin: left center;
@@ -392,14 +392,33 @@ export default function PortadaNuevaPage() {
           max-width: 100%;
         }
 
-        /* El enlace sigue teniendo el balanceo y subrayado globales de todos los enlaces de la web
-           (la pista para los niños de que se puede pulsar); solo el relleno es el degradado. */
+        /* El enlace conserva el balanceo global de todos los enlaces de la web (la pista para los
+           niños de que se puede pulsar); el relleno es el degradado. font-weight 700 = negrita
+           SINTÉTICA del navegador (Caveat Brush solo trae 400): engorda el trazo como parte del
+           propio glifo, así que el degradado recortado al texto lo sigue rellenando entero. */
         .portada2-pasos-link {
           background: linear-gradient(100deg, #10b981 0%, #14b8a6 55%, #06b6d4 100%);
           -webkit-background-clip: text;
           background-clip: text;
-          -webkit-text-fill-color: transparent;
+          font-weight: 700;
           padding: 0 0.04em;
+          position: relative;
+          -webkit-text-fill-color: transparent;
+        }
+
+        /* Subrayado propio: el global (text-decoration con currentColor) sale invisible porque
+           -webkit-text-fill-color: transparent también lo vuelve transparente en Chrome. Mismo
+           degradado que las letras, con trazo de pincel redondeado. */
+        .portada2-pasos-link::after {
+          background: linear-gradient(100deg, #10b981 0%, #14b8a6 55%, #06b6d4 100%);
+          border-radius: 999px;
+          bottom: 0.02em;
+          content: "";
+          height: 0.075em;
+          left: 0.04em;
+          pointer-events: none;
+          position: absolute;
+          right: 0.04em;
         }
 
         .portada2-strokes {
@@ -495,7 +514,6 @@ export default function PortadaNuevaPage() {
           font-size: clamp(16px, 1.25vw, 19px);
           line-height: 1.55;
           margin-top: clamp(14px, 2vw, 22px);
-          max-width: 540px;
         }
 
         .portada2-intro p {
@@ -607,7 +625,7 @@ export default function PortadaNuevaPage() {
           }
 
           .portada2-title-pasos {
-            font-size: clamp(60px, 19vw, 88px);
+            font-size: clamp(66px, 21vw, 98px);
             margin-left: 0.12em;
           }
 

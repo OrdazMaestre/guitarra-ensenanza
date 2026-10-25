@@ -1,27 +1,25 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Portada nueva en pruebas (app/lecciones/temario/portada-nueva). Solo se llega desde el botón
-// "Portada" de la sala de pruebas; el resto de páginas siguen llevando a la portada actual.
+// Portada de la web (app/lecciones/temario/page.tsx + PortadaShell.tsx).
 
-const DRAFT = '/lecciones/temario/portada-nueva';
+const HOME = '/lecciones/temario';
 
 async function hasHorizontalOverflow(page: Page) {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 }
 
-test('the Portada button only points to the draft cover from sala-de-pruebas', async ({ page }) => {
-  await page.goto('/lecciones/temario/sala-de-pruebas');
-  await expect(page.locator('.site-home-link')).toHaveAttribute('href', DRAFT);
+test('the Portada button leads to the cover from every page, and hides on the cover itself', async ({ page }) => {
+  for (const path of ['/lecciones/temario/sala-de-pruebas', '/lecciones/temario/tablaturas']) {
+    await page.goto(path);
+    await expect(page.locator('.site-home-link')).toHaveAttribute('href', HOME);
+  }
 
-  await page.goto('/lecciones/temario/tablaturas');
-  await expect(page.locator('.site-home-link')).toHaveAttribute('href', '/lecciones/temario');
-
-  await page.goto(DRAFT);
+  await page.goto(HOME);
   expect(await page.locator('.site-home-link').count()).toBe(0);
 });
 
 test('LECCIONES lists the 10 main lessons and PASOS links to the tree', async ({ page }) => {
-  await page.goto(DRAFT);
+  await page.goto(HOME);
   await expect(page.getByRole('link', { name: 'PASOS' })).toHaveAttribute('href', '/lecciones/temario/pasos');
 
   await page.getByRole('button', { name: 'Lecciones' }).click();
@@ -35,7 +33,7 @@ test('LECCIONES lists the 10 main lessons and PASOS links to the tree', async ({
 });
 
 test('MIDIS shows one instrument at a time and closing MIDIS removes it', async ({ page }) => {
-  await page.goto(DRAFT);
+  await page.goto(HOME);
   const midis = page.getByRole('button', { name: 'Midis' });
   const hosts = page.locator('.portada2-instrument .midi-instrument-host');
 
@@ -57,7 +55,7 @@ test('MIDIS shows one instrument at a time and closing MIDIS removes it', async 
 });
 
 test('MÚSICA opens the mixing console', async ({ page }) => {
-  await page.goto(DRAFT);
+  await page.goto(HOME);
   await page.getByRole('button', { name: 'Música' }).click();
   await expect(page.getByRole('region', { name: 'Mesa de mezclas' })).toBeVisible();
 });
@@ -65,7 +63,7 @@ test('MÚSICA opens the mixing console', async ({ page }) => {
 test('no horizontal overflow, with and without an instrument open', async ({ page }) => {
   for (const width of [360, 600, 850, 1280]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto(DRAFT);
+    await page.goto(HOME);
     expect(await hasHorizontalOverflow(page), `${width}px`).toBe(false);
 
     await page.getByRole('button', { name: 'Midis' }).click();

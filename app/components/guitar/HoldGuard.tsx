@@ -11,7 +11,8 @@ import { type ReactNode, useEffect, useRef } from 'react';
 //
 // Es un envoltorio `display: contents`, así que no altera la fila de botones donde se pone.
 
-export const HOLD_MS = 2000;
+// 1 s (decisión del usuario; antes eran 2).
+export const HOLD_MS = 1000;
 
 interface Props {
   active: boolean;

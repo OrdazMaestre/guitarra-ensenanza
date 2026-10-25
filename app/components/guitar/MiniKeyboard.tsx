@@ -85,7 +85,8 @@ const KB_KEYMAP: Record<string, number> = {
 
 interface Props {
   className?: string;
-  // Botón "Tutorial" encima del teclado: enseña los botones de su barra (sala de pruebas).
+  // Botón "Tutorial" encima del teclado: enseña los botones de su barra. Por defecto, sí (todos los
+  // instrumentos MIDI de la web lo llevan, petición del usuario); `false` lo quita.
   tutorial?: boolean;
   showEnharmonics?: boolean; // true → shows # and b names on black keys (Escalas)
   showScaleArrows?: boolean; // true → shows tone/semitone arrows below (Escalas)
@@ -167,7 +168,7 @@ function cSibling(rectMidi: number): { rectMidi: number; zone: KbZone } | undefi
   return undefined;
 }
 
-export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows, tutorial }: Props) {
+export default function MiniKeyboard({ className, showEnharmonics, showScaleArrows, tutorial = true }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const ptVoicesRef = useRef(new Map<number, { midi: number; voiceId: number }>());

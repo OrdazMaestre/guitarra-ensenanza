@@ -29,9 +29,11 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   const [repetition, setRepetition] = useState<string | null>(null);
   // Parada automática en la que espera (RiffOptions.breaks), o null.
   const [atBreak, setAtBreak] = useState<number | null>(null);
+  // Si la partida en curso puntúa ("Con ritmo"; "Paso a paso" no).
+  const [scoring, setScoring] = useState(false);
   const timerRef = useRef<number | null>(null);
   // Notas de fondo ya programadas (id de nota real -> control de volumen + cuándo acaba), para
-  // poder "abrirlas" cuando se acierta su nota traducida (niveles Principiante..Difícil).
+  // poder "abrirlas" cuando se acierta su nota traducida (todos los niveles menos Experto).
   const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number }>());
 
   // Un acierto "abre" sus notas reales: las ya programadas suben de volumen (las siguientes saldrán
@@ -65,6 +67,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     void preloadSamples();
     const session = new RiffSession(chart, options, getAudioCurrentTime(), backing);
     sessionRef.current = session;
+    setScoring(session.scoring);
     const handles = guideHandlesRef.current;
     handles.clear();
     setStatus(session.status);
@@ -127,5 +130,5 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     return result.gain;
   }, [applyHit]);
 
-  return { sessionRef, status, hitCount, score, repetition, atBreak, start, stop, pause, resume, onNoteEvent };
+  return { sessionRef, status, hitCount, score, scoring, repetition, atBreak, start, stop, pause, resume, onNoteEvent };
 }

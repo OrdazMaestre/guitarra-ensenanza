@@ -21,31 +21,30 @@ export interface TutorialSection {
 
 export const RIFF_TUTORIAL: TutorialSection[] = [
   {
-    title: 'Mantener pulsado',
+    title: 'MANTÉN PULSADO',
     lines: [
-      'Si la nota se repite, puedes mantenerla pulsada.',
-      'Puntúa distinto según lo que tarde en llegar.',
-      'Si quieres la puntuación máxima, no la mantengas: tócala cada vez.',
+      'Sin puntuacion alta pero mejor que no pulsar.',
+      'Pulsa cada nota si quieres más puntos.',
     ],
-    level: 'neofito',
+    level: 'facil',
     fromBar: 42,
     toBar: 42,
     repeats: 6,
   },
   {
-    title: 'Tapping',
-    lines: ['Mantén pulsada la nota grave.', 'Mientras, pulsa las demás.'],
+    title: 'TAPEA',
+    lines: ['Deja pulsada la nota grave.', 'mientras pulsas las demás.'],
     animation: 'tapping',
-    level: 'neofito',
+    level: 'facil',
     fromBar: 9,
     toBar: 12,
     repeats: 2,
   },
   {
-    title: 'Desliza',
-    lines: ['Arrastra sin soltar hasta la nota siguiente.', '¡Cuidado si el salto es grande!'],
+    title: 'DESLIZA',
+    lines: ['Arrastra sin soltar.', '¡Cuidado si el salto es grande!'],
     animation: 'slide',
-    level: 'principiante',
+    level: 'medio',
     fromBar: 9,
     toBar: 12,
     repeats: 2,
@@ -54,5 +53,5 @@ export const RIFF_TUTORIAL: TutorialSection[] = [
 
 export const RIFF_TUTORIAL_END = {
   title: '¡Lo has conseguido!',
-  lines: ['Ya conoces los trucos.', 'Ahora elige canción y nivel.'],
+  lines: ['Ya conoces los trucos.', 'Ahora practica con la canción entera.', 'Selecciona pista, nivel y velocidad.'],
 };

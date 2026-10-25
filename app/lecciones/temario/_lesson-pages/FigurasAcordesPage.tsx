@@ -16,6 +16,7 @@ import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guita
 import { HandednessToggleButton, KeyboardLeftyNote } from '../../../components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '../../../lib/useNoteMarks';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
+import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
 
 const fretNotes = [
   { fret: 0, string: 2, note: 'B' },
@@ -400,6 +401,7 @@ function GChordFretboard() {
 
   return (
     <div className="midi-instrument-host">
+      <InstrumentTutorial steps={FRETBOARD_TOUR} />
     <figure className="fretboard-figure" ref={scrollRef}>
       <svg
         ref={svgRef}

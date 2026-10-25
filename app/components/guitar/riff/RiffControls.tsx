@@ -429,6 +429,20 @@ export function RiffStyles() {
         z-index: 20;
       }
 
+      /* Puntos de la partida, bajo el mástil (ReducedFretboardDiagram): rojo intenso con brillo
+         amarillo (decisión del usuario). Altura fija: la fila no cambia al aparecer el número. */
+      .riff-score {
+        color: #dc2626;
+        font-size: 22px;
+        font-weight: 950;
+        letter-spacing: 0.02em;
+        line-height: 30px;
+        margin: 2px 0 0;
+        min-height: 30px;
+        text-align: center;
+        text-shadow: 0 0 6px #facc15, 0 0 14px rgba(250, 204, 21, 0.85);
+      }
+
       .riff-level-groups {
         display: flex;
         flex-wrap: wrap;
@@ -574,7 +588,9 @@ export function RiffStyles() {
 
       /* Modo oscuro de la web (invierte .site-shell): la autopista se contra-invierte, como las
          imágenes, para conservar sus colores reales (oscura). */
-      html[data-theme='dark'] .riff-highway {
+      html[data-theme='dark'] .riff-highway,
+      html[data-theme='dark'] .riff-score,
+      html[data-theme='dark'] .riff-level-face {
         filter: invert(1) hue-rotate(180deg);
       }
 

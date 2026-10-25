@@ -338,7 +338,7 @@ html[data-theme='dark'] .site-shell iframe {
   filter: invert(1) hue-rotate(180deg);
 }
 
-/* Excepción: el fondo a lápiz de la portada nueva SÍ se deja invertir con el resto de la página,
+/* Excepción: el fondo a lápiz de la portada SÍ se deja invertir con el resto de la página,
    para que en oscuro quede como un dibujo blanco sobre negro (pizarra) en vez de un recuadro claro. */
 html[data-theme='dark'] .site-shell img.portada2-bg {
   filter: none;

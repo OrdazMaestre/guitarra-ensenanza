@@ -3,10 +3,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
-import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
-import { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
-import { lessonBlocks } from '../temarioData';
+import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../components/guitar/ReducedFretboardDiagram';
+import MiniKeyboard from '../../components/guitar/MiniKeyboard';
+import { TuningBoardStyles } from '../../components/tuningGame/TuningBoard';
+import { lessonBlocks } from './temarioData';
 
 type Instrument = 'guitarra' | 'teclado';
 
@@ -15,7 +15,7 @@ const INSTRUMENTS: { id: Instrument; label: string }[] = [
   { id: 'teclado', label: 'Teclado' },
 ];
 
-// Cabecera + menús de la portada nueva. LECCIONES es un desplegable normal (se cierra al pulsar
+// Cabecera + menús de la portada. LECCIONES es un desplegable normal (se cierra al pulsar
 // fuera o con Escape). MIDIS, en cambio, NO se cierra al pulsar fuera: mientras está abierto se
 // ve el instrumento elegido en grande debajo de la cabecera, y el niño tiene que poder tocarlo sin
 // que desaparezca. Cerrar MIDIS (su botón o Escape) quita también el instrumento.

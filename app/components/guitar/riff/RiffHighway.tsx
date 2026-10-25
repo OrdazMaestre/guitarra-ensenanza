@@ -19,13 +19,20 @@ export { RIFF_STRING_COLORS };
 // (x0, y0) a `z` segundos en el futuro se dibuja en vp + (p0 - vp) * s(z), con s(z) = 1/(1 + a·z);
 // `a` se calcula para que lo que está a LOOKAHEAD segundos llegue justo al borde superior.
 
-const LOOKAHEAD_SECONDS = 2.4;
+// Petición del usuario (2026-10-25): las notas aparecen antes, más al fondo (3,2 s en vez de 2,4) y
+// a la vez bajan más deprisa junto al mástil (más separadas, se distingue mejor el orden). Las dos
+// cosas a la vez salen de acercar el punto de fuga (`VANISHING_RATIO`, antes 0,9): perspectiva más
+// marcada, ~35 % más de separación cerca del mástil.
+const LOOKAHEAD_SECONDS = 3.2;
+const VANISHING_RATIO = 0.35;
 const HIT_FX_SECONDS = 0.35;
 // Etiquetas de puntos ("¡Perfecto!", "+3"...): cuánto duran (segundos reales) y cuántas a la vez.
 const SCORE_LABEL_SECONDS = 0.8;
 const MAX_SCORE_LABELS = 4;
 // Cuerdas libres: las 6 cuerdas, medio transparentes (decisión del usuario).
-const FREE_STRING_ALPHA = 0.5;
+// Cuerdas libres: relleno permanente de cada traste con su color, muy tenue (las cuerdas no se
+// dibujan: no hacen falta y liaban, decisión del usuario).
+const FREE_FRET_TINT_ALPHA = 0.1;
 const MISS_FADE_SECONDS = 0.45;
 const TOP_MARGIN = 10;
 // Desde cuántos segundos antes de llegar se dibuja la guía de aterrizaje.
@@ -69,7 +76,7 @@ function scoreText(points: number) {
 // +4 rojo. Dentro del juego el rojo ya es un color "de juego" (cuerda 6), no el rojo de nota especial.
 const SCORE_COLORS: Record<string, string> = { '0.5': '#ffffff', '1': '#fde047', '2': '#4ade80', '3': '#fb923c', '4': '#f87171' };
 
-function formatScore(points: number) {
+export function formatScore(points: number) {
   return Number.isInteger(points) ? String(points) : points.toFixed(1).replace('.', ',');
 }
 
@@ -163,7 +170,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
 
       // Punto de fuga y escala.
       const vpX = (boardLeft + boardRight) / 2;
-      const vpY = -Math.max(120, y1 * 0.9);
+      const vpY = -Math.max(50, y1 * VANISHING_RATIO);
       const sL = (TOP_MARGIN - vpY) / (y1 - vpY);
       const a = (1 / sL - 1) / LOOKAHEAD_SECONDS;
       const scaleAt = (z: number) => 1 / (1 + a * Math.max(z, 0));
@@ -248,10 +255,14 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // curvas que las cuerdas (sube el segundo anterior a la nota, baja 0,5 s después).
       if (session && freeStrings) {
         for (let fret = minFret; fret <= maxFret; fret++) {
-          const level = usageLevel(notesOnFret(chart.notes, fret), songPos, speed);
-          const col = level > 0.01 ? columnRect(fret) : null;
+          const col = columnRect(fret);
           if (!col) continue;
           const color = fretColor(fret, minFret, maxFret);
+          ctx.globalAlpha = FREE_FRET_TINT_ALPHA;
+          ctx.fillStyle = color;
+          ctx.fillRect(col.x, col.y, col.w, col.h);
+          const level = usageLevel(notesOnFret(chart.notes, fret), songPos, speed);
+          if (level <= 0.01) continue;
           ctx.globalAlpha = level * 0.4;
           ctx.fillStyle = color;
           ctx.fillRect(col.x, col.y, col.w, col.h);
@@ -266,13 +277,13 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // Cuerdas de colores sobre el mástil mientras se juega (las del <svg> se esconden con la clase
       // `riff-live`). En Experto, las que no se van a usar se vuelven transparentes y recuperan su
       // tono el segundo anterior a su próxima nota (`stringAlpha`, mismo reloj que las gemas). Con
-      // cuerdas libres, las 6 medio transparentes (cualquiera vale; lo que manda es la columna del
-      // traste). Brillo moderado (sombra de su color).
-      if (session) {
+      // cuerdas libres no se dibujan (lo que manda es la columna del traste, ver arriba). Brillo
+      // moderado (sombra de su color).
+      if (session && !freeStrings) {
         for (const string of stringsKey.split(',').map(Number)) {
           const y = toY(0, geo.stringY(string));
           ctx.strokeStyle = RIFF_STRING_COLORS[string];
-          ctx.globalAlpha = freeStrings ? FREE_STRING_ALPHA : stringAlpha(notesOnString(chart.notes, string), songPos, speed);
+          ctx.globalAlpha = stringAlpha(notesOnString(chart.notes, string), songPos, speed);
           ctx.shadowColor = RIFF_STRING_COLORS[string];
           ctx.shadowBlur = 6;
           ctx.lineWidth = 3;
@@ -486,18 +497,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
           ctx.fillText(scoreText(score.points), x, y);
         }
         ctx.globalAlpha = 1;
-
-        // Marcador total, arriba a la izquierda.
-        const text = `Puntos ${formatScore(session.totalScore)}`;
-        ctx.font = '900 15px system-ui, sans-serif';
-        const tw = ctx.measureText(text).width;
-        ctx.fillStyle = 'rgba(5, 7, 13, 0.85)';
-        roundRect(ctx, 8, 8, tw + 20, 28, 14);
-        ctx.fill();
-        ctx.fillStyle = '#fde047';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, 18, 22);
+        // El marcador total va FUERA de la autopista, entre el mástil y la barra de controles
+        // (RiffScore en ReducedFretboardDiagram).
       }
 
       // Cuenta atrás y fin.
@@ -506,7 +507,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         ctx.textBaseline = 'middle';
         if (session.status === 'countin') {
           const beat = 60 / chart.bpm;
-          const left = Math.min(COUNT_IN_BEATS, Math.ceil((session.startT - songPos) / beat));
+          const left = Math.min(COUNT_IN_BEATS, Math.ceil((session.countInTarget - songPos) / beat));
           if (left > 0) {
             ctx.font = `950 ${Math.max(40, y1 * 0.35)}px system-ui, sans-serif`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';

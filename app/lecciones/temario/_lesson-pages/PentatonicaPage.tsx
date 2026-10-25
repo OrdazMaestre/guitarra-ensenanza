@@ -15,6 +15,7 @@ import { NoteMarksOverlay, PaletteToggleButton } from '@/app/components/guitar/N
 import { HandednessToggleButton, KeyboardLeftyNote } from '@/app/components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
+import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
 
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
@@ -447,6 +448,7 @@ function PentatonicFretboard() {
 
   return (
     <div className="midi-instrument-host">
+      <InstrumentTutorial steps={FRETBOARD_TOUR} />
     <figure className="pentatonic-board-wrap" ref={scrollRef}>
       <svg
         ref={svgRef}
