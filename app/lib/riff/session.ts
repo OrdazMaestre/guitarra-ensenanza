@@ -6,7 +6,7 @@
 // del usuario): lo que suena es la canción real, y acertar una nota la "abre" (sube su volumen).
 // En "Con ritmo" cada nota también da PUNTOS (ver `points`); "Paso a paso" no puntúa nada.
 
-import type { Chart, ChartNote, DrumSound } from './chart';
+import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
 import { isAdjacentSlide, type PracticeNoteEvent } from '../useFretboardPractice';
 
 // Puntuación por nota (decisión del usuario), con márgenes en segundos REALES (también al 50 %):
@@ -67,6 +67,15 @@ export interface ScheduledClick {
   at: number;
   sound: DrumSound;
   volume: number;
+}
+
+// Nota de la banda ya programada (ver `takeBandNotes`).
+export interface ScheduledBandNote {
+  at: number;
+  duration: number;
+  midi: number;
+  kind: 'guitar' | 'bass';
+  palmMute: boolean;
 }
 
 export interface ScheduledGuideNote {
@@ -164,6 +173,9 @@ export class RiffSession {
   private clickTimes: Click[];
   private nextClick = 0;
   private nextGuide = 0;
+  // La banda (otras pistas: otra guitarra, bajo), solo con el acompañamiento "Batería".
+  private readonly bandNotes: ChartBandNote[];
+  private nextBand = 0;
   // Lo que suena de fondo: las notas reales (en niveles traducidos, `chart.sourceNotes`).
   private readonly guideNotes: ChartNote[];
   // Niveles traducidos: id de nota real -> id de la nota traducida "dueña".
@@ -179,6 +191,7 @@ export class RiffSession {
     this.notes = chart.notes.filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
     this.translated = !!chart.sourceNotes;
     this.guideNotes = (chart.sourceNotes ?? chart.notes).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
+    this.bandNotes = backing === 'bateria' ? (chart.band ?? []).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6) : [];
     // Experto: cada nota es "dueña" de sí misma (acertarla sube su propio sonido de fondo).
     for (const note of this.notes) {
       for (const sourceId of note.sourceIds ?? [note.id]) this.ownerOf.set(sourceId, note.id);
@@ -242,6 +255,7 @@ export class RiffSession {
     this.nextClick = 0;
     this.nextGuide = this.guideNotes.findIndex((note) => note.t >= target - 1e-6);
     if (this.nextGuide < 0) this.nextGuide = this.guideNotes.length;
+    this.nextBand = this.bandIndexFrom(target);
     this.status = 'countin';
     this.lastReal = now;
   }
@@ -255,6 +269,7 @@ export class RiffSession {
     this.nextClick = 0;
     this.nextGuide = this.guideNotes.findIndex((note) => note.t >= this.songPos - 1e-6);
     if (this.nextGuide < 0) this.nextGuide = this.guideNotes.length;
+    this.nextBand = this.bandIndexFrom(this.songPos);
     this.status = 'countin';
     this.lastReal = now;
   }
@@ -318,6 +333,7 @@ export class RiffSession {
     this.clickTimes = [...this.countInClicks(this.startT), ...this.songClicks];
     this.nextClick = 0;
     this.nextGuide = 0;
+    this.nextBand = 0;
     this.lastReal = now;
     this.loopCount++;
   }
@@ -362,6 +378,35 @@ export class RiffSession {
         });
       }
       this.nextGuide++;
+    }
+    return out;
+  }
+
+  private bandIndexFrom(t: number): number {
+    const index = this.bandNotes.findIndex((note) => note.t >= t - 1e-6);
+    return index < 0 ? this.bandNotes.length : index;
+  }
+
+  // La banda (petición del usuario: las otras pistas suenan de fondo "como la batería"): con el
+  // acompañamiento "Batería" y en "Con ritmo" (en "Paso a paso" la canción espera, igual que las
+  // notas de fondo). Siempre al mismo volumen: no depende de acertar.
+  takeBandNotes(now: number, lookahead: number): ScheduledBandNote[] {
+    if (this.status === 'finished' || this.status === 'paused' || this.options.mode !== 'ritmo') return [];
+    const out: ScheduledBandNote[] = [];
+    const horizon = this.songPos + lookahead * this.options.speed;
+    while (this.nextBand < this.bandNotes.length) {
+      const note = this.bandNotes[this.nextBand];
+      if (note.t > horizon) break;
+      if (note.t >= this.songPos - 0.05) {
+        out.push({
+          at: now + Math.max(0, note.t - this.songPos) / this.options.speed,
+          duration: note.dur / this.options.speed,
+          midi: note.midi,
+          kind: note.kind,
+          palmMute: note.palmMute,
+        });
+      }
+      this.nextBand++;
     }
     return out;
   }

@@ -62,6 +62,16 @@ export interface ChartBeat {
   isBarStart: boolean;
 }
 
+// Nota de la BANDA: las demás pistas con altura (la otra guitarra, el bajo...), que suenan de fondo
+// con el acompañamiento "Batería" (petición del usuario: "como la batería"). Solo se oyen, no se tocan.
+export interface ChartBandNote {
+  t: number;
+  dur: number;
+  midi: number;
+  kind: 'guitar' | 'bass';
+  palmMute: boolean;
+}
+
 export interface Chart {
   trackName: string;
   bpm: number;
@@ -73,6 +83,8 @@ export interface Chart {
   sourceNotes?: ChartNote[];
   // Golpes de la primera pista de batería del archivo (vacío si no tiene).
   drums: ChartDrumHit[];
+  // Notas de las demás pistas con altura (ver ChartBandNote), ordenadas por tiempo.
+  band?: ChartBandNote[];
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -134,6 +146,16 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const beats: ChartBeat[] = [];
   const drums: ChartDrumHit[] = [];
   const drumTrack = score.tracks.find((candidate) => candidate.staves[0]?.isPercussion);
+  // La banda: todas las pistas con altura menos la que se toca. Bajo = pista de 4-5 cuerdas o cuya
+  // cuerda más grave está por debajo de un Mi1 + 5 (las guitarras empiezan en Mi2 = 40).
+  const band: ChartBandNote[] = [];
+  const bandTracks = score.tracks
+    .filter((candidate, index) => index !== trackIndex && candidate.staves[0] && !candidate.staves[0].isPercussion)
+    .map((candidate) => {
+      const tuning = candidate.staves[0].tuning;
+      const bass = tuning.length > 0 && (tuning.length < 6 || Math.min(...tuning) < 34);
+      return { track: candidate, kind: (bass ? 'bass' : 'guitar') as ChartBandNote['kind'] };
+    });
   let skippedAboveMaxFret = 0;
   let movedAboveMaxFret = 0;
   const openMidi = (string: number) => staff.tuning[string - 1];
@@ -160,6 +182,24 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
             if (midi !== undefined) sounds.add(drumSound(midi));
           }
           for (const sound of sounds) drums.push({ t, sound });
+        }
+      }
+    }
+
+    for (const { track: bandTrack, kind } of bandTracks) {
+      const bandBar = bandTrack.staves[0].bars[masterBar.index];
+      if (!bandBar) continue;
+      for (const voice of bandBar.voices) {
+        for (const beat of voice.beats) {
+          if (beat.isRest) continue;
+          const startTick = lookup.start + beat.playbackStart;
+          const t = tickToSec(startTick);
+          for (const note of beat.notes) {
+            if (note.isDead || note.isTieDestination) continue;
+            let durTicks = beat.playbackDuration;
+            for (let tied: Note | null = note.tieDestination; tied; tied = tied.tieDestination) durTicks += tied.beat.playbackDuration;
+            band.push({ t, dur: tickToSec(startTick + durTicks) - t, midi: note.realValue, kind, palmMute: beat.isPalmMute });
+          }
         }
       }
     }
@@ -219,6 +259,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
 
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
   drums.sort((a, b) => a.t - b.t);
+  band.sort((a, b) => a.t - b.t);
   notes.forEach((note, index) => { note.id = index; });
   const lastBar = bars[bars.length - 1];
   return {
@@ -229,6 +270,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     bars,
     beats,
     drums,
+    band,
     movedAboveMaxFret,
     skippedAboveMaxFret,
   };

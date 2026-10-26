@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart, type Chart } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
-import { reduceChart } from '../app/lib/riff/reduce';
+import { OPEN_MIDI, placeSequence, reduceChart } from '../app/lib/riff/reduce';
 import { buildRemix, REMIX_GAP_QUARTERS } from '../app/lib/riff/remix';
 
 // Traducción de la tablatura real a niveles sencillos (app/lib/riff/reduce.ts), estilo Guitar Hero.
@@ -118,6 +118,108 @@ test('Medio y Avanzado (trastes) conservan el compás 42 de Master of Puppets en
     expect(facil).toBeLessThan(9);
     expect(facil).toBeGreaterThan(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length);
   }
+});
+
+// Modo cuerdas Medio (Mi + La): la tab se coloca en las dos cuerdas por el camino de menor coste
+// (reduce.ts, placeSequence). Medidas: notas reales respetadas, saltos, cambios de cuerda.
+const CUERDAS_SONGS: Array<[string, string, number]> = [
+  ...SONGS,
+  ['Thunderstruck', 'thunderstruck.gp', 0],
+  ['Carol of the Bells', 'carol-of-the-bells.gp', 0],
+];
+
+for (const [name, file, track] of CUERDAS_SONGS) {
+  test(`${name} en Medio (cuerdas): Mi y La, mismas alturas, repetidas quietas, sin saltos imposibles`, () => {
+    const real = chartOf(file, track);
+    const profile = RIFF_LEVELS['medio-cuerdas'];
+    const chart = reduceChart(real, profile);
+    const beat = 60 / real.bpm;
+    const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
+    expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(0.9);
+    for (const note of chart.notes) {
+      expect([5, 6]).toContain(note.string);
+      expect(note.fret).toBeGreaterThanOrEqual(0);
+      expect(note.fret).toBeLessThanOrEqual(profile.maxFretByString![note.string]);
+      expect(note.midi).toBe(OPEN_MIDI[note.string] + note.fret);
+    }
+    const leadOfNote = (i: number) => {
+      const sources = chart.notes[i].sourceIds!.map((id) => real.notes[id]).filter((n) => Math.abs(n.t - chart.notes[i].t) < 0.005);
+      const sorted = sources.sort((a, b) => a.midi - b.midi);
+      const low = sorted[0];
+      const power = sorted.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - low.midi));
+      return power ? low : sorted[sorted.length - 1];
+    };
+    let sameDirection = 0;
+    let pairs = 0;
+    let stringChanges = 0;
+    let bigJumps = 0;
+    let keptReal = 0;
+    let realInside = 0;
+    let sameFret = 0;
+    let lastFretted: number | null = null;
+    for (let i = 0; i < chart.notes.length; i++) {
+      const note = chart.notes[i];
+      const lead = leadOfNote(i);
+      if (lead.fret === note.fret) sameFret++;
+      // Notas reales que ya caben en el nivel (y cuya frase va a su altura real).
+      if (note.midi === lead.midi && [5, 6].includes(lead.string) && lead.fret <= profile.maxFretByString![lead.string]) {
+        realInside++;
+        if (lead.string === note.string && lead.fret === note.fret) keptReal++;
+      }
+      if (i > 0 && note.phrase === chart.notes[i - 1].phrase) {
+        const prev = chart.notes[i - 1];
+        const prevLead = leadOfNote(i - 1);
+        pairs++;
+        // Las alturas siguen la melodía real (sube/baja/igual), salvo frases traducidas a contorno.
+        if (Math.sign(note.midi - prev.midi) === Math.sign(lead.midi - prevLead.midi)) sameDirection++;
+        // La misma nota dos veces seguidas: el mismo sitio (para mantener pulsado).
+        if (lead.midi === prevLead.midi) expect(`${note.string}/${note.fret}`).toBe(`${prev.string}/${prev.fret}`);
+        if (note.string !== prev.string) stringChanges++;
+        if (note.fret > 0 && lastFretted !== null && Math.abs(note.fret - lastFretted) > 7 && note.t - prev.t < beat * 0.5) bigJumps++;
+      }
+      if (i > 0 && note.phrase !== chart.notes[i - 1].phrase) lastFretted = null;
+      if (note.fret > 0) lastFretted = note.fret;
+    }
+    console.log(`${name}: ${chart.notes.length} notas, dirección ${(100 * sameDirection / Math.max(1, pairs)).toFixed(1)} %, tab respetada ${keptReal}/${realInside}, mismo traste que la tab ${(100 * sameFret / chart.notes.length).toFixed(1)} %, cambios de cuerda ${(100 * stringChanges / Math.max(1, pairs)).toFixed(1)} %, saltos >7 rápidos ${bigJumps}`);
+    expect(sameDirection / Math.max(1, pairs)).toBeGreaterThanOrEqual(0.95);
+    expect(bigJumps).toBe(0);
+    if (realInside > 0) expect(keptReal / realInside).toBeGreaterThanOrEqual(0.8);
+  });
+}
+
+test('Medio (cuerdas): los riffs repetidos de Master of Puppets se colocan siempre igual', () => {
+  for (const track of [1, 2]) {
+    const chart = reduceChart(chartOf('prueba-master-of-puppets.gp', track), RIFF_LEVELS['medio-cuerdas']);
+    const byPhrase = new Map<number, typeof chart.notes>();
+    for (const note of chart.notes) byPhrase.set(note.phrase!, [...(byPhrase.get(note.phrase!) ?? []), note]);
+    const seen = new Map<string, string>();
+    let repeats = 0;
+    for (const notes of byPhrase.values()) {
+      const key = notes.map((n, k) => `${n.midi}@${k === 0 ? 0 : Math.round((n.t - notes[k - 1].t) * 100)}`).join(' ');
+      const placement = notes.map((n) => `${n.string}/${n.fret}`).join(' ');
+      if (seen.has(key)) {
+        repeats++;
+        expect(placement).toBe(seen.get(key));
+      } else {
+        seen.set(key, placement);
+      }
+    }
+    expect(repeats).toBeGreaterThanOrEqual(3);
+  }
+});
+
+test('placeSequence: salto grande rápido -> cuerda siguiente; paso cromático -> misma cuerda; la tab manda en los empates', () => {
+  const profile = RIFF_LEVELS['medio-cuerdas'];
+  const positions = [5, 6].flatMap((string) => Array.from({ length: profile.maxFretByString![string] + 1 }, (_, fret) => ({ string, fret, pitch: OPEN_MIDI[string] + fret })));
+  // Fa (41) -> Re (50) en corchea: 9 trastes en la 6 es demasiado; Re pasa a la cuerda 5 (5/5).
+  const jump = placeSequence([{ pitch: 41, t: 0 }, { pitch: 50, t: 0.15 }], positions)!;
+  expect(jump.path.map((p) => `${p.string}/${p.fret}`)).toEqual(['6/1', '5/5']);
+  // Fa (41) -> Fa# (42) -> Sol (43): pasito a pasito en la cuerda 6.
+  const chromatic = placeSequence([{ pitch: 41, t: 0 }, { pitch: 42, t: 0.15 }, { pitch: 43, t: 0.3 }], positions)!;
+  expect(chromatic.path.map((p) => `${p.string}/${p.fret}`)).toEqual(['6/1', '6/2', '6/3']);
+  // La (45) cabe al aire en la 5 o en el traste 5 de la 6: la tab dice 6/5 y se respeta.
+  const tab = placeSequence([{ pitch: 43, t: 0, real: { string: 6, fret: 3 } }, { pitch: 45, t: 0.3, real: { string: 6, fret: 5 } }], positions)!;
+  expect(tab.path.map((p) => `${p.string}/${p.fret}`)).toEqual(['6/3', '6/5']);
 });
 
 // Canción "remix" de la partida tutorial (riffTutorial.ts), fabricada nota a nota.

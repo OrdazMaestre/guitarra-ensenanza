@@ -429,7 +429,16 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         ctx.shadowColor = missed ? 'transparent' : color;
         ctx.shadowBlur = missed ? 0 : 14 * p.s;
         ctx.fillStyle = missed ? '#6b7280' : color;
-        roundRect(ctx, p.x - w / 2, p.y - h / 2, w, h, 6 * p.s);
+        // Cuerda al aire (traste 0): un CÍRCULO grande en vez de la barra del resto (petición del
+        // usuario), para distinguirla de un vistazo.
+        const open = note.fret === 0;
+        const radius = Math.max(h * 0.95, 9);
+        if (open) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        } else {
+          roundRect(ctx, p.x - w / 2, p.y - h / 2, w, h, 6 * p.s);
+        }
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.strokeStyle = note.palmMute ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.75)';
@@ -440,7 +449,12 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
           const gap = Math.max(2, 4 * p.s);
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = Math.max(1, 2 * p.s);
-          roundRect(ctx, p.x - w / 2 - gap, p.y - h / 2 - gap, w + gap * 2, h + gap * 2, 8 * p.s);
+          if (open) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, radius + gap, 0, Math.PI * 2);
+          } else {
+            roundRect(ctx, p.x - w / 2 - gap, p.y - h / 2 - gap, w + gap * 2, h + gap * 2, 8 * p.s);
+          }
           ctx.stroke();
         }
 

@@ -12,6 +12,12 @@
 //    reales, subiendo/bajando la frase en bloque, mejor por octavas); si no, CONTORNO: misma nota
 //    -> mismo botón, si sube va a la derecha y si baja a la izquierda, saltos proporcionales.
 //
+// Con VARIAS cuerdas (modo cuerdas) el paso 4 elige además la CUERDA de cada nota: la misma altura
+// puede estar en dos sitios (cuerdas en cuartas: una cuerda más aguda = 5 trastes menos), y decidir
+// entre "traste lejano" y "cuerda siguiente" se hace con el camino de MENOR COSTE de toda la frase
+// (programación dinámica / Viterbi, como en la digitación automática clásica: Sayegh 1989), ver
+// `placeSequence`. Los riffs repetidos se colocan siempre igual (decisión del usuario).
+//
 // Cada nota traducida es "dueña" (`sourceIds`) de las notas reales de la canción desde su golpe
 // hasta la siguiente nota traducida: al acertarla, esas suenan fuerte (ver session.ts).
 
@@ -19,7 +25,7 @@ import type { Chart, ChartNote } from './chart';
 import type { LevelProfile } from './levels';
 
 // Afinación estándar: altura de cada cuerda al aire (cuerda 1 = Mi agudo).
-const OPEN_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
+export const OPEN_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
 const POWER_CHORD_INTERVALS = new Set([0, 5, 7, 12, 17, 19, 24]);
 const PHRASE_MAX_BEATS = 8;
 
@@ -30,7 +36,7 @@ interface Onset {
   lead: ChartNote;
 }
 
-interface LanePosition {
+export interface LanePosition {
   string: number;
   fret: number;
   pitch: number;
@@ -159,7 +165,8 @@ function splitPhrases(kept: Onset[], profile: LevelProfile, beatSeconds: (t: num
 function laneLayout(profile: LevelProfile) {
   const positions: LanePosition[] = [];
   for (const string of profile.strings) {
-    for (let fret = profile.minFret; fret <= profile.maxFret; fret++) {
+    const maxFret = Math.min(profile.maxFret, profile.maxFretByString?.[string] ?? profile.maxFret);
+    for (let fret = profile.minFret; fret <= maxFret; fret++) {
       positions.push({ string, fret, pitch: OPEN_MIDI[string] + fret });
     }
   }
@@ -200,6 +207,200 @@ function contourLanes(pitches: number[], laneCount: number): Map<number, number>
   return map;
 }
 
+// ---- Colocación por menor coste (niveles con varias cuerdas) ----
+
+// Pesos de la regla "traste lejano vs. cuerda siguiente": dentro de la "caja" de la mano (los
+// trastes que se alcanzan sin moverla) moverse es gratis; fuera, cada traste cuesta lo mismo que
+// cambiar de cuerda. No están puestos a ojo: son los que más se parecen a un guitarrista real,
+// medidos colocando SIN restricciones las 1716 notas sueltas de las tabs de public/tabs y
+// comparando con dónde las puso el tabulador (74 % idénticas; 70 % con los pesos iniciales).
+export interface PlaceWeights {
+  fret: number; // por traste que la mano tiene que moverse fuera de la caja
+  string: number; // por cuerda que se cambia
+  box: number; // trastes alcanzables sin mover la mano (además del de partida)
+  hurry: number; // segundos "cómodos" para un cambio; con menos tiempo cuesta más (de ×0,5 a ×3)
+  tab: number; // por NO poner la nota donde la puso la tablatura real (si allí se puede)
+  high: number; // por traste por encima del 5 (los trastes bajos son más fáciles)
+  open: number; // premio por cuerda al aire (no hace falta mover la mano)
+  pattern: number; // por colocar un trozo ya visto (3 alturas seguidas) distinto de la primera vez
+}
+
+export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 0.2, tab: 1.5, high: 0.1, open: 1, pattern: 3 };
+// La MISMA altura dos veces seguidas no cambia de sitio (así funciona "mantener pulsado").
+const SAME_PITCH_MOVE_COST = 50;
+
+export interface PlaceItem {
+  pitch: number;
+  t: number;
+  // Dónde la puso la tablatura real (solo si es la misma altura).
+  real?: { string: number; fret: number };
+}
+
+// Camino de menor coste (Viterbi). El estado es (posición, traste de la mano): una cuerda al aire
+// no mueve la mano, así que el salto se mide desde la última nota pisada. null si alguna altura no
+// tiene sitio.
+export function placeSequence(
+  items: PlaceItem[],
+  positions: LanePosition[],
+  weights: PlaceWeights = PLACE_WEIGHTS,
+  unary?: (index: number, place: LanePosition) => number,
+): { path: LanePosition[]; cost: number } | null {
+  if (items.length === 0) return { path: [], cost: 0 };
+  type State = { cost: number; place: LanePosition; hand: number | null; back: State | null };
+  const hurry = (dt: number) => Math.min(3, Math.max(0.5, weights.hurry / Math.max(dt, 1e-3)));
+  const noteCost = (item: PlaceItem, index: number, place: LanePosition) => {
+    let cost = weights.high * Math.max(0, place.fret - 5);
+    if (place.fret === 0) cost -= weights.open;
+    if (item.real && (item.real.string !== place.string || item.real.fret !== place.fret)) cost += weights.tab;
+    return cost + (unary ? unary(index, place) : 0);
+  };
+  let layer: State[] = [];
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    const places = positions.filter((p) => p.pitch === item.pitch);
+    const next = new Map<string, State>();
+    for (const place of places) {
+      const own = noteCost(item, index, place);
+      if (index === 0) {
+        const hand = place.fret === 0 ? null : place.fret;
+        next.set(`${place.string}:${place.fret}:${hand}`, { cost: own, place, hand, back: null });
+        continue;
+      }
+      const prevItem = items[index - 1];
+      const h = hurry(item.t - prevItem.t);
+      for (const prev of layer) {
+        let move: number;
+        if (item.pitch === prevItem.pitch && (prev.place.string !== place.string || prev.place.fret !== place.fret)) {
+          move = SAME_PITCH_MOVE_COST;
+        } else {
+          const handJump = place.fret === 0 || prev.hand === null ? 0 : Math.abs(place.fret - prev.hand);
+          move = (weights.fret * Math.max(0, handJump - weights.box) + weights.string * Math.abs(place.string - prev.place.string)) * h;
+        }
+        const hand = place.fret === 0 ? prev.hand : place.fret;
+        const key = `${place.string}:${place.fret}:${hand}`;
+        const cost = prev.cost + move + own;
+        const known = next.get(key);
+        if (!known || cost < known.cost) next.set(key, { cost, place, hand, back: prev });
+      }
+    }
+    layer = [...next.values()];
+    if (layer.length === 0) return null;
+  }
+  const best = layer.reduce((a, b) => (b.cost < a.cost ? b : a));
+  const path: LanePosition[] = [];
+  for (let state: State | null = best; state; state = state.back) path.push(state.place);
+  return { path: path.reverse(), cost: best.cost };
+}
+
+// Coloca una frase en varias cuerdas. Alturas candidatas (cada una con un coste extra pequeño):
+// - la real y sus octavas;
+// - "trasladar de cuerda": la frase entera pasa de una cuerda real a una del nivel CON LA MISMA
+//   FORMA (mismos trastes), p. ej. el pedal de Thunderstruck en la Si al aire (2/0 2/4 2/0 2/7)
+//   -> en la La al aire (5/0 5/4 5/0 5/7), en vez de bajarlo una octava y tener que alternar
+//   cuerdas. Ahí la "posición real" que se intenta respetar es la trasladada;
+// - si nada cabe, el desplazamiento exacto más corto, y si tampoco, el contorno.
+// Se queda con lo más barato (coste del camino + extra).
+const OCTAVE_SHIFT_COST = 2;
+const STRING_TRANSFER_COST = 3;
+const SEMITONE_SHIFT_COST = 6;
+
+function placePhraseMulti(
+  phrase: Onset[],
+  layout: ReturnType<typeof laneLayout>,
+  available: Set<number>,
+  unary: (index: number, place: LanePosition) => number,
+): LanePosition[] {
+  const pitches = phrase.map((onset) => onset.lead.midi);
+  const levelStrings = [...new Set(layout.positions.map((p) => p.string))];
+  const shifts = new Map<number, number>();
+  const offer = (shift: number, extra: number) => {
+    if (pitches.every((p) => available.has(p + shift)) && extra < (shifts.get(shift) ?? Infinity)) shifts.set(shift, extra);
+  };
+  for (let k = -4; k <= 4; k++) offer(12 * k, OCTAVE_SHIFT_COST * Math.abs(k));
+  for (const realString of new Set(phrase.map((onset) => onset.lead.string))) {
+    for (const string of levelStrings) offer(OPEN_MIDI[string] - OPEN_MIDI[realString], STRING_TRANSFER_COST);
+  }
+  const candidates: Array<{ pitches: number[]; extra: number; shift: number | null }> = [...shifts].map(([shift, extra]) => ({
+    pitches: pitches.map((p) => p + shift),
+    extra,
+    shift,
+  }));
+  if (candidates.length === 0) {
+    const shift = exactShift(pitches, available);
+    if (shift !== null) candidates.push({ pitches: pitches.map((p) => p + shift), extra: SEMITONE_SHIFT_COST, shift: null });
+  }
+  if (candidates.length === 0) {
+    const lanes = contourLanes(pitches, layout.pitches.length);
+    const laneSeq = pitches.map((p) => lanes.get(p)!);
+    for (let k = 1; k < laneSeq.length; k++) {
+      if (pitches[k] !== pitches[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
+        laneSeq[k] = Math.min(layout.pitches.length - 1, Math.max(0, laneSeq[k] + Math.sign(pitches[k] - pitches[k - 1])));
+      }
+    }
+    candidates.push({ pitches: laneSeq.map((lane) => layout.pitches[lane]), extra: SEMITONE_SHIFT_COST, shift: null });
+  }
+  let best: { path: LanePosition[]; cost: number } | null = null;
+  for (const candidate of candidates) {
+    // Posición real (trasladada a la cuerda que da exactamente este desplazamiento, mismo traste).
+    const realOf = (onset: Onset) => {
+      if (candidate.shift === null) return undefined;
+      const string = candidate.shift === 0 ? onset.lead.string : levelStrings.find((s) => OPEN_MIDI[s] - OPEN_MIDI[onset.lead.string] === candidate.shift);
+      return string === undefined ? undefined : { string, fret: onset.lead.fret };
+    };
+    const items: PlaceItem[] = phrase.map((onset, k) => ({ pitch: candidate.pitches[k], t: onset.t, real: realOf(onset) }));
+    const placed = placeSequence(items, layout.positions, PLACE_WEIGHTS, unary);
+    if (placed && (!best || placed.cost + candidate.extra < best.cost)) best = { path: placed.path, cost: placed.cost + candidate.extra };
+  }
+  return best!.path;
+}
+
+// Clave de una frase para reconocer un riff repetido: alturas + ritmo (huecos en negras, a la
+// semicorchea).
+function phraseKey(phrase: Onset[]): string {
+  return phrase.map((onset, k) => `${onset.lead.midi}@${k === 0 ? 0 : Math.round((onset.pos - phrase[k - 1].pos) * 4)}`).join(' ');
+}
+
+const PATTERN_LENGTH = 3;
+
+function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile): LanePosition[] {
+  const layout = laneLayout(profile);
+  const available = new Set(layout.pitches);
+  const placed: LanePosition[] = new Array(kept.length);
+  // Riffs repetidos (decisión del usuario): una frase igual que otra anterior se copia tal cual; y
+  // cada trozo de 3 alturas seguidas ya colocado "tira" de las frases nuevas hacia la misma forma.
+  const byKey = new Map<string, LanePosition[]>();
+  const patterns = new Map<string, LanePosition[]>();
+  let i = 0;
+  while (i < kept.length) {
+    let end = i;
+    while (end < kept.length && phraseOf[end] === phraseOf[i]) end++;
+    const phrase = kept.slice(i, end);
+    const key = phraseKey(phrase);
+    let path = byKey.get(key);
+    if (!path) {
+      const pitchesOf = (from: number) => phrase.slice(from, from + PATTERN_LENGTH).map((onset) => onset.lead.midi).join(',');
+      const unary = (index: number, place: LanePosition) => {
+        let cost = 0;
+        for (let w = Math.max(0, index - PATTERN_LENGTH + 1); w <= index && w + PATTERN_LENGTH <= phrase.length; w++) {
+          const was = patterns.get(pitchesOf(w))?.[index - w];
+          // Solo cuenta a la misma altura (la frase puede ir a otra octava).
+          if (was && was.pitch === place.pitch && (was.string !== place.string || was.fret !== place.fret)) cost += PLACE_WEIGHTS.pattern;
+        }
+        return cost;
+      };
+      path = placePhraseMulti(phrase, layout, available, unary);
+      byKey.set(key, path);
+      for (let w = 0; w + PATTERN_LENGTH <= phrase.length; w++) {
+        const pattern = pitchesOf(w);
+        if (!patterns.has(pattern)) patterns.set(pattern, path.slice(w, w + PATTERN_LENGTH));
+      }
+    }
+    path.forEach((place, k) => { placed[i + k] = place; });
+    i = end;
+  }
+  return placed;
+}
+
 export function reduceChart(chart: Chart, profile: LevelProfile): Chart {
   const { pos, beatSeconds } = makeBeatPosition(chart);
   const onsets = groupOnsets(chart, pos);
@@ -207,11 +408,12 @@ export function reduceChart(chart: Chart, profile: LevelProfile): Chart {
   const phraseOf = splitPhrases(kept, profile, beatSeconds);
   const layout = laneLayout(profile);
   const available = new Set(layout.pitches);
+  const multiPlaces = profile.strings.length > 1 ? placeAllMulti(kept, phraseOf, profile) : null;
 
-  // Altura traducida de cada nota, frase a frase.
+  // Altura traducida de cada nota, frase a frase (con varias cuerdas ya va en multiPlaces).
   const targetPitch: number[] = new Array(kept.length);
   let i = 0;
-  while (i < kept.length) {
+  while (!multiPlaces && i < kept.length) {
     let end = i;
     while (end < kept.length && phraseOf[end] === phraseOf[i]) end++;
     const pitches = kept.slice(i, end).map((onset) => onset.lead.midi);
@@ -236,9 +438,14 @@ export function reduceChart(chart: Chart, profile: LevelProfile): Chart {
   let prevFret = profile.minFret;
   const notes: ChartNote[] = kept.map((onset, k) => {
     const next = kept[k + 1];
-    const candidates = layout.positions.filter((p) => p.pitch === targetPitch[k]);
-    const place = candidates.reduce((best, p) => (Math.abs(p.fret - prevFret) < Math.abs(best.fret - prevFret) ? p : best), candidates[0]);
-    prevFret = place.fret;
+    let place: LanePosition;
+    if (multiPlaces) {
+      place = multiPlaces[k];
+    } else {
+      const candidates = layout.positions.filter((p) => p.pitch === targetPitch[k]);
+      place = candidates.reduce((best, p) => (Math.abs(p.fret - prevFret) < Math.abs(best.fret - prevFret) ? p : best), candidates[0]);
+      prevFret = place.fret;
+    }
     const beat = beatSeconds(onset.t);
     const room = next ? next.t - onset.t - beat * 0.5 : onset.lead.dur;
     const dur = Math.min(onset.lead.dur, room);

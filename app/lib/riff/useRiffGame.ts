@@ -1,6 +1,6 @@
 'use client';
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
 import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
@@ -10,6 +10,11 @@ import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions,
 // cambia el `status`, nunca por frame.
 
 const TICK_MS = 25;
+// Volumen de la banda (las otras pistas). La otra guitarra, un poco por debajo de las notas de fondo
+// de la propia pista (GUIDE_GAIN) para que se distinga lo que toca el alumno; el bajo, como el del
+// reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
+const BAND_GUITAR_GAIN = 0.26;
+const BAND_BASS_GAIN = 0.5;
 const CLICK_LOOKAHEAD_SECONDS = 0.15;
 
 export type RiffGameStatus = 'idle' | RiffStatus;
@@ -35,6 +40,8 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   // Notas de fondo ya programadas (id de nota real -> control de volumen + cuándo acaba), para
   // poder "abrirlas" cuando se acierta su nota traducida (todos los niveles menos Experto).
   const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number }>());
+  // Notas de la otra guitarra ya programadas (para callarlas en PAUSA).
+  const bandHandlesRef = useRef<{ handle: GuideNoteHandle; end: number }[]>([]);
 
   // Un acierto "abre" sus notas reales: las ya programadas suben de volumen (las siguientes saldrán
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
@@ -83,6 +90,16 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
           if (handle && sessionRef.current === session) handles.set(note.id, { handle, end: note.at + note.duration });
         });
       }
+      for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
+        if (note.kind === 'bass') {
+          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute);
+        } else {
+          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN).then((handle) => {
+            if (handle && sessionRef.current === session) bandHandlesRef.current.push({ handle, end: note.at + note.duration });
+          });
+        }
+      }
+      bandHandlesRef.current = bandHandlesRef.current.filter((entry) => entry.end >= now - 1);
       for (const [id, entry] of handles) {
         if (entry.end < now - 1) handles.delete(id);
       }
@@ -102,6 +119,8 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     session.pause(getAudioCurrentTime());
     for (const { handle } of guideHandlesRef.current.values()) handle.setVolume(0);
     guideHandlesRef.current.clear();
+    for (const { handle } of bandHandlesRef.current) handle.setVolume(0);
+    bandHandlesRef.current = [];
     setStatus(session.status);
   }, []);
 

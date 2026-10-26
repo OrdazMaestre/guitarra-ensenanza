@@ -4,11 +4,11 @@
 //
 // Cada tramo (compases `fromBar`..`toBar` de su chart) se copia `repeats` veces seguidas, con sus
 // notas traducidas, sus notas reales de fondo (`sourceNotes`, con los `sourceIds` renumerados),
-// sus pulsos y su batería, todo desplazado en el tiempo. Entre un tramo y el siguiente va un compás
+// sus pulsos, su batería y su banda (las otras pistas), todo desplazado en el tiempo. Entre un tramo y el siguiente va un compás
 // de SILENCIO (4 negras): ahí se para la partida (`breaks`) para explicar la parte siguiente, y al
 // seguir sirve de cuenta de entrada. Los compases se renumeran 1, 2, 3...
 
-import type { Chart, ChartBar, ChartBeat, ChartDrumHit, ChartNote } from './chart';
+import type { Chart, ChartBandNote, ChartBar, ChartBeat, ChartDrumHit, ChartNote } from './chart';
 
 export interface RemixSection {
   chart: Chart;
@@ -59,6 +59,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
   const bars: ChartBar[] = [];
   const beats: ChartBeat[] = [];
   const drums: ChartDrumHit[] = [];
+  const band: ChartBandNote[] = [];
   const breaks: number[] = [];
   let cursorT = 0;
   let cursorQ = 0;
@@ -89,6 +90,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
       for (const bar of run) bars.push({ number: barNumber++, t: bar.t + dt, end: bar.end + dt });
       for (const beat of chart.beats) if (inSeg(beat.t)) beats.push({ t: beat.t + dt, q: beat.q + dq, isBarStart: beat.isBarStart });
       for (const hit of chart.drums) if (inSeg(hit.t)) drums.push({ t: hit.t + dt, sound: hit.sound });
+      for (const note of chart.band ?? []) if (inSeg(note.t)) band.push({ ...note, t: note.t + dt });
       const newSourceId = new Map<number, number>();
       for (const note of segSources) {
         newSourceId.set(note.id, sourceNotes.length);
@@ -120,6 +122,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
       beats,
       sourceNotes: translated ? sourceNotes : undefined,
       drums,
+      band,
       movedAboveMaxFret: 0,
       skippedAboveMaxFret: 0,
     },

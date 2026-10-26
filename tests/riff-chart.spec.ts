@@ -565,3 +565,49 @@ test('verificación: al 50 % el metrónomo, la batería y la cuenta de entrada v
   const drums = new RiffSession(fakeChart(), { ...ritmo, speed: 0.5 }, 10, 'bateria').takeClicks(10, 20);
   expect(drums.slice(4).map((c) => [c.at, c.sound])).toEqual([[18, 'kick'], [19, 'cymbal']]);
 });
+
+// La banda (petición del usuario): las otras pistas con altura suenan de fondo "como la batería".
+test('chart: la banda son las demás pistas con altura (la otra guitarra y el bajo), sin la que se toca', () => {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
+  const kirk = buildChart(at, score, 2, 24);
+  const james = buildChart(at, score, 1, 24);
+  const guitar = (c: Chart) => c.band!.filter((n) => n.kind === 'guitar');
+  const bass = (c: Chart) => c.band!.filter((n) => n.kind === 'bass');
+  // Tocando Kirk, de fondo va James (y al revés): sus notas, en los mismos tiempos.
+  expect(guitar(kirk).length).toBe(james.notes.length);
+  expect(guitar(james).length).toBe(kirk.notes.length);
+  expect(guitar(kirk).map((n) => n.midi).sort()).toEqual(james.notes.map((n) => n.midi).sort());
+  // El bajo: del Mi1 (28) para arriba, siempre por debajo de la guitarra.
+  expect(bass(kirk).length).toBeGreaterThan(100);
+  expect(Math.min(...bass(kirk).map((n) => n.midi))).toBe(28);
+  expect(Math.max(...bass(kirk).map((n) => n.midi))).toBeLessThan(52);
+  // Ordenada por tiempo.
+  kirk.band!.forEach((n, i) => { if (i > 0) expect(n.t).toBeGreaterThanOrEqual(kirk.band![i - 1].t); });
+});
+
+test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {
+  const chart: Chart = {
+    ...fakeChart(),
+    band: [
+      { t: 0, dur: 0.5, midi: 40, kind: 'bass', palmMute: false },
+      { t: 1, dur: 0.5, midi: 52, kind: 'guitar', palmMute: true },
+    ],
+  };
+  const take = (backing: 'bateria' | 'metronomo' | 'nada', mode: 'ritmo' | 'paso') => {
+    const s = new RiffSession(chart, { ...ritmo, mode }, 100, backing);
+    const out = [];
+    for (let real = 100; real < 106; real += 0.025) {
+      s.advance(real);
+      out.push(...s.takeBandNotes(real, 0.15));
+    }
+    return out;
+  };
+  const band = take('bateria', 'ritmo');
+  expect(band.map((n) => [n.kind, n.midi])).toEqual([['bass', 40], ['guitar', 52]]);
+  // Cada una a su hora: la cuenta de entrada son 4 s (60 bpm), así que la primera cae en real = 104.
+  expect(band[0].at).toBeCloseTo(104, 1);
+  expect(band[1].palmMute).toBe(true);
+  expect(take('metronomo', 'ritmo')).toHaveLength(0);
+  expect(take('nada', 'ritmo')).toHaveLength(0);
+  expect(take('bateria', 'paso')).toHaveLength(0);
+});

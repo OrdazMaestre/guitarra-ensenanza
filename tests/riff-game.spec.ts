@@ -13,7 +13,7 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
@@ -51,9 +51,18 @@ async function openGame(page: Page) {
 }
 
 // Abre el desplegable `menu` ("Pista", "Ritmo"...) del panel y elige `option`.
+// En "Nivel", los dos modos tienen un "Medio" y un "Avanzado": por defecto, el del modo trastes
+// (Experto solo está en el de cuerdas); "Medio cuerdas" elige el del modo cuerdas.
 async function choose(page: Page, menu: string, option: string) {
   await page.locator('.riff-dd-toggle', { hasText: menu }).click();
-  await page.locator('.riff-dd-menu').getByRole('button', { name: option, exact: true }).click();
+  let scope = page.locator('.riff-dd-menu');
+  let name = option;
+  if (menu === 'Nivel') {
+    const cuerdas = option.endsWith(' cuerdas') || option === 'Experto';
+    name = option.replace(/ cuerdas$/, '');
+    scope = scope.getByRole('group', { name: cuerdas ? 'Modo cuerdas' : 'Modo trastes' });
+  }
+  await scope.getByRole('button', { name, exact: true }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 }
 
@@ -173,7 +182,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -193,14 +202,18 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
     // Nota equivocada: no cuenta.
     const [first, second, third] = chart.notes;
     await tap(page, first.string, first.fret === 0 ? 1 : first.fret - 1);
+    // Modo cuerdas: el traste correcto en OTRA cuerda tampoco cuenta.
+    if (level === 'medio-cuerdas' || level === 'experto') await tap(page, first.string === 6 ? 5 : 6, first.fret);
     await page.waitForTimeout(200);
     await expect(panel).toHaveAttribute('data-hits', '0');
 
     await page.mouse.move(0, 0);
     for (const [i, note] of [first, second, third].entries()) {
-      if (level !== 'experto') expect(note.string).toBe(6);
+      const exactString = level === 'experto' || level === 'medio-cuerdas';
+      if (!exactString) expect(note.string).toBe(6);
+      else if (level === 'medio-cuerdas') expect([5, 6]).toContain(note.string);
       // Niveles de cuerdas libres: el traste correcto vale en cualquier cuerda.
-      await tap(page, level === 'experto' ? note.string : [1, 3, 5][i], note.fret);
+      await tap(page, exactString ? note.string : [1, 3, 5][i], note.fret);
       await expect(panel).toHaveAttribute('data-hits', String(i + 1));
     }
 
@@ -221,7 +234,7 @@ test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estira
   const before = (await svg.boundingBox())!;
   await openGame(page);
   // Modo trastes Práctica, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
-  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Experto', 13]] as const) {
+  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
