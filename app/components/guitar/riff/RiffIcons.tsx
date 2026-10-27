@@ -25,7 +25,9 @@ function Strike() {
 
 // Pista: el logo de la web (el clavijero con 3+3 clavijas, sin las baquetas) en pequeño, con la
 // letra de su papel recortada en blanco: S = solista, R = rítmica.
-export type TrackRole = 'S' | 'R';
+import type { TrackRole } from '@/app/lib/riff/roles';
+
+export type { TrackRole };
 
 export function TrackIcon({ role }: { role: TrackRole }) {
   return (

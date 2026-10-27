@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { buildChart, listGuitarTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { reduceChart } from '@/app/lib/riff/reduce';
+import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
@@ -22,6 +23,8 @@ const DEFAULTS = { level: 'practica' as RiffLevel, speed: 0.75, mode: 'ritmo' as
 interface Options {
   source?: string;
   initialTrack?: string;
+  // Papel de cada pista (S/R, por nombre): decide qué guitarra manda en los riffs compartidos.
+  trackRoles?: Record<string, TrackRole>;
   startFret: number;
   endFret: number;
   // Elemento cuyo ancho decide si cabe la autopista (el host del mástil).
@@ -30,7 +33,7 @@ interface Options {
   heldRef?: HeldPositionsRef;
 }
 
-export function useRiffController({ source, initialTrack, startFret, endFret, measureRef, heldRef }: Options) {
+export function useRiffController({ source, initialTrack, trackRoles, startFret, endFret, measureRef, heldRef }: Options) {
   const [tracks, setTracks] = useState<GuitarTrackInfo[]>([]);
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
@@ -88,16 +91,30 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     return () => { cancelled = true; };
   }, [source, initialTrack]);
 
+  // Guitarra que manda en los riffs compartidos (la rítmica, si la elegida no lo es). Clave estable
+  // para los efectos (los papeles llegan como objeto literal en cada render).
+  const rolesKey = JSON.stringify(trackRoles ?? {});
+  const leader = useMemo(
+    () => (trackIndex === null ? null : leaderTrack(tracks, trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
+    [tracks, trackIndex, rolesKey],
+  );
+
   // Construir el chart de la pista elegida. Experto: la tablatura real (lo que pasa de `endFret`
-  // se recoloca, ver chart.ts). Resto: traducida al nivel desde las notas reales sin recolocar.
+  // se recoloca, ver chart.ts). Resto: traducida al nivel desde las notas reales sin recolocar; si
+  // hay una guitarra que manda, primero se traduce ella y sus riffs compartidos se copian tal cual
+  // (reduceChart, `follow`).
   useEffect(() => {
     if (!source || trackIndex === null) return;
     let cancelled = false;
     loadScore(source).then(({ at, score }) => {
       if (cancelled) return;
+      const translate = (index: number, profile: (typeof RIFF_LEVELS)[keyof typeof RIFF_LEVELS]) => {
+        const follow = leader === null ? undefined : reduceChart(buildChart(at, score, leader, 24), profile);
+        return reduceChart(buildChart(at, score, index, 24), profile, follow);
+      };
       const built = level === 'experto'
         ? buildChart(at, score, trackIndex, endFret)
-        : reduceChart(buildChart(at, score, trackIndex, 24), RIFF_LEVELS[level]);
+        : translate(trackIndex, RIFF_LEVELS[level]);
       setChart(built);
       setFromBar(1);
       setToBar(Math.max(1, ...built.bars.map((bar) => bar.number)));
@@ -105,7 +122,7 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
       setBacking((current) => (current === 'bateria' && built.drums.length === 0 ? 'metronomo' : current));
     });
     return () => { cancelled = true; };
-  }, [source, trackIndex, endFret, level]);
+  }, [source, trackIndex, endFret, level, leader]);
 
   const maxBar = useMemo(() => (chart ? Math.max(1, ...chart.bars.map((bar) => bar.number)) : 1), [chart]);
   const previewTime = useMemo(() => {
@@ -155,12 +172,16 @@ export function useRiffController({ source, initialTrack, startFret, endFret, me
     // La canción remix: cada parte con las notas de su nivel, de la pista elegida.
     void loadScore(source).then(({ at, score }) => {
       const real = buildChart(at, score, trackIndex, 24);
-      const remix = buildRemix(RIFF_TUTORIAL.map((part) => ({
-        chart: reduceChart(real, RIFF_LEVELS[part.level as Exclude<RiffLevel, 'experto'>]),
-        fromBar: part.fromBar,
-        toBar: part.toBar,
-        repeats: part.repeats,
-      })));
+      const leaderReal = leader === null ? null : buildChart(at, score, leader, 24);
+      const remix = buildRemix(RIFF_TUTORIAL.map((part) => {
+        const profile = RIFF_LEVELS[part.level as Exclude<RiffLevel, 'experto'>];
+        return {
+          chart: reduceChart(real, profile, leaderReal ? reduceChart(leaderReal, profile) : undefined),
+          fromBar: part.fromBar,
+          toBar: part.toBar,
+          repeats: part.repeats,
+        };
+      }));
       setTutorialRemix(remix);
     });
   }

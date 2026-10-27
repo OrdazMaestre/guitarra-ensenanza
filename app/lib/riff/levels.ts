@@ -30,12 +30,25 @@ export interface LevelProfile {
   freeStrings: boolean;
   // Tope opcional de notas por segundo real (densidad al estilo Guitar Hero).
   maxNotesPerSecond?: number;
+  // Hueco mínimo de la rejilla en segundos reales: donde una semicorchea dura menos, la rejilla
+  // pasa a corcheas (ver gridSlots en reduce.ts).
+  minSlotSeconds?: number;
   // Traste máximo de cada cuerda, si no es el mismo para todas (modo cuerdas: lo que alcanza el
   // teclado físico, ver FRETBOARD_KEYMAP -- Mi hasta el 10, La hasta el 11, Re y Sol hasta el 12).
   maxFretByString?: Record<number, number>;
 }
 
 const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 };
+// Modo cuerdas (no Experto): un poco menos denso que el 100 % (petición del usuario, 2026-10-27:
+// "más abrumador de lo esperado"): rejilla de semicorcheas que pasa a CORCHEAS donde una semicorchea
+// dura menos de 0,1 s reales (Master of Puppets, a 212 bpm). Solo recorta lo que va de verdad
+// rápido -- Kirk 89 % (su solo tenía picos de 15 notas/s), James 99 %, Thunderstruck y las canciones
+// lentas 100 % --, quita siempre las mismas notas en cada repetición y se queda con las del pulso
+// (el barrido del solo sigue pareciendo un barrido). Se probaron y descartaron: un tope de notas por
+// segundo como el de Fácil (quitaba notas distintas cada vez y rompía los dibujos repetidos), una
+// rejilla fija de corcheas (dejaba Thunderstruck en la mitad) y un hueco mínimo de 0,1 s entre notas
+// (en el barrido se quedaba con 17-13-13 y perdía la forma).
+const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 
 // Nombres (decisión del usuario, 2026-10-25): modo trastes = Práctica, Fácil, Medio, Avanzado;
 // modo cuerdas = Medio, Avanzado, Difícil, Experto (Experto, el último: la tablatura real).
@@ -52,8 +65,8 @@ const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 }
 //   repeticiones): 100 % de golpes en Master of Puppets, compás 42 entero (9 Mi al aire seguidos).
 // Avanzado (trastes) llega al traste 10 y no al 12: con el teclado físico la cuerda 6 solo tiene
 // teclas hasta el traste 10 (ShiftRight, ver FRETBOARD_KEYMAP). Decisión del usuario.
-// Modo cuerdas: Medio (cuerdas 5-6) hecho; Avanzado (4-6) y Difícil (3-6), aún sin construir
-// (decisión del usuario: primero Medio).
+// Modo cuerdas: Medio (cuerdas 5-6) y Avanzado (4-6) hechos; Difícil (3-6), aún sin construir
+// (decisión del usuario: de uno en uno).
 export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = {
   practica: { label: 'Práctica', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minGapBeats: 0.5, minGapSeconds: 0.15, repeatGapSeconds: 0.2, maxChord: 1, colorBy: 'fret', freeStrings: true },
   facil: { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.1, repeatGapSeconds: 0.15, maxChord: 1, colorBy: 'fret', freeStrings: true, maxNotesPerSecond: 6 },
@@ -61,8 +74,9 @@ export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = 
   avanzado: { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 10, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
   // Modo cuerdas Medio: Mi + La (en cuartas exactas), densidad de Medio (trastes); la tab se
   // coloca en las dos cuerdas con el camino de menor coste (reduce.ts, placeSequence).
-  'medio-cuerdas': { label: 'Medio', available: true, strings: [5, 6], minFret: 0, maxFret: 11, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
-  'avanzado-cuerdas': { label: 'Avanzado', available: false, strings: [4, 5, 6], minFret: 0, maxFret: 12, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.07, repeatGapSeconds: 0.09, maxChord: 2, colorBy: 'string', freeStrings: false },
+  'medio-cuerdas': { label: 'Medio', available: true, strings: [5, 6], minFret: 0, maxFret: 11, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
+  // Modo cuerdas Avanzado: Mi + La + Re (cuartas exactas), misma densidad y colocación que Medio.
+  'avanzado-cuerdas': { label: 'Avanzado', available: true, strings: [4, 5, 6], minFret: 0, maxFret: 12, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
   dificil: { label: 'Difícil', available: false, strings: [3, 4, 5, 6], minFret: 0, maxFret: 12, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0.08, maxChord: 3, colorBy: 'string', freeStrings: false },
 };
 

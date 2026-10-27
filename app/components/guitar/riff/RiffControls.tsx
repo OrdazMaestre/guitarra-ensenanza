@@ -4,6 +4,7 @@ import { levelLabel, RIFF_LEVEL_GROUPS, RIFF_LEVELS } from '@/app/lib/riff/level
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
+import { trackRole } from '@/app/lib/riff/roles';
 import { BackingIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
@@ -30,7 +31,7 @@ interface Props {
 }
 
 export function RiffControls({ onStart, riff, trackRoles }: Props) {
-  const roleOf = (name: string): TrackRole => trackRoles?.[name] ?? (/lead|solo/i.test(name) ? 'S' : 'R');
+  const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
   // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);

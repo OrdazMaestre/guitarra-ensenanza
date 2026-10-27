@@ -10,10 +10,11 @@ import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions,
 // cambia el `status`, nunca por frame.
 
 const TICK_MS = 25;
-// Volumen de la banda (las otras pistas). La otra guitarra, un poco por debajo de las notas de fondo
-// de la propia pista (GUIDE_GAIN) para que se distinga lo que toca el alumno; el bajo, como el del
-// reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
-const BAND_GUITAR_GAIN = 0.26;
+// Volumen de la banda (las otras pistas). La otra guitarra, bastante por debajo de las notas de fondo
+// de la propia pista (GUIDE_GAIN) para que se distinga lo que toca el alumno: 0,195 = el 75 % del
+// 0,26 de antes (petición del usuario, 2026-10-27: tocando James, el solo de Kirk se oía demasiado).
+// El bajo, como el del reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
+const BAND_GUITAR_GAIN = 0.195;
 const BAND_BASS_GAIN = 0.5;
 const CLICK_LOOKAHEAD_SECONDS = 0.15;
 

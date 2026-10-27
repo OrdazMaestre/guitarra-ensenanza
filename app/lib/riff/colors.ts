@@ -1,21 +1,23 @@
 // Colores del juego de tablatura (sin React, para poder probarlos en Node).
 
-// Colores por cuerda (decisión del usuario): 6 rojo, 5 naranja, 4 amarillo, 3 verde, 2 azul,
-// 1 morado. Dentro del juego el rojo es el de la cuerda 6; por eso un fallo se pinta en GRIS.
+// Colores por cuerda, de grave a aguda (decisión del usuario, 2026-10-27): rojo, verde, naranja,
+// azul, amarillo y morado. Es el patrón de TODO el modo cuerdas: Medio (Mi + La) usa rojo y verde,
+// el siguiente añade naranja... y Experto los seis. Dentro del juego el rojo es el de la cuerda 6;
+// por eso un fallo se pinta en GRIS.
 export const RIFF_STRING_COLORS: Record<number, string> = {
   1: '#a855f7',
-  2: '#3b82f6',
-  3: '#22c55e',
-  4: '#facc15',
-  5: '#f97316',
+  2: '#facc15',
+  3: '#3b82f6',
+  4: '#f97316',
+  5: '#22c55e',
   6: '#ef4444',
 };
 
-// Niveles por traste (colorBy 'fret'): arcoíris con los colores de las cuerdas en orden (rojo,
-// naranja, amarillo, verde, azul, morado) repartido sobre los trastes del nivel. Con 0-5 cada traste
-// tiene exactamente uno de esos 6 colores (decisión del usuario); con más trastes (Fácil, 0-10) salen
-// tonos intermedios mezclando los dos vecinos.
-const RAINBOW = [6, 5, 4, 3, 2, 1].map((string) => RIFF_STRING_COLORS[string]);
+// Niveles por traste (colorBy 'fret', modo trastes): arcoíris rojo, naranja, amarillo, verde,
+// azul, morado repartido sobre los trastes del nivel. Con 0-5 cada traste tiene exactamente uno de
+// esos 6 colores (decisión del usuario); con más trastes (0-10) salen tonos intermedios mezclando
+// los dos vecinos. Es independiente de los colores de cuerda (que tienen otro orden).
+const RAINBOW = ['#ef4444', '#f97316', '#facc15', '#22c55e', '#3b82f6', '#a855f7'];
 
 export function fretColor(fret: number, minFret: number, maxFret: number): string {
   const span = Math.max(1, maxFret - minFret);

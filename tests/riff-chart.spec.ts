@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart, listGuitarTracks, type Chart } from '../app/lib/riff/chart';
 import { holdPoints, points, RiffSession, type RiffOptions } from '../app/lib/riff/session';
-import { fretColor } from '../app/lib/riff/colors';
+import { fretColor, RIFF_STRING_COLORS } from '../app/lib/riff/colors';
+import { laneAt, laneRows } from '../app/lib/riff/lanes';
 import { RIFF_LEVELS, RIFF_LEVEL_GROUPS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
 
@@ -610,4 +611,30 @@ test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {
   expect(take('metronomo', 'ritmo')).toHaveLength(0);
   expect(take('nada', 'ritmo')).toHaveLength(0);
   expect(take('bateria', 'paso')).toHaveLength(0);
+});
+
+// Altura de las notas por nivel (lanes.ts, decisión del usuario 2026-10-27): fuera de Experto, las
+// cuerdas se reparten centradas entre las filas de La (5) y Si (2); los Mi quedan para Experto.
+test('carriles: 1 cuerda al centro, 2 arriba/abajo, 3 arriba/centro/abajo, 4 en las filas de La a Si', () => {
+  expect([...laneRows([6])]).toEqual([[6, 3.5]]);
+  expect([...laneRows([5, 6])]).toEqual([[6, 4.25], [5, 2.75]]);
+  expect([...laneRows([4, 5, 6])]).toEqual([[6, 5], [5, 3.5], [4, 2]]);
+  expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5], [5, 4], [4, 3], [3, 2]]);
+  for (const strings of [[6], [5, 6], [4, 5, 6], [3, 4, 5, 6]]) {
+    for (const row of laneRows(strings).values()) {
+      expect(row).toBeGreaterThanOrEqual(2);
+      expect(row).toBeLessThanOrEqual(5);
+    }
+  }
+  // Casillas: hasta la mitad del camino a la vecina; las de fuera, hasta el borde del mástil.
+  const two = laneRows([5, 6]);
+  expect(laneAt(two, 1)).toBe(5);
+  expect(laneAt(two, 3.4)).toBe(5);
+  expect(laneAt(two, 3.6)).toBe(6);
+  expect(laneAt(two, 6)).toBe(6);
+  expect(laneAt(laneRows([6]), 1)).toBe(6);
+});
+
+test('colores de cuerda de grave a aguda: rojo, verde, naranja, azul, amarillo, morado', () => {
+  expect([6, 5, 4, 3, 2, 1].map((s) => RIFF_STRING_COLORS[s])).toEqual(['#ef4444', '#22c55e', '#f97316', '#3b82f6', '#facc15', '#a855f7']);
 });

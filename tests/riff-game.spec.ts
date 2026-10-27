@@ -4,6 +4,7 @@ import * as at from '@coderline/alphatab';
 import { buildChart } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
+import { laneRows } from '../app/lib/riff/lanes';
 
 // Juego tipo Rocksmith dentro del mástil MIDI de /lecciones/temario/sala-de-pruebas: botón "JUGAR"
 // en la barra del mástil -> panel con ajustes + "Empezar"/"Continuar"; PAUSA junto a JUGAR durante la
@@ -13,25 +14,27 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
 
 // Centro en pantalla de (cuerda, traste) del mástil. Misma geometría que ReducedFretboardDiagram
 // con `fretLabels` (romanos arriba -> boardY = 44).
-async function tap(page: Page, string: number, fret: number) {
-  const p = await page.evaluate(({ selector, string, fret }) => {
+// `row`: fila (1 = arriba ... 6 = abajo) donde pulsar si no es la de la cuerda real (en los niveles
+// no Experto las cuerdas van repartidas por el centro, ver lanes.ts).
+async function tap(page: Page, string: number, fret: number, row = string) {
+  const p = await page.evaluate(({ selector, row, fret }) => {
     const svg = document.querySelector(selector) as SVGSVGElement;
     const pt = svg.createSVGPoint();
     // Centro del traste entre sus dos líneas (en los niveles de 6 trastes el mástil se estira y
     // cada traste es más ancho); el 0, a la izquierda de la cejuela.
     const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
     pt.x = fret === 0 ? lines[0] - 20 : (lines[fret - 1] + lines[fret]) / 2;
-    pt.y = 44 + (string - 1) * (158 / 5);
+    pt.y = 44 + (row - 1) * (158 / 5);
     const r = pt.matrixTransform(svg.getScreenCTM()!);
     return { x: r.x, y: r.y };
-  }, { selector: SVG, string, fret });
+  }, { selector: SVG, row, fret });
   await page.mouse.click(p.x, p.y);
 }
 
@@ -182,7 +185,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -203,17 +206,20 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
     const [first, second, third] = chart.notes;
     await tap(page, first.string, first.fret === 0 ? 1 : first.fret - 1);
     // Modo cuerdas: el traste correcto en OTRA cuerda tampoco cuenta.
-    if (level === 'medio-cuerdas' || level === 'experto') await tap(page, first.string === 6 ? 5 : 6, first.fret);
+    // (En Medio cuerdas, pulsando en la franja de la otra cuerda del nivel.)
+    const cuerdas = level === 'medio-cuerdas' || level === 'avanzado-cuerdas';
+    const laneRow = (string: number) => (cuerdas ? laneRows(RIFF_LEVELS[level].strings).get(string)! : string);
+    if (cuerdas || level === 'experto') await tap(page, first.string === 6 ? 5 : 6, first.fret, laneRow(first.string === 6 ? 5 : 6));
     await page.waitForTimeout(200);
     await expect(panel).toHaveAttribute('data-hits', '0');
 
     await page.mouse.move(0, 0);
     for (const [i, note] of [first, second, third].entries()) {
-      const exactString = level === 'experto' || level === 'medio-cuerdas';
+      const exactString = level === 'experto' || cuerdas;
       if (!exactString) expect(note.string).toBe(6);
-      else if (level === 'medio-cuerdas') expect([5, 6]).toContain(note.string);
+      else if (cuerdas) expect(RIFF_LEVELS[level].strings).toContain(note.string);
       // Niveles de cuerdas libres: el traste correcto vale en cualquier cuerda.
-      await tap(page, exactString ? note.string : [1, 3, 5][i], note.fret);
+      await tap(page, exactString ? note.string : [1, 3, 5][i], note.fret, exactString ? laneRow(note.string) : [1, 3, 5][i]);
       await expect(panel).toHaveAttribute('data-hits', String(i + 1));
     }
 
@@ -225,6 +231,28 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
   });
 }
 
+// Riffs compartidos: con Kirk, la primera nota (riff compartido) es la que tiene James en ese nivel.
+test('Kirk sigue a James en los riffs compartidos (Avanzado cuerdas, paso a paso)', async ({ page }) => {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
+  const profile = RIFF_LEVELS['avanzado-cuerdas'];
+  const james = reduceChart(buildChart(at, score, 1, 24), profile);
+  const kirk = reduceChart(buildChart(at, score, 2, 24), profile, james);
+  const first = kirk.notes[0];
+  expect(james.notes.find((n) => Math.abs(n.t - first.t) < 0.005)).toMatchObject({ string: first.string, fret: first.fret });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const panel = page.locator('.test-room-fretboard .riff-stage');
+  await choose(page, 'Nivel', 'Avanzado cuerdas');
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(panel).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+  await page.mouse.move(0, 0);
+  await tap(page, first.string, first.fret, laneRows(profile.strings).get(first.string)!);
+  await expect(panel).toHaveAttribute('data-hits', '1');
+});
+
 test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
@@ -234,7 +262,7 @@ test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estira
   const before = (await svg.boundingBox())!;
   await openGame(page);
   // Modo trastes Práctica, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
-  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Experto', 13]] as const) {
+  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
@@ -457,14 +485,14 @@ test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el má
   const style = await score.evaluate((el) => getComputedStyle(el));
   expect(style.color).toBe('rgb(220, 38, 38)');
   expect(style.textShadow).toContain('rgb(250, 204, 21)');
-  // Sobre el mástil no se pintan cuerdas: la fila de la cuerda 3, en el centro de un traste, tiene
-  // el tono tenue del traste (no el verde de la cuerda 3).
+  // Sobre el mástil no se pintan cuerdas: la fila de la cuerda 2, en el centro de un traste, tiene
+  // el tono tenue del traste (las notas caen en el centro, filas 3-4, lejos de ahí).
   const pixel = await page.evaluate((selector) => {
     const svg = document.querySelector(selector) as SVGSVGElement;
     const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
     const pt = svg.createSVGPoint();
     pt.x = (lines[2] + lines[3]) / 2;
-    pt.y = 44 + 2 * (158 / 5);
+    pt.y = 44 + 1 * (158 / 5);
     const r = pt.matrixTransform(svg.getScreenCTM()!);
     const canvas = document.querySelector('canvas[data-testid="riff-highway"]') as HTMLCanvasElement;
     const box = canvas.getBoundingClientRect();

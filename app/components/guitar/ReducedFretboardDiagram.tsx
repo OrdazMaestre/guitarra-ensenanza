@@ -18,6 +18,7 @@ import { FRETBOARD_TOUR, TutorialButton } from './ButtonTour';
 import type { TrackRole } from './riff/RiffIcons';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
+import { laneAt, laneRows } from '@/app/lib/riff/lanes';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from './InstrumentIcons';
@@ -84,8 +85,12 @@ export interface FretboardGeometry {
   // Coordenadas en unidades del viewBox (pasarlas por svg.getScreenCTM() para píxeles).
   fretX: (fret: number) => number;
   stringY: (string: number) => number;
+  // Altura a la que caen las notas del juego en el nivel elegido (lanes.ts); sin juego = stringY.
+  laneY?: (string: number) => number;
   // Bordes de cada columna de traste (líneas de traste), en orden lógico de traste.
   fretLineXs: number[];
+  // Casilla del traste 0 en el juego (de borde a cejuela, ya dibujada): tan ancha como las demás.
+  openColumn?: [number, number];
   startFret: number;
   endFret: number;
 }
@@ -127,9 +132,9 @@ const romanFretLabels: Record<number, string> = {
 // Niveles del juego que se estiran: los de 6 trastes (0-5). Fácil (0-10) usa el mástil normal.
 const STRETCH_MAX_FRET = 5;
 
-function fretMarkerX(boardX: number, fretWidth: number, startFret: number, fret: number) {
+function fretMarkerX(boardX: number, fretWidth: number, startFret: number, fret: number, openWidth: number | null = null) {
   if (startFret === 0 && fret === 0) {
-    return boardX - 20;
+    return boardX - (openWidth === null ? 20 : openWidth / 2);
   }
 
   if (startFret === 0) {
@@ -180,7 +185,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Posiciones que suenan AHORA (teclado y ratón/dedo), para las notas repetidas con la pulsación
   // mantenida del juego. Se rellena más abajo, cuando existen los refs de las pulsaciones.
   const heldPositionsRef = useRef<() => { string: number; fret: number }[]>(() => []);
-  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
+  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, trackRoles: riffGame?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
   const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret <= STRETCH_MAX_FRET && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
@@ -199,9 +204,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const [showTuning, setShowTuning] = useState(false);
   const PEG_AREA_WIDTH = 66;
   const PEG_X = 24;
-  const boardX = 42 + (allowTuning && showTuning ? PEG_AREA_WIDTH : 0);
+  // Juego (JUGAR activado): el traste 0 tiene una casilla TAN ANCHA como las demás (petición del
+  // usuario: casillas iguales y aprovechar todo el espacio), en vez de la franja estrecha de antes
+  // de la cejuela. Casilla del 0 + tablero ocupan lo mismo que el mástil normal con sus márgenes,
+  // con solo un borde pequeño (así el mástil sigue midiendo lo mismo en pantalla). Sin clavijas.
+  const gameLayout = !!riffGame && gameOpen && startFret === 0;
+  const pegsShown = !!allowTuning && showTuning && !gameLayout;
+  const GAME_EDGE = 4;
+  const baseViewBoxWidth = 2 * 42 + 58 * fullFretCount;
   // Estirado: el mismo ancho total de tablero con menos trastes.
-  const fretWidth = (58 * fullFretCount) / fretCount;
+  const fretWidth = gameLayout ? (baseViewBoxWidth - 2 * GAME_EDGE) / (fretCount + 1) : (58 * fullFretCount) / fretCount;
+  const openWidth = gameLayout ? fretWidth : null;
+  const boardX = gameLayout ? GAME_EDGE + fretWidth : 42 + (pegsShown ? PEG_AREA_WIDTH : 0);
+  // Borde izquierdo del tablero dibujado (con la casilla del 0 en el juego).
+  const boardLeftEdge = boardX - (openWidth ?? 0);
   const boardHeight = 158;
   const stringGap = boardHeight / 5;
   // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda
@@ -210,9 +226,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // del componente (getPos, fretMarkerX, etc.) sigue razonando en coordenadas "lógicas" normales,
   // ajeno a la mano -- ver el comentario en `getPos` para el lado simétrico (puntero -> lógico).
   const [lefty, setLefty] = useState(false);
-  const centerX = boardX + (fretCount * fretWidth) / 2;
+  const centerX = (boardLeftEdge + boardX + fretCount * fretWidth) / 2;
   const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
-  const fretX = (fret: number) => drawX(fretMarkerX(boardX, fretWidth, startFret, fret));
+  const fretX = (fret: number) => drawX(fretMarkerX(boardX, fretWidth, startFret, fret, openWidth));
   const allRomanFrets = Object.keys(romanFretLabels)
     .map(Number)
     .filter((fret) => fret >= startFret && fret <= endFret);
@@ -228,7 +244,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // el mirror). Cuando `boardX` es la constante de siempre (42, sin clavijas) esto da exactamente
   // el mismo resultado que antes (42 + boardWidth + 42), así que no cambia nada para el resto de
   // usos de este componente -- solo importa cuando `boardX` crece por `showTuning`.
-  const viewBoxWidth = 2 * boardX + boardWidth;
+  const viewBoxWidth = gameLayout ? baseViewBoxWidth : 2 * boardX + boardWidth;
   // `viewBoxWidth` crece cuando aparecen las clavijas, pero el <svg> seguía fijo en `width: 100%`
   // de su contenedor -- más unidades lógicas en el MISMO ancho en píxeles significa que CADA
   // unidad ocupa menos píxeles, así que todo el mástil (trastes, puntos, letras) se encogía al
@@ -243,13 +259,23 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // provocar overflow de la PÁGINA -- cuando no hace falta más ancho que el contenedor (caso
   // normal, o pantallas anchas), `HorizontalScrollbar` simplemente no se muestra (ya se comporta
   // así en el resto del sitio).
-  const baseViewBoxWidth = 2 * 42 + boardWidth;
   const svgWidthPercent = (viewBoxWidth / baseViewBoxWidth) * 100;
   const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + 20;
   const [cents, setCents] = useState<Record<number, number>>(zeroedCents());
   const centsRef = useRef(cents);
   useEffect(() => { centsRef.current = cents; }, [cents]);
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
+  // Altura a la que caen las notas del juego (lanes.ts, decisión del usuario): en Experto, su
+  // cuerda real; en el resto de niveles, sus cuerdas repartidas por el centro del mástil (los dos Mi
+  // quedan para Experto). Mientras se juega (o en pausa) el mástil se TOCA igual: cada cuerda del
+  // nivel tiene su franja, que llega hasta la mitad del camino a la vecina (ver getPos).
+  const lanes = riffGame && gameOpen && riff.profile ? laneRows(riff.profile.freeStrings ? [6] : riff.profile.strings) : null;
+  const laneY = (string: number) => {
+    const row = lanes?.get(string);
+    return row === undefined ? stringY(string) : boardY + (row - 1) * stringGap;
+  };
+  const liveLanes = lanes && (riff.playing || riff.paused) ? lanes : null;
+  const touchY = (string: number) => (liveLanes?.has(string) ? laneY(string) : stringY(string));
   // Sin deps a propósito: se republica en cada render (zurdo, clavijas y tamaño cambian `fretX`).
   // La publica siempre en `localGeometryRef` (la usa la autopista del juego) y, si la pasan, también
   // en la prop `geometryRef`.
@@ -259,7 +285,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       svg: svgRef.current,
       fretX,
       stringY,
+      laneY,
       fretLineXs: Array.from({ length: fretCount + 1 }, (_, index) => drawX(boardX + index * fretWidth)),
+      openColumn: openWidth === null ? undefined : [drawX(boardLeftEdge), drawX(boardX)],
       startFret,
       endFret,
     };
@@ -498,11 +526,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
 
     const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
-    const string = Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    const row = (y - boardY) / stringGap + 1;
+    const string = liveLanes ? laneAt(liveLanes, row) : Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
 
     let fret: number;
     if (x < boardX) {
-      if (startFret !== 0 || x < boardX - 40) return null;
+      if (startFret !== 0 || x < boardX - (openWidth ?? 40)) return null;
       fret = 0;
     } else {
       const colIndex = Math.floor((x - boardX) / fretWidth);
@@ -514,7 +543,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const EXP = 0.18;
     const rawSF = (y - boardY) / stringGap;
     const rawFF = (x - boardX) / fretWidth;
-    const rStr = Math.abs(rawSF - (held.string - 1)) < 0.5 + EXP ? held.string : string;
+    const heldLane = liveLanes?.get(held.string);
+    const rStr = liveLanes
+      ? (heldLane !== undefined && Math.abs(row - heldLane) <= Math.abs(row - liveLanes.get(string)!) + EXP ? held.string : string)
+      : (Math.abs(rawSF - (held.string - 1)) < 0.5 + EXP ? held.string : string);
     const heldCol = startFret === 0 ? held.fret - 1 : held.fret - startFret;
     const rFret = held.fret === 0 ? (rawFF < EXP ? 0 : fret) : (Math.abs(rawFF - (heldCol + 0.5)) < 0.5 + EXP ? held.fret : fret);
     return { string: rStr, fret: rFret };
@@ -679,7 +711,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       <>
         {posList.map(({ string, fret }) => {
           const markerX = fretX(fret);
-          const sy = stringY(string);
+          const sy = touchY(string);
           const noteIsMarked = notes.some(n => n.string === string && n.fret === fret);
           return (
             <g key={`ko-${string}-${fret}`}
@@ -759,9 +791,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <rect className="reduced-board-bg" x={boardX} y={boardY} width={boardWidth} height={boardHeight} />
+      <rect className="reduced-board-bg" x={boardLeftEdge} y={boardY} width={boardX + boardWidth - boardLeftEdge} height={boardHeight} />
       {Array.from({ length: 6 }, (_, index) => (
-        <line className="reduced-string" key={`string-${index + 1}`} x1={boardX} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
+        <line className="reduced-string" key={`string-${index + 1}`} x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
       ))}
       {Array.from({ length: fretCount + 1 }, (_, index) => {
         const isNut = startFret === 0 && index === 0;
@@ -847,7 +879,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         marks={marks}
         startFret={startFret}
       />
-      {allowTuning && showTuning && [1, 2, 3, 4, 5, 6].map((string) => (
+      {pegsShown && [1, 2, 3, 4, 5, 6].map((string) => (
         <TuningPeg
           ariaLabel={`Clavija de la cuerda ${string}`}
           key={`tuning-peg-${string}`}

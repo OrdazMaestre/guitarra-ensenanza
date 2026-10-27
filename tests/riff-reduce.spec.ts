@@ -127,17 +127,20 @@ const CUERDAS_SONGS: Array<[string, string, number]> = [
   ['Thunderstruck', 'thunderstruck.gp', 0],
   ['Carol of the Bells', 'carol-of-the-bells.gp', 0],
 ];
+// Niveles del modo cuerdas ya construidos (Medio: Mi + La; Avanzado: + Re).
+const CUERDAS_LEVELS = [['medio-cuerdas', 'Medio (cuerdas)'], ['avanzado-cuerdas', 'Avanzado (cuerdas)']] as const;
 
-for (const [name, file, track] of CUERDAS_SONGS) {
-  test(`${name} en Medio (cuerdas): Mi y La, mismas alturas, repetidas quietas, sin saltos imposibles`, () => {
+for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] of CUERDAS_SONGS) {
+  test(`${name} en ${levelName}: sus cuerdas, mismas alturas, repetidas quietas, sin saltos imposibles`, () => {
     const real = chartOf(file, track);
-    const profile = RIFF_LEVELS['medio-cuerdas'];
+    const profile = RIFF_LEVELS[level];
     const chart = reduceChart(real, profile);
     const beat = 60 / real.bpm;
     const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
-    expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(0.9);
+    // Rejilla de corcheas (un poco menos que el 100 %, decisión del usuario): Kirk 89 %, James 99 %.
+    expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(0.85);
     for (const note of chart.notes) {
-      expect([5, 6]).toContain(note.string);
+      expect(profile.strings).toContain(note.string);
       expect(note.fret).toBeGreaterThanOrEqual(0);
       expect(note.fret).toBeLessThanOrEqual(profile.maxFretByString![note.string]);
       expect(note.midi).toBe(OPEN_MIDI[note.string] + note.fret);
@@ -162,7 +165,7 @@ for (const [name, file, track] of CUERDAS_SONGS) {
       const lead = leadOfNote(i);
       if (lead.fret === note.fret) sameFret++;
       // Notas reales que ya caben en el nivel (y cuya frase va a su altura real).
-      if (note.midi === lead.midi && [5, 6].includes(lead.string) && lead.fret <= profile.maxFretByString![lead.string]) {
+      if (note.midi === lead.midi && profile.strings.includes(lead.string) && lead.fret <= profile.maxFretByString![lead.string]) {
         realInside++;
         if (lead.string === note.string && lead.fret === note.fret) keptReal++;
       }
@@ -180,31 +183,235 @@ for (const [name, file, track] of CUERDAS_SONGS) {
       if (i > 0 && note.phrase !== chart.notes[i - 1].phrase) lastFretted = null;
       if (note.fret > 0) lastFretted = note.fret;
     }
-    console.log(`${name}: ${chart.notes.length} notas, dirección ${(100 * sameDirection / Math.max(1, pairs)).toFixed(1)} %, tab respetada ${keptReal}/${realInside}, mismo traste que la tab ${(100 * sameFret / chart.notes.length).toFixed(1)} %, cambios de cuerda ${(100 * stringChanges / Math.max(1, pairs)).toFixed(1)} %, saltos >7 rápidos ${bigJumps}`);
-    expect(sameDirection / Math.max(1, pairs)).toBeGreaterThanOrEqual(0.95);
+    console.log(`${name} (${levelName}): ${chart.notes.length} notas, dirección ${(100 * sameDirection / Math.max(1, pairs)).toFixed(1)} %, tab respetada ${keptReal}/${realInside}, mismo traste que la tab ${(100 * sameFret / chart.notes.length).toFixed(1)} %, cambios de cuerda ${(100 * stringChanges / Math.max(1, pairs)).toFixed(1)} %, saltos >7 rápidos ${bigJumps}`);
+    // ≥ 90 %: la fidelidad manda (petición del usuario) -- cuando a un riff le sobran unas pocas
+    // notas (James en Medio: las de la cuerda Re), solo esas se mueven de octava y el resto se queda
+    // como en la tab; ahí la dirección de esas notas puede invertirse (James Medio: 93 %).
+    expect(sameDirection / Math.max(1, pairs)).toBeGreaterThanOrEqual(0.9);
     expect(bigJumps).toBe(0);
     if (realInside > 0) expect(keptReal / realInside).toBeGreaterThanOrEqual(0.8);
   });
 }
 
-test('Medio (cuerdas): los riffs repetidos de Master of Puppets se colocan siempre igual', () => {
+// Casi siempre iguales: la única excepción es el límite de cuerdas por compás, que es obligatorio --
+// si la frase anterior ya puso un compás de una sola cuerda en la La, el resto de ese compás sigue en
+// la La aunque el mismo riff, en otro sitio, haya ido en la Re (James, compases 44-45 vs 48-49).
+for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: los riffs repetidos de Master of Puppets se colocan (casi) siempre igual`, () => {
   for (const track of [1, 2]) {
-    const chart = reduceChart(chartOf('prueba-master-of-puppets.gp', track), RIFF_LEVELS['medio-cuerdas']);
+    const chart = reduceChart(chartOf('prueba-master-of-puppets.gp', track), RIFF_LEVELS[level]);
     const byPhrase = new Map<number, typeof chart.notes>();
     for (const note of chart.notes) byPhrase.set(note.phrase!, [...(byPhrase.get(note.phrase!) ?? []), note]);
     const seen = new Map<string, string>();
     let repeats = 0;
+    let different = 0;
     for (const notes of byPhrase.values()) {
       const key = notes.map((n, k) => `${n.midi}@${k === 0 ? 0 : Math.round((n.t - notes[k - 1].t) * 100)}`).join(' ');
       const placement = notes.map((n) => `${n.string}/${n.fret}`).join(' ');
       if (seen.has(key)) {
         repeats++;
-        expect(placement).toBe(seen.get(key));
+        if (placement !== seen.get(key)) different++;
       } else {
         seen.set(key, placement);
       }
     }
+    console.log(`${levelName}, pista ${track}: ${repeats} frases repetidas, ${different} con otro dibujo`);
     expect(repeats).toBeGreaterThanOrEqual(3);
+    expect(different).toBeLessThanOrEqual(Math.floor(repeats * 0.1));
+  }
+});
+
+// Zonas, figuras compactas y motivos (decisión del usuario, 2026-10-27).
+function spearman(x: number[], y: number[]) {
+  const rank = (a: number[]) => {
+    const order = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+    const r = new Array<number>(a.length);
+    for (let i = 0; i < order.length;) {
+      let j = i;
+      while (j + 1 < order.length && order[j + 1][0] === order[i][0]) j++;
+      for (let k = i; k <= j; k++) r[order[k][1]] = (i + j) / 2;
+      i = j + 1;
+    }
+    return r;
+  };
+  const rx = rank(x);
+  const ry = rank(y);
+  const mean = (a: number[]) => a.reduce((s, v) => s + v, 0) / a.length;
+  const mx = mean(rx);
+  const my = mean(ry);
+  let num = 0;
+  let dx = 0;
+  let dy = 0;
+  for (let i = 0; i < rx.length; i++) {
+    num += (rx[i] - mx) * (ry[i] - my);
+    dx += (rx[i] - mx) ** 2;
+    dy += (ry[i] - my) ** 2;
+  }
+  return num / Math.sqrt(dx * dy);
+}
+
+for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] of CUERDAS_SONGS) {
+  test(`${name} en ${levelName}: sin saltos de más de 5 trastes dentro de una frase; graves a la izquierda, agudas a la derecha`, () => {
+    const real = chartOf(file, track);
+    const chart = reduceChart(real, RIFF_LEVELS[level]);
+    const realPitch = chart.notes.map((note) => Math.max(...note.sourceIds!.map((id) => real.notes[id]).filter((n) => Math.abs(n.t - note.t) < 0.005).map((n) => n.midi)));
+    let pairs = 0;
+    let jumps = 0;
+    let lastFretted: number | null = null;
+    chart.notes.forEach((note, i) => {
+      const samePhrase = i > 0 && note.phrase === chart.notes[i - 1].phrase;
+      if (!samePhrase) lastFretted = null;
+      else {
+        pairs++;
+        // Solo cuenta un salto que NO está en la melodía real (un salto de octava de la canción,
+        // obligado a una sola cuerda, es de la canción, no de la traducción).
+        if (note.fret > 0 && lastFretted !== null && Math.abs(note.fret - lastFretted) > 5 && Math.abs(realPitch[i] - realPitch[i - 1]) <= 5) jumps++;
+      }
+      if (note.fret > 0) lastFretted = note.fret;
+    });
+    // Margen para algún tapping que se abra (la zona orienta, no obliga).
+    expect(jumps).toBeLessThanOrEqual(Math.floor(pairs * 0.02));
+    if (new Set(realPitch).size > 2) expect(spearman(realPitch, chart.notes.map((n) => n.fret))).toBeGreaterThanOrEqual(0.5);
+  });
+}
+
+for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}, Kirk: el solo (compases 9-12) a la derecha de los riffs; compás 9 = compás 11, figura compacta`, () => {
+  const real = chartOf('prueba-master-of-puppets.gp', 2);
+  const chart = reduceChart(real, RIFF_LEVELS[level]);
+  const bars = real.bars.filter((b) => b.number >= 9 && b.number <= 12).slice(0, 4);
+  const inBar = (bar: { t: number; end: number }) => chart.notes.filter((n) => n.t >= bar.t - 1e-6 && n.t < bar.end - 1e-6);
+  const shape = (bar: { t: number; end: number }) => inBar(bar).map((n) => `${n.string}/${n.fret}`).join(' ');
+  // La misma melodía (compases 9 y 11, un barrido repetido) con el mismo dibujo.
+  expect(shape(bars[2])).toBe(shape(bars[0]));
+  const frets = inBar(bars[0]).map((n) => n.fret).filter((f) => f > 0);
+  expect(Math.max(...frets) - Math.min(...frets)).toBeLessThanOrEqual(5);
+  const mean = (notes: typeof chart.notes) => notes.reduce((s, n) => s + n.fret, 0) / notes.length;
+  const riffs = chart.notes.filter((note) => note.sourceIds!.some((id) => Math.abs(real.notes[id].t - note.t) < 0.005 && real.notes[id].midi < 55));
+  expect(mean(bars.flatMap(inBar))).toBeGreaterThan(mean(riffs) + 2);
+});
+
+for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: cada motivo repetido (4 notas, mismas alturas reales y ritmo) se dibuja casi siempre igual`, () => {
+  for (const [, file, track] of CUERDAS_SONGS) {
+    const real = chartOf(file, track);
+    const chart = reduceChart(real, RIFF_LEVELS[level]);
+    const realLead = (i: number) => Math.max(...chart.notes[i].sourceIds!.map((id) => real.notes[id]).filter((n) => Math.abs(n.t - chart.notes[i].t) < 0.005).map((n) => n.midi));
+    const groups = new Map<string, string[]>();
+    for (let w = 0; w + 4 <= chart.notes.length; w++) {
+      const notes = chart.notes.slice(w, w + 4);
+      if (notes.some((n) => n.phrase !== notes[0].phrase)) continue;
+      const key = notes.map((n, k) => `${realLead(w + k)}@${k === 0 ? 0 : Math.round((n.t - notes[k - 1].t) * 50)}`).join(' ');
+      const placement = notes.map((n) => `${n.string}/${n.fret}`).join(' ');
+      groups.set(key, [...(groups.get(key) ?? []), placement]);
+    }
+    let total = 0;
+    let same = 0;
+    for (const placements of groups.values()) {
+      if (placements.length < 2) continue;
+      const counts = new Map<string, number>();
+      for (const p of placements) counts.set(p, (counts.get(p) ?? 0) + 1);
+      total += placements.length;
+      same += Math.max(...counts.values());
+    }
+    // 90-100 % (Thunderstruck 93 %, Carol 90 %): lo que queda distinto son motivos dentro de frases
+    // cuyas OTRAS notas obligan a transportarlas de otra forma (con el transporte del otro dibujo no
+    // cabrían en Mi + La); tirar más fuerte no lo cambia (medido con pattern 8, 15 y 30).
+    if (total > 0) expect(same / total).toBeGreaterThanOrEqual(0.9);
+  }
+});
+
+// Límite de cuerdas por compás (decisión del usuario, 2026-10-27): si la tab usa 1 o 2 cuerdas en un
+// compás, el juego usa como mucho esas, y contiguas.
+for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] of CUERDAS_SONGS) {
+  test(`${name} en ${levelName}: en cada compás, como mucho las cuerdas que usa la tab, y contiguas`, () => {
+    const real = chartOf(file, track);
+    const profile = RIFF_LEVELS[level];
+    const chart = reduceChart(real, profile);
+    for (const bar of real.bars) {
+      const inBar = <T extends { t: number }>(notes: T[]) => notes.filter((n) => n.t >= bar.t - 1e-6 && n.t < bar.end - 1e-6);
+      const realOnsets = new Map<number, typeof real.notes>();
+      for (const n of inBar(real.notes)) realOnsets.set(Math.round(n.t * 1000), [...(realOnsets.get(Math.round(n.t * 1000)) ?? []), n]);
+      const realStrings = new Set([...realOnsets.values()].map((group) => {
+        const sorted = [...group].sort((a, b) => a.midi - b.midi);
+        const power = sorted.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - sorted[0].midi));
+        return (power ? sorted[0] : sorted[sorted.length - 1]).string;
+      }));
+      const used = [...new Set(inBar(chart.notes).map((n) => n.string))].sort((a, b) => a - b);
+      if (used.length === 0) continue;
+      expect(used.length, `compás ${bar.number}`).toBeLessThanOrEqual(Math.min(realStrings.size, profile.strings.length));
+      expect(used[used.length - 1] - used[0], `compás ${bar.number}`).toBe(used.length - 1);
+    }
+  });
+}
+
+test('Avanzado (cuerdas), Kirk: barrido (9-12) en 2 cuerdas contiguas e igual en 9 y 11; compases 23-26 en una sola cuerda', () => {
+  const real = chartOf('prueba-master-of-puppets.gp', 2);
+  const chart = reduceChart(real, RIFF_LEVELS['avanzado-cuerdas']);
+  const firstBar = (number: number) => real.bars.find((b) => b.number === number)!;
+  const inBar = (number: number) => chart.notes.filter((n) => n.t >= firstBar(number).t - 1e-6 && n.t < firstBar(number).end - 1e-6);
+  for (const number of [9, 10, 11, 12]) {
+    const strings = [...new Set(inBar(number).map((n) => n.string))].sort();
+    expect(strings, `compás ${number}`).toHaveLength(2);
+    expect(strings[1] - strings[0]).toBe(1);
+  }
+  expect(inBar(11).map((n) => `${n.string}/${n.fret}`)).toEqual(inBar(9).map((n) => `${n.string}/${n.fret}`));
+  for (const number of [23, 24, 25, 26]) expect(new Set(inBar(number).map((n) => n.string)).size, `compás ${number}`).toBe(1);
+  // Algo menos denso que la tab en el solo (rejilla de corcheas).
+  const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
+  expect(chart.notes.length / onsets).toBeLessThan(0.95);
+});
+
+// Fidelidad (petición del usuario, 2026-10-27): si una nota de la tab ya cabe en el nivel (su cuerda
+// y su traste), sale tal cual -- sin transportes innecesarios. Solo la tónica de los power chords.
+for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: las notas de la tab que caben salen idénticas (≥ 95 %)`, () => {
+  const profile = RIFF_LEVELS[level];
+  for (const [name, file, track] of CUERDAS_SONGS) {
+    const real = chartOf(file, track);
+    const chart = reduceChart(real, profile);
+    let fit = 0;
+    let exact = 0;
+    for (const note of chart.notes) {
+      const group = real.notes.filter((n) => Math.abs(n.t - note.t) < 0.005).sort((a, b) => a.midi - b.midi);
+      const power = group.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - group[0].midi));
+      const lead = power ? group[0] : group[group.length - 1];
+      if (!profile.strings.includes(lead.string) || lead.fret > profile.maxFretByString![lead.string]) continue;
+      fit++;
+      if (lead.string === note.string && lead.fret === note.fret) exact++;
+    }
+    console.log(`${name} (${levelName}): ${exact}/${fit} notas que caben, idénticas a la tab`);
+    if (fit >= 20) expect(exact / fit, name).toBeGreaterThanOrEqual(0.95);
+  }
+});
+
+// Riffs compartidos (petición del usuario, 2026-10-27): Kirk sigue a James (la rítmica, la que manda)
+// en todo lo que tocan igual -- misma nota guía en el mismo instante --, en todos los niveles.
+test('riffs compartidos: Kirk se coloca igual que James en todo lo que tocan juntos (todos los niveles)', () => {
+  const james = chartOf('prueba-master-of-puppets.gp', 1);
+  const kirk = chartOf('prueba-master-of-puppets.gp', 2);
+  const leads = (chart: Chart) => {
+    const byTime = new Map<number, typeof chart.notes>();
+    for (const n of chart.notes) byTime.set(Math.round(n.t * 1000), [...(byTime.get(Math.round(n.t * 1000)) ?? []), n]);
+    return new Map([...byTime].map(([t, group]) => {
+      const sorted = [...group].sort((a, b) => a.midi - b.midi);
+      const power = sorted.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - sorted[0].midi));
+      return [t, (power ? sorted[0] : sorted[sorted.length - 1]).midi];
+    }));
+  };
+  const jl = leads(james);
+  const kl = leads(kirk);
+  for (const level of ['practica', 'facil', 'medio', 'avanzado', 'medio-cuerdas', 'avanzado-cuerdas'] as const) {
+    const followed = reduceChart(james, RIFF_LEVELS[level]);
+    const chart = reduceChart(kirk, RIFF_LEVELS[level], followed);
+    const byTime = new Map(followed.notes.map((n) => [Math.round(n.t * 1000), n]));
+    let shared = 0;
+    let same = 0;
+    for (const note of chart.notes) {
+      const t = Math.round(note.t * 1000);
+      const j = byTime.get(t);
+      if (!j || jl.get(t) !== kl.get(t)) continue;
+      shared++;
+      if (j.string === note.string && j.fret === note.fret) same++;
+    }
+    expect(shared, level).toBeGreaterThan(150);
+    expect(same / shared, level).toBeGreaterThanOrEqual(0.99);
   }
 });
 

@@ -5,7 +5,7 @@ import { getAudioCurrentTime } from '@/app/lib/guitarAudioEngine';
 import type { Chart, ChartNote } from '@/app/lib/riff/chart';
 import { fretColor, RIFF_STRING_COLORS } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
-import { notesOnFret, notesOnString, stringAlpha, usageLevel } from '@/app/lib/riff/visuals';
+import { barsAheadSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel } from '@/app/lib/riff/visuals';
 
 export { RIFF_STRING_COLORS };
 
@@ -30,9 +30,10 @@ const HIT_FX_SECONDS = 0.35;
 const SCORE_LABEL_SECONDS = 0.8;
 const MAX_SCORE_LABELS = 4;
 // Cuerdas libres: las 6 cuerdas, medio transparentes (decisión del usuario).
-// Cuerdas libres: relleno permanente de cada traste con su color, muy tenue (las cuerdas no se
-// dibujan: no hacen falta y liaban, decisión del usuario).
-const FREE_FRET_TINT_ALPHA = 0.1;
+// Cuerdas libres: relleno permanente de cada traste con su color, tenue (0,2; el usuario pidió
+// destacarlo un poco más que el 0,1 de antes). Las cuerdas no se
+// dibujan: no hacen falta y liaban (decisión del usuario).
+const FREE_FRET_TINT_ALPHA = 0.2;
 const MISS_FADE_SECONDS = 0.45;
 const TOP_MARGIN = 10;
 // Desde cuántos segundos antes de llegar se dibuja la guía de aterrizaje.
@@ -141,10 +142,16 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // viewBox -> píxeles del canvas.
       const toX = (x: number, y: number) => ctm.a * x + ctm.c * y + ctm.e - stageRect.left;
       const toY = (x: number, y: number) => ctm.b * x + ctm.d * y + ctm.f - stageRect.top;
-      const fretPx = (fret: number, string: number) => ({ x: toX(geo.fretX(fret), geo.stringY(string)), y: toY(geo.fretX(fret), geo.stringY(string)) });
+      // Las notas caen a la altura de su "carril" (lanes.ts: en Experto, su cuerda real; en el resto,
+      // las cuerdas del nivel repartidas por el centro del mástil).
+      const laneY = geo.laneY ?? geo.stringY;
+      const fretPx = (fret: number, string: number) => ({ x: toX(geo.fretX(fret), laneY(string)), y: toY(geo.fretX(fret), laneY(string)) });
       const lineXs = geo.fretLineXs.map((x) => toX(x, geo.stringY(1)));
-      const boardLeft = Math.min(...lineXs);
-      const boardRight = Math.max(...lineXs);
+      // Casilla del traste 0 en el juego (tan ancha como las demás): entra en la autopista.
+      const openXs = geo.openColumn ? geo.openColumn.map((x) => toX(x, geo.stringY(1))) : [];
+      const edgeXs = [...lineXs, ...openXs];
+      const boardLeft = Math.min(...edgeXs);
+      const boardRight = Math.max(...edgeXs);
       const y1 = toY(0, geo.stringY(1));
       const y6 = toY(0, geo.stringY(6));
       const rowGap = (y6 - y1) / 5;
@@ -153,6 +160,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       const columnRect = (fret: number) => {
         const i = fret - geo.startFret - (geo.startFret === 0 ? 1 : 0);
         if (fret === 0 && geo.startFret === 0) {
+          if (openXs.length === 2) return { x: Math.min(...openXs), y: y1, w: Math.abs(openXs[1] - openXs[0]), h: y6 - y1 };
           // Cuerda al aire: la franja antes de la cejuela.
           const x = fretPx(0, 1).x;
           return { x: x - colW * 0.35, y: y1, w: colW * 0.7, h: y6 - y1 };
@@ -208,9 +216,10 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       }
       for (const fret of soonFrets) {
         const col = fret - geo.startFret - (geo.startFret === 0 ? 1 : 0);
-        if (col < 0 || col + 1 >= lineXs.length) continue;
-        const xa = lineXs[col];
-        const xb = lineXs[col + 1];
+        const open = col < 0 && openXs.length === 2;
+        if ((col < 0 && !open) || col + 1 >= lineXs.length) continue;
+        const xa = open ? openXs[0] : lineXs[col];
+        const xb = open ? openXs[1] : lineXs[col + 1];
         const p1 = project(xa, y1, 0);
         const p2 = project(xb, y1, 0);
         const p3 = project(xb, y1, LOOKAHEAD_SECONDS);
@@ -227,7 +236,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
 
       // Líneas de traste que fugan hacia el fondo.
       ctx.lineWidth = 1;
-      for (const x of lineXs) {
+      for (const x of edgeXs) {
         const p0 = project(x, y1, 0);
         const p1 = project(x, y1, LOOKAHEAD_SECONDS);
         ctx.strokeStyle = 'rgba(203, 213, 225, 0.28)';
@@ -280,10 +289,12 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // cuerdas libres no se dibujan (lo que manda es la columna del traste, ver arriba). Brillo
       // moderado (sombra de su color).
       if (session && !freeStrings) {
+        // Encendidas mientras tengan alguna nota en los próximos STRING_LOOKAHEAD_BARS compases.
+        const stringAhead = barsAheadSeconds(chart.bars, songPos, STRING_LOOKAHEAD_BARS, (STRING_LOOKAHEAD_BARS * 4 * 60) / chart.bpm);
         for (const string of stringsKey.split(',').map(Number)) {
-          const y = toY(0, geo.stringY(string));
+          const y = toY(0, laneY(string));
           ctx.strokeStyle = RIFF_STRING_COLORS[string];
-          ctx.globalAlpha = stringAlpha(notesOnString(chart.notes, string), songPos, speed);
+          ctx.globalAlpha = stringAlpha(notesOnString(chart.notes, string), songPos, speed, stringAhead);
           ctx.shadowColor = RIFF_STRING_COLORS[string];
           ctx.shadowBlur = 6;
           ctx.lineWidth = 3;
@@ -305,7 +316,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       }
       toDraw.reverse();
       const gemW = Math.max(colW * 0.62, 22);
-      const gemH = Math.max(rowGap * 0.8, 14);
+      // Modo trastes (una sola fila de notas, en el centro): gemas más altas (petición del usuario).
+      const gemH = freeStrings ? Math.max(rowGap * 1.1, 18) : Math.max(rowGap * 0.8, 14);
 
       // Acordes (petición del usuario: que se lea la FORMA de un vistazo y no se confundan con los
       // punteos): sin caja; las gemas de un mismo golpe se unen, por orden de cuerda, con
@@ -352,7 +364,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       }
 
       for (const note of toDraw) {
-        // La gema cae sobre su cuerda (en los niveles de cuerdas libres, la 6: decisión del usuario).
+        // La gema cae sobre su carril (en los niveles de cuerdas libres, el del centro del mástil).
         // Con cuerdas libres, además, al llegar se ilumina la COLUMNA entera del traste: vale cualquier cuerda.
         const base = fretPx(note.fret, note.string);
         const z = zOf(note.t);
