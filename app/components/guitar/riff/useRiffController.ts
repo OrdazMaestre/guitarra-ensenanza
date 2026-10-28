@@ -2,7 +2,7 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { buildChart, listGuitarTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
-import { reduceChart } from '@/app/lib/riff/reduce';
+import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
 import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
@@ -67,13 +67,21 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const paused = game.status === 'paused';
   // Tras la primera partida, "Empezar" pasa a llamarse "Volver a empezar".
   const [hasStarted, setHasStarted] = useState(false);
-  // Cambiar un ajuste en pausa invalida esa partida: ya solo se puede volver a empezar.
+  // Cambiar la DIFICULTAD (o la canción) anula la partida: ya solo se puede volver a empezar. El
+  // resto de ajustes se pueden cambiar en pausa y la partida CONTINÚA con ellos (ver `resume`;
+  // petición del usuario, 2026-10-28). Excepción: con BUCLE ("modo práctica", no puntúa) también se
+  // puede cambiar la dificultad y continuar; si luego se quita el bucle con otra dificultad que la
+  // de la partida en pausa, se anula.
   const { stop: stopGame } = game;
-  const pausedRef = useRef(paused);
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const sessionLevelRef = useRef(level);
+  // Canción para la que se fijó el tramo de compases (ver la construcción del chart).
+  const barsSourceRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (pausedRef.current) stopGame();
-  }, [speed, mode, backing, loop, fromBar, toBar, stopGame]);
+    if (level !== sessionLevelRef.current && !loop) stopGame();
+  }, [level, loop, stopGame]);
+  useEffect(() => {
+    stopGame();
+  }, [source, stopGame]);
 
   // Cargar el .gp y elegir pista.
   useEffect(() => {
@@ -109,15 +117,27 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     loadScore(source).then(({ at, score }) => {
       if (cancelled) return;
       const translate = (index: number, profile: (typeof RIFF_LEVELS)[keyof typeof RIFF_LEVELS]) => {
-        const follow = leader === null ? undefined : reduceChart(buildChart(at, score, leader, 24), profile);
-        return reduceChart(buildChart(at, score, index, 24), profile, follow);
+        // Rango del instrumento: todas las guitarras juntas (zonas de graves/agudas compartidas).
+        const range = pitchRange(listGuitarTracks(score).map((track) => buildChart(at, score, track.index, 24)));
+        const follow = leader === null ? undefined : reduceChart(buildChart(at, score, leader, 24), profile, { range });
+        return reduceChart(buildChart(at, score, index, 24), profile, { follow, range });
       };
       const built = level === 'experto'
         ? buildChart(at, score, trackIndex, endFret)
         : translate(trackIndex, RIFF_LEVELS[level]);
       setChart(built);
-      setFromBar(1);
-      setToBar(Math.max(1, ...built.bars.map((bar) => bar.number)));
+      // Tramo de compases: entero al cargar OTRA canción; al cambiar de dificultad o de pista se
+      // conserva el que había (bug real: en modo práctica, cambiar la dificultad devolvía el bucle a
+      // la canción entera), recortado al final de la canción si hiciera falta.
+      const last = Math.max(1, ...built.bars.map((bar) => bar.number));
+      if (barsSourceRef.current !== source) {
+        barsSourceRef.current = source;
+        setFromBar(1);
+        setToBar(last);
+      } else {
+        setFromBar((value) => Math.min(value, last));
+        setToBar((value) => Math.min(value, last));
+      }
       // Sin pista de batería en el archivo, "Batería" no tiene nada que tocar: metrónomo.
       setBacking((current) => (current === 'bateria' && built.drums.length === 0 ? 'metronomo' : current));
     });
@@ -166,6 +186,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
 
   function startTutorial() {
     if (trackIndex === null || !source) return;
+    stopGame();
     setTutorialOn(true);
     setTutorialRemix(null);
     setHasStarted(true);
@@ -173,10 +194,11 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     void loadScore(source).then(({ at, score }) => {
       const real = buildChart(at, score, trackIndex, 24);
       const leaderReal = leader === null ? null : buildChart(at, score, leader, 24);
+      const range = pitchRange(listGuitarTracks(score).map((track) => buildChart(at, score, track.index, 24)));
       const remix = buildRemix(RIFF_TUTORIAL.map((part) => {
         const profile = RIFF_LEVELS[part.level as Exclude<RiffLevel, 'experto'>];
         return {
-          chart: reduceChart(real, profile, leaderReal ? reduceChart(leaderReal, profile) : undefined),
+          chart: reduceChart(real, profile, { follow: leaderReal ? reduceChart(leaderReal, profile, { range }) : undefined, range }),
           fromBar: part.fromBar,
           toBar: part.toBar,
           repeats: part.repeats,
@@ -216,9 +238,23 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setToBar(maxBar);
   }
 
+  const gameOptions = () => ({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings });
+
   function start() {
     setHasStarted(true);
-    game.start({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings }, backing);
+    sessionLevelRef.current = level;
+    game.start(gameOptions(), backing);
+  }
+
+  // Continuar (botón del panel o PAUSA otra vez): con los ajustes de AHORA, aunque se hayan cambiado
+  // en la pausa (otra pista, otra velocidad...). En la partida de prueba, tal cual.
+  function resume() {
+    if (tutorialRemix || !chart) {
+      game.resume();
+      return;
+    }
+    sessionLevelRef.current = level;
+    game.resume({ chart, options: gameOptions(), backing });
   }
 
   return {
@@ -238,7 +274,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     hasStarted,
     canStart: !!chart && !narrow && !playing,
     pause: game.pause,
-    resume: game.resume,
+    resume,
     resetDefaults,
     start,
     stop,

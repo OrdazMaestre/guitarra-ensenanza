@@ -1,5 +1,5 @@
 'use client';
-import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type MutableRefObject, useCallback, useRef, useState } from 'react';
 import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
@@ -68,12 +68,11 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     setAtBreak(null);
   }, [clearTimer]);
 
-  const start = useCallback((options: RiffOptions, backing: RiffBacking) => {
-    if (!chart) return;
+  // Pone en marcha una sesión: el temporizador que la avanza, programa los sonidos y publica su estado.
+  const run = useCallback((session: RiffSession) => {
     clearTimer();
     touchAudioContext();
     void preloadSamples();
-    const session = new RiffSession(chart, options, getAudioCurrentTime(), backing);
     sessionRef.current = session;
     setScoring(session.scoring);
     const handles = guideHandlesRef.current;
@@ -111,7 +110,12 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
     }, TICK_MS);
-  }, [applyHit, chart, clearTimer, heldRef]);
+  }, [applyHit, clearTimer, heldRef]);
+
+  const start = useCallback((options: RiffOptions, backing: RiffBacking) => {
+    if (!chart) return;
+    run(new RiffSession(chart, options, getAudioCurrentTime(), backing));
+  }, [chart, run]);
 
   // PAUSA: congela la canción y calla las notas de fondo ya programadas.
   const pause = useCallback(() => {
@@ -125,19 +129,27 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     setStatus(session.status);
   }, []);
 
-  // CONTINUAR: un compás atrás, con cuenta de entrada (ver RiffSession.resume).
-  const resume = useCallback(() => {
+  // CONTINUAR: dos compases atrás, con cuenta de entrada (ver RiffSession.resume). Con `next` (los
+  // ajustes actuales), si algo cambió durante la pausa -- velocidad, pista, acompañamiento, ritmo,
+  // compases... -- sigue con una sesión nueva que hereda la pausada (RiffSession.continueFrom).
+  const resume = useCallback((next?: { chart: Chart; options: RiffOptions; backing: RiffBacking }) => {
     const session = sessionRef.current;
     if (!session) return;
-    session.resume(getAudioCurrentTime());
-    setStatus(session.status);
-    setAtBreak(session.stoppedAtBreak);
-    setHitCount(session.hitAt.size);
-    setScore(session.totalScore);
-  }, []);
-
-  // Cambiar de pista o de canción detiene la partida en curso.
-  useEffect(() => stop, [chart, stop]);
+    const now = getAudioCurrentTime();
+    const same = !next || (next.chart === session.chart && next.backing === session.backing
+      && (['speed', 'mode', 'loop', 'fromBar', 'toBar', 'freeStrings'] as const).every((key) => next.options[key] === session.options[key]));
+    if (same || session.status !== 'paused' || session.stoppedAtBreak !== null) {
+      session.resume(now);
+      setStatus(session.status);
+      setAtBreak(session.stoppedAtBreak);
+      setHitCount(session.hitAt.size);
+      setScore(session.totalScore);
+      return;
+    }
+    const continued = new RiffSession(next.chart, next.options, now, next.backing);
+    continued.continueFrom(session, now);
+    run(continued);
+  }, [run]);
 
   // Para el mástil: volumen relativo de su propia nota -- 0 mientras hay partida en curso (lo que
   // suena es la canción real; un acierto "abre" sus notas), 1 en pausa o terminada.

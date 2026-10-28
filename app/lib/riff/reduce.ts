@@ -517,17 +517,21 @@ function placePhraseMulti(
   return best!.path;
 }
 
-// Opciones de cuerdas de un compás que en la tab usa `used` cuerdas: grupos CONTIGUOS de
-// min(used, cuerdas del nivel); si la tab usa tantas o más que el nivel, todas.
-function stringGroups(levelStrings: number[], used: number): number[][] {
+// Opciones de cuerdas de un compás en el que la tab usa las cuerdas `used`: grupos CONTIGUOS de
+// min(|used|, cuerdas del nivel) y, además, las MISMAS cuerdas que la tab si están todas en el nivel
+// aunque no sean contiguas (James, compás 48: Sol y La sin la Re -- lo más fiel es usar esas dos; si
+// no, una nota tenía que cambiar de octava). Si la tab usa tantas o más que el nivel, todas.
+function stringGroups(levelStrings: number[], used: Set<number>): number[][] {
   const sorted = [...levelStrings].sort((a, b) => a - b);
-  const size = Math.max(1, Math.min(used, sorted.length));
+  const size = Math.max(1, Math.min(used.size, sorted.length));
   if (size >= sorted.length) return [sorted];
   const groups: number[][] = [];
   for (let i = 0; i + size <= sorted.length; i++) {
     const group = sorted.slice(i, i + size);
     if (group[group.length - 1] - group[0] === size - 1) groups.push(group);
   }
+  const real = [...used].sort((a, b) => a - b);
+  if (real.every((string) => sorted.includes(string)) && !groups.some((group) => group.join() === real.join())) groups.push(real);
   return groups;
 }
 
@@ -554,9 +558,9 @@ function zoneMap(kept: Onset[], profile: LevelProfile) {
   return (pitch: number) => profile.minFret + Math.min(1, Math.max(0, (pitch - lo) / (hi - lo))) * (profile.maxFret - profile.minFret);
 }
 
-// `barOf`: compás (índice en chart.bars) de cada nota; `stringsUsed`: cuántas cuerdas distintas usa
+// `barOf`: compás (índice en chart.bars) de cada nota; `stringsUsed`: qué cuerdas usa
 // la tab real en cada compás.
-function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, number>, pins: Array<LanePosition | null>): LanePosition[] {
+function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, pins: Array<LanePosition | null>): LanePosition[] {
   const layout = laneLayout(profile);
   const zoneOf = zoneMap(kept, profile);
   const phrases: Array<[number, number]> = [];
@@ -581,7 +585,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
       const bars = [...new Set(barOf.slice(i, end))];
       const groupOf = barOf.slice(i, end).map((bar) => bars.indexOf(bar));
       const groupOptions = bars.map((bar) => {
-        const options = stringGroups(profile.strings, stringsUsed.get(bar) ?? profile.strings.length);
+        const options = stringGroups(profile.strings, stringsUsed.get(bar) ?? new Set(profile.strings));
         const used = usedInBar.get(bar);
         const compatible = used ? options.filter((option) => [...used].every((string) => option.includes(string))) : options;
         return compatible.length > 0 ? compatible : options;
@@ -672,13 +676,33 @@ function followPins(kept: Onset[], follow?: Chart): Array<LanePosition | null> {
   });
 }
 
-export function reduceChart(chart: Chart, profile: LevelProfile, follow?: Chart): Chart {
+// Rango de alturas (nota más grave y más aguda) de un INSTRUMENTO: todas sus pistas juntas (las
+// guitarras de James y de Kirk comparten rango, petición del usuario).
+export function pitchRange(charts: Chart[]): [number, number] {
+  const midis = charts.flatMap((chart) => chart.notes.map((note) => note.midi));
+  return midis.length ? [Math.min(...midis), Math.max(...midis)] : [40, 64];
+}
+
+// Altura de corte entre graves y agudas: X octavas de rango -> la mitad baja son graves (con X
+// impar, el corte cae a mitad de octava). Master of Puppets: 40-86, 4 octavas, corte 64 (Mi4).
+export function octaveSplit([lo, hi]: [number, number]): number {
+  return lo + 6 * Math.ceil((hi - lo + 1) / 12);
+}
+
+export interface ReduceOptions {
+  // Chart ya traducido de la guitarra que manda (riffs compartidos, ver followPins).
+  follow?: Chart;
+  // Rango del instrumento (`pitchRange` de todas sus pistas), para las zonas de `profile.zones`.
+  range?: [number, number];
+}
+
+export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions = {}): Chart {
   const { pos, beatSeconds } = makeBeatPosition(chart);
   const onsets = groupOnsets(chart, pos);
   const kept = pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile);
   // Niveles de varias cuerdas: compás de cada golpe y cuántas cuerdas distintas usa la tab en cada
   // compás (notas guía), para el límite de cuerdas por compás (ver placePhraseMulti).
-  let barInfo: { barOf: number[]; stringsUsed: Map<number, number> } | null = null;
+  let barInfo: { barOf: number[]; stringsUsed: Map<number, Set<number>> } | null = null;
   if (profile.strings.length > 1) {
     const barIndex = (t: number) => {
       let lo = 0;
@@ -697,7 +721,7 @@ export function reduceChart(chart: Chart, profile: LevelProfile, follow?: Chart)
       set.add(onset.lead.string);
       stringsOfBar.set(bar, set);
     }
-    barInfo = { barOf: kept.map((onset) => barIndex(onset.t)), stringsUsed: new Map([...stringsOfBar].map(([bar, set]) => [bar, set.size])) };
+    barInfo = { barOf: kept.map((onset) => barIndex(onset.t)), stringsUsed: stringsOfBar };
   }
   const phraseOf = splitPhrases(kept, profile, beatSeconds, barInfo?.barOf);
   const layout = laneLayout(profile);
@@ -706,27 +730,43 @@ export function reduceChart(chart: Chart, profile: LevelProfile, follow?: Chart)
   const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, pins) : null;
 
 
-  // Altura traducida de cada nota, frase a frase (con varias cuerdas ya va en multiPlaces).
+  // Altura traducida de cada nota, frase a frase (con varias cuerdas ya va en multiPlaces):
+  // EXACTA (intervalos reales, desplazada en bloque) si la frase cabe en los botones; si no, CONTORNO.
+  // Con `profile.zones` (Avanzado: dos "Guitar Hero" seguidos, decisión del usuario) cada nota va a
+  // la zona de su altura REAL -- por debajo del corte de octavas del instrumento, graves (0-5); si no,
+  // agudas (5-10) -- y lo de arriba se aplica dentro de cada zona, con sus 6 botones.
   const targetPitch: number[] = new Array(kept.length);
+  const translate = (indices: number[], lanePitches: number[]) => {
+    if (indices.length === 0) return;
+    const pitches = indices.map((k) => kept[k].lead.midi);
+    const shift = exactShift(pitches, new Set(lanePitches));
+    if (shift !== null) {
+      indices.forEach((k, j) => { targetPitch[k] = pitches[j] + shift; });
+      return;
+    }
+    const lanes = contourLanes(pitches, lanePitches.length);
+    const laneSeq = pitches.map((p) => lanes.get(p)!);
+    // Si dos alturas distintas seguidas acabaron en el mismo botón, se separan en su dirección.
+    for (let k = 1; k < laneSeq.length; k++) {
+      if (pitches[k] !== pitches[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
+        const dir = Math.sign(pitches[k] - pitches[k - 1]);
+        laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k] + dir));
+      }
+    }
+    indices.forEach((k, j) => { targetPitch[k] = lanePitches[laneSeq[j]]; });
+  };
+  const split = profile.zones ? octaveSplit(range ?? pitchRange([chart])) : 0;
+  const zonePitches = profile.zones?.map(([from, to]) => [...new Set(layout.positions.filter((p) => p.fret >= from && p.fret <= to).map((p) => p.pitch))].sort((a, b) => a - b));
   let i = 0;
   while (!multiPlaces && i < kept.length) {
     let end = i;
     while (end < kept.length && phraseOf[end] === phraseOf[i]) end++;
-    const pitches = kept.slice(i, end).map((onset) => onset.lead.midi);
-    const shift = exactShift(pitches, available);
-    if (shift !== null) {
-      pitches.forEach((p, k) => { targetPitch[i + k] = p + shift; });
+    const indices = Array.from({ length: end - i }, (_, k) => i + k);
+    if (zonePitches) {
+      translate(indices.filter((k) => kept[k].lead.midi < split), zonePitches[0]);
+      translate(indices.filter((k) => kept[k].lead.midi >= split), zonePitches[zonePitches.length - 1]);
     } else {
-      const lanes = contourLanes(pitches, layout.pitches.length);
-      const laneSeq = pitches.map((p) => lanes.get(p)!);
-      // Si dos alturas distintas seguidas acabaron en el mismo botón, se separan en su dirección.
-      for (let k = 1; k < laneSeq.length; k++) {
-        if (pitches[k] !== pitches[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
-          const dir = Math.sign(pitches[k] - pitches[k - 1]);
-          laneSeq[k] = Math.min(layout.pitches.length - 1, Math.max(0, laneSeq[k] + dir));
-        }
-      }
-      laneSeq.forEach((lane, k) => { targetPitch[i + k] = layout.pitches[lane]; });
+      translate(indices, layout.pitches);
     }
     i = end;
   }

@@ -10,6 +10,7 @@ import {
   type MaikaelTransientFace,
 } from '@/app/lib/maikaelExpression';
 import MaikaelChat from './MaikaelChat';
+import { getGameInProgress, subscribeGameInProgress } from '@/app/lib/gameInProgress';
 import {
   useMaikaelGuitarLoop,
   useMaikaelLeftHandFret,
@@ -333,7 +334,12 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   // instante (más fiable que el valor cacheado del montaje). Si está
   // agotado, MAIkael se queda dormido: no se llama a toggle(), así que
   // nunca avanza de 'closed' — solo cambia qué cabeza se muestra.
+  // Mientras se juega una partida del juego de tablatura, MAIkael no se abre (un toque sin querer
+  // taparía el mástil); cerrarlo sí se puede. En pausa vuelve a funcionar.
+  const gameLocked = useSyncExternalStore(subscribeGameInProgress, getGameInProgress, () => false);
+
   async function handleClick() {
+    if (gameLocked && step === 'closed') return;
     if (step === 'closed') {
       const isReached = await checkDailyLimit();
       if (isReached) return;
@@ -604,6 +610,7 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
             funcionan igual en cualquier escala (móvil/PC) sin recalcular. */}
         <button
           type="button"
+          aria-disabled={gameLocked && step === 'closed' ? true : undefined}
           aria-label={
             step !== 'closed' ? 'Cerrar a MAIkael' : dailyLimitReached ? 'MAIkael está dormido por hoy' : 'Abrir a MAIkael'
           }
@@ -611,7 +618,7 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           style={
             showBody
               ? { position: 'absolute', left: '0%', top: '6%', width: '100%', height: '94%', pointerEvents: 'auto', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }
-              : { position: 'absolute', left: '20%', top: '35%', width: '62%', height: '29%', pointerEvents: 'auto', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }
+              : { position: 'absolute', left: '20%', top: '35%', width: '62%', height: '29%', pointerEvents: 'auto', padding: 0, border: 'none', background: 'transparent', cursor: gameLocked && step === 'closed' ? 'default' : 'pointer' }
           }
         />
         {showBody && (

@@ -19,6 +19,7 @@ import type { TrackRole } from './riff/RiffIcons';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
+import { setGameInProgress } from '@/app/lib/gameInProgress';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from './InstrumentIcons';
@@ -327,6 +328,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // una cuerda al arrastrar el dedo a otra, que no pasa por emitNoteEvent.
   const riffPlayingRef = useRef(false);
   useEffect(() => { riffPlayingRef.current = riff.playing; }, [riff.playing]);
+  // Partida en curso: MAIkael no se abre con un toque sin querer (petición del usuario).
+  useEffect(() => {
+    if (!riffGame) return;
+    setGameInProgress(riff.playing);
+    return () => setGameInProgress(false);
+  }, [riffGame, riff.playing]);
   const emitNoteEvent = useCallback((ev: PracticeNoteEvent): number => {
     registerPracticeNote(ev);
     const external = onNoteEventRef.current?.(ev) ?? 1;
@@ -704,6 +711,28 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
   }
 
+  // Al empezar una partida (petición del usuario): lo más bajo que se ve son los números de traste
+  // bajo el mástil, y encima, todo lo posible de la autopista por donde caen las notas. La barra MIDI
+  // (con PAUSA) y los puntos solo entran si cabe TODO -- autopista entera, mástil, puntos y barra --;
+  // en una pantalla baja (móvil) no se gasta autopista en ellos. Instantáneo a propósito: un scroll
+  // 'smooth' lanzado desde un clic real de ratón se cancelaba. Se repite tras dos frames porque al
+  // empezar el panel se pliega y la barra cambia.
+  function scrollIntoGame() {
+    const place = () => {
+      const stage = stageRef.current;
+      const svg = svgRef.current;
+      if (!stage || !svg) return;
+      const top = stage.getBoundingClientRect().top;
+      const neckBottom = svg.getBoundingClientRect().bottom;
+      const pill = hostRef.current?.querySelector('.midi-float-pill');
+      const pillBottom = pill ? pill.getBoundingClientRect().bottom : neckBottom;
+      const bottom = pillBottom - top <= window.innerHeight ? pillBottom : neckBottom;
+      window.scrollTo({ top: window.scrollY + bottom - window.innerHeight, behavior: 'instant' });
+    };
+    place();
+    requestAnimationFrame(() => requestAnimationFrame(place));
+  }
+
   function interactionOverlay() {
     const posList = kbMode ? kbPositions : ptPositions;
     if (posList.length === 0) return null;
@@ -777,8 +806,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}
     >
     {showHighway && <div aria-hidden="true" className="riff-highway-space" />}
-    {/* scroll-margin: al empezar la partida, que también se vea la barra de controles (PAUSA). */}
-    <div className="reduced-fretboard-wrap" ref={scrollRef} style={riffGame ? { scrollMarginBottom: '72px' } : undefined}>
+    <div className="reduced-fretboard-wrap" ref={scrollRef}>
     <svg
       ref={svgRef}
       className="reduced-fretboard"
@@ -902,6 +930,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         fretRange={riff.profile ? [riff.profile.minFret, riff.profile.maxFret] : undefined}
         freeStrings={!!riff.profile?.freeStrings}
         geometryRef={localGeometryRef}
+        practice={riff.loop && !riff.tutorialOn}
         previewTime={riff.previewTime}
         sessionRef={riff.game.sessionRef}
         stageRef={stageRef}
@@ -912,9 +941,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         {/* Partida tutorial: sus mensajes (o su pausa) en lugar del panel de ajustes. */}
         {riff.tutorialOn ? <RiffTutorialCard riff={riff} /> : (
           <RiffControls
-            // Que se vea el mástil entero, la autopista encima y la barra (PAUSA) debajo.
-            // Instantáneo a propósito: el 'smooth' lanzado desde un clic real de ratón se cancelaba.
-            onStart={() => scrollRef.current?.scrollIntoView({ block: 'end' })}
+            onStart={scrollIntoGame}
             riff={riff}
             trackRoles={riffGame.trackRoles}
           />

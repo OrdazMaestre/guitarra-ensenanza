@@ -35,6 +35,8 @@ const MAX_SCORE_LABELS = 4;
 // dibujan: no hacen falta y liaban (decisión del usuario).
 const FREE_FRET_TINT_ALPHA = 0.2;
 const MISS_FADE_SECONDS = 0.45;
+// Notas que ya puntuaron y vuelven a pasar tras continuar una pausa (`RiffSession.locked`).
+const LOCKED_COLOR = '#9ca3af';
 const TOP_MARGIN = 10;
 // Desde cuántos segundos antes de llegar se dibuja la guía de aterrizaje.
 const APPROACH_SECONDS = 0.6;
@@ -51,6 +53,8 @@ interface Props {
   // Cuerdas libres: cada gema ocupa la COLUMNA entera de su traste (vale cualquier cuerda).
   freeStrings?: boolean;
   geometryRef: MutableRefObject<FretboardGeometry | null>;
+  // Bucle activado = "modo práctica" (no puntúa): marca de agua "PRÁCTICA" sobre el carril.
+  practice?: boolean;
   // Tiempo de canción que se enseña cuando no hay partida (vista previa quieta).
   previewTime: number;
   sessionRef: MutableRefObject<RiffSession | null>;
@@ -103,7 +107,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretRange, freeStrings = false, geometryRef, previewTime, sessionRef, stageRef }: Props) {
+export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
   const [minFret, maxFret] = fretRange ?? [0, 5];
@@ -260,6 +264,22 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         ctx.stroke();
       }
 
+      // Bucle activado = "modo práctica" (petición del usuario): "PRÁCTICA" muy transparente sobre el
+      // carril, por debajo de las notas para no tapar nada.
+      if (practice) {
+        const midY = (farL.y + nearL.y) / 2;
+        // Lo más grande posible sin salirse del carril a esa altura (el carril se estrecha al fondo).
+        const widthAtMid = ((farR.x - farL.x) + (nearR.x - nearL.x)) / 2 * 0.86;
+        let size = (nearL.y - farL.y) * 0.45;
+        ctx.font = `950 ${size}px system-ui, sans-serif`;
+        size = Math.max(20, size * Math.min(1, widthAtMid / ctx.measureText('PRÁCTICA').width));
+        ctx.font = `950 ${size}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.09)';
+        ctx.fillText('PRÁCTICA', vpX, midY);
+      }
+
       // Cuerdas libres: la COLUMNA entera del traste objetivo se ilumina con su color, con las mismas
       // curvas que las cuerdas (sube el segundo anterior a la nota, baja 0,5 s después).
       if (session && freeStrings) {
@@ -368,8 +388,11 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         // Con cuerdas libres, además, al llegar se ilumina la COLUMNA entera del traste: vale cualquier cuerda.
         const base = fretPx(note.fret, note.string);
         const z = zOf(note.t);
-        const hitSongT = session?.hitAt.get(note.id);
-        const color = (colorBy === 'fret' ? fretColor(note.fret, minFret, maxFret) : RIFF_STRING_COLORS[note.string]) ?? '#ffffff';
+        // Nota que ya puntuó antes de una PAUSA y vuelve a pasar al continuar: cae igual, pero GRIS
+        // (no vuelve a contar; petición del usuario), sin brillo ni guía de aterrizaje.
+        const locked = !!session?.locked.has(note.id);
+        const hitSongT = locked ? undefined : session?.hitAt.get(note.id);
+        const color = locked ? LOCKED_COLOR : (colorBy === 'fret' ? fretColor(note.fret, minFret, maxFret) : RIFF_STRING_COLORS[note.string]) ?? '#ffffff';
 
         if (hitSongT !== undefined) {
           const elapsed = (songPos - hitSongT) / speed;
@@ -419,7 +442,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         // Guía de aterrizaje (como la "sombra" de Rocksmith): al pasar sobre el mástil, una gema de
         // una cuerda grave cruza las cuerdas agudas antes de llegar a la suya. La línea hasta su
         // sitio y el aro que se cierra sobre su cuerda/traste dejan claro DÓNDE va a caer.
-        if (session && !missed && z < APPROACH_SECONDS && !freeStrings) {
+        if (session && !missed && !locked && z < APPROACH_SECONDS && !freeStrings) {
           const k = Math.max(0, z) / APPROACH_SECONDS;
           ctx.globalAlpha = 0.9 - k * 0.6;
           ctx.strokeStyle = color;
@@ -438,8 +461,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         }
 
         ctx.globalAlpha = missed ? Math.max(0, 1 + z / MISS_FADE_SECONDS) * 0.8 : 1;
-        ctx.shadowColor = missed ? 'transparent' : color;
-        ctx.shadowBlur = missed ? 0 : 14 * p.s;
+        ctx.shadowColor = missed || locked ? 'transparent' : color;
+        ctx.shadowBlur = missed || locked ? 0 : 14 * p.s;
         ctx.fillStyle = missed ? '#6b7280' : color;
         // Cuerda al aire (traste 0): un CÍRCULO grande en vez de la barra del resto (petición del
         // usuario), para distinguirla de un vistazo.
@@ -490,37 +513,54 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         ctx.globalAlpha = 1;
       }
 
-      // Puntos de cada nota, junto a donde aterrizó y desplazados a un lado para no tapar las notas
-      // que bajan. Se calculan desde la sesión en cada frame (sin temporizadores propios): duran
-      // SCORE_LABEL_SECONDS, como mucho una por traste y MAX_SCORE_LABELS a la vez (las más nuevas).
-      if (session?.scoring) {
+      // Puntos de cada nota ENCIMA DEL MÁSTIL, centrados sobre su traste (petición del usuario: en
+      // el móvil, los de los trastes 0 y 1, puestos al lado de la nota, salían en el mismo sitio y
+      // parecía que el 0 no se acertaba). Suben un poco y se apagan. Se calculan desde la sesión en
+      // cada frame (sin temporizadores propios): duran SCORE_LABEL_SECONDS, como mucho una por traste
+      // y MAX_SCORE_LABELS a la vez (las más nuevas). El texto se encoge para no salirse de su
+      // columna; "PERFECTO" va en una línea pequeña encima del "+4". Las de notas bloqueadas tras una
+      // pausa no vuelven a salir al pasar otra vez por ellas (parecería que puntúan de nuevo).
+      if (session?.rated) {
         const labels = [...session.scoreOf.entries()]
-          .filter(([, score]) => score.points > 0 && (songPos - score.at) / speed >= 0 && (songPos - score.at) / speed < SCORE_LABEL_SECONDS)
+          .filter(([id, score]) => score.points > 0 && !session.locked.has(id) && (songPos - score.at) / speed >= 0 && (songPos - score.at) / speed < SCORE_LABEL_SECONDS)
           .sort((a, b) => b[1].at - a[1].at);
         const usedFrets = new Set<number>();
         let shown = 0;
+        const fitted = (text: string, size: number, maxWidth: number) => {
+          ctx.font = `950 ${size}px system-ui, sans-serif`;
+          const width = ctx.measureText(text).width;
+          const fit = width > maxWidth ? Math.max(10, (size * maxWidth) / width) : size;
+          ctx.font = `950 ${fit}px system-ui, sans-serif`;
+          return fit;
+        };
+        const drawText = (text: string, x: number, y: number, color: string) => {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.strokeText(text, x, y);
+          ctx.fillStyle = color;
+          ctx.fillText(text, x, y);
+        };
         for (const [id, score] of labels) {
           const note = noteById(session, id);
           if (!note || usedFrets.has(note.fret) || shown >= MAX_SCORE_LABELS) continue;
+          const col = columnRect(note.fret);
+          if (!col) continue;
           usedFrets.add(note.fret);
           shown++;
           const k = (songPos - score.at) / speed / SCORE_LABEL_SECONDS;
-          const base = fretPx(note.fret, note.string);
           const perfect = score.points >= 4;
-          const fontSize = Math.max(15, rowGap * (perfect ? 0.8 : 0.7));
-          // A la derecha de la gema (a la izquierda si no cabe), subiendo un poco y apagándose.
-          const right = base.x + colW * 0.5 + 6 + fontSize * 4 < boardRight + colW;
+          const x = col.x + col.w / 2;
+          const y = y1 - 6 - k * rowGap * 0.8;
+          const color = SCORE_COLORS[String(score.points)] ?? '#ffffff';
           ctx.globalAlpha = k < 0.6 ? 1 : Math.max(0, (1 - k) / 0.4);
-          ctx.font = `950 ${fontSize}px system-ui, sans-serif`;
-          ctx.textAlign = right ? 'left' : 'right';
-          ctx.textBaseline = 'middle';
-          const x = base.x + (right ? 1 : -1) * (colW * 0.5 + 6);
-          const y = base.y - k * rowGap * 0.8;
-          ctx.lineWidth = 4;
-          ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
-          ctx.strokeText(scoreText(score.points), x, y);
-          ctx.fillStyle = SCORE_COLORS[String(score.points)] ?? '#ffffff';
-          ctx.fillText(scoreText(score.points), x, y);
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'alphabetic';
+          const size = fitted(perfect ? '+4' : scoreText(score.points), Math.max(15, rowGap * 0.8), col.w * 0.95);
+          drawText(perfect ? '+4' : scoreText(score.points), x, y, color);
+          if (perfect) {
+            fitted('PERFECTO', size * 0.55, col.w * 0.95);
+            drawText('PERFECTO', x, y - size, color);
+          }
         }
         ctx.globalAlpha = 1;
         // El marcador total va FUERA de la autopista, entre el mástil y la barra de controles
@@ -553,7 +593,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [chart, colorBy, freeStrings, geometryRef, maxFret, minFret, sessionRef, stageRef, stringsKey]);
+  }, [chart, colorBy, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stringsKey]);
 
   return <canvas aria-hidden="true" className="riff-highway" data-testid="riff-highway" ref={canvasRef} />;
 }

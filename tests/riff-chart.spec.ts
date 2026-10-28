@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart, listGuitarTracks, type Chart } from '../app/lib/riff/chart';
-import { holdPoints, points, RiffSession, type RiffOptions } from '../app/lib/riff/session';
+import { holdPoints, points, RiffSession, type RiffBacking, type RiffOptions } from '../app/lib/riff/session';
 import { fretColor, RIFF_STRING_COLORS } from '../app/lib/riff/colors';
 import { laneAt, laneRows } from '../app/lib/riff/lanes';
 import { RIFF_LEVELS, RIFF_LEVEL_GROUPS } from '../app/lib/riff/levels';
@@ -288,26 +288,87 @@ test('motor: PAUSA congela la canción; en pausa no se juzga nada ni suena fondo
   expect(s.takeGuideNotes(30, 10)).toEqual([]);
 });
 
-test('motor: CONTINUAR retrocede un compás, con cuenta de entrada, y esas notas vuelven a estar por tocar', () => {
-  const s = new RiffSession(twoBarChart(), { ...ritmo, toBar: 2 }, 0, 'metronomo');
+// Tres compases de 4/4 a 60 bpm: notas en t = 0, 1 (compás 1), 5 (compás 2) y 9 (compás 3). Con la
+// cuenta de 4 s y el reloj desde 0, caen en real = 4, 5, 9, 13.
+function threeBarChart(frets = [2, 4, 7, 9]): Chart {
+  const times = [0, 1, 5, 9];
+  return {
+    trackName: 'prueba',
+    bpm: 60,
+    duration: 12,
+    notes: times.map((t, id) => ({ id, t, dur: 0.5, string: 1, fret: frets[id], midi: 64 + frets[id], palmMute: false, tech: [] })),
+    bars: [{ number: 1, t: 0, end: 4 }, { number: 2, t: 4, end: 8 }, { number: 3, t: 8, end: 12 }],
+    beats: Array.from({ length: 12 }, (_, t) => ({ t, q: t, isBarStart: t % 4 === 0 })),
+    drums: [],
+    movedAboveMaxFret: 0,
+    skippedAboveMaxFret: 0,
+  };
+}
+
+// Pausa en el compás 3 tras acertar las notas de t=0 y t=5 (la de t=1, fallada).
+function pausedInBar3(chart = threeBarChart(), backing: RiffBacking = 'metronomo') {
+  const s = new RiffSession(chart, { ...ritmo, toBar: 3 }, 0, backing);
   expect(s.judge({ string: 1, fret: 2, kind: 'pluck' }, 4).hit).not.toBeNull();
   expect(s.judge({ string: 1, fret: 7, kind: 'pluck' }, 9).hit).not.toBeNull();
-  s.pause(9.6); // pausa en el compás 2
+  s.pause(13.5);
+  return s;
+}
+
+test('motor: CONTINUAR retrocede DOS compases con cuenta de entrada; lo ya puntuado no vuelve a contar, lo fallado sí', () => {
+  const s = pausedInBar3();
+  expect(s.totalScore).toBe(8);
   s.resume(20);
-  // Vuelve al inicio del compás anterior (compás 1, t=0) con 4 pulsos de cuenta de entrada.
+  // Pausa en el compás 3 -> vuelve al inicio del compás 1 (t=0) con 4 pulsos de cuenta de entrada.
   expect(s.status).toBe('countin');
   expect(s.countInTarget).toBe(0);
   expect(s.songPos).toBeCloseTo(-4, 5);
-  expect(s.hitAt.size).toBe(0);
   const clicks = s.takeClicks(20, 4.5);
   expect(clicks.map((c) => c.at)).toEqual([20, 21, 22, 23, 24]);
   expect(clicks[0].volume).toBeGreaterThan(clicks[1].volume);
-  // El fondo también vuelve a sonar desde ahí.
+  // El fondo vuelve a sonar desde ahí.
   expect(s.takeGuideNotes(20, 4.5).map((g) => g.id)).toEqual([0]);
+  // Los puntos se conservan y las notas que ya puntuaron no cuentan otra vez...
+  expect(s.totalScore).toBe(8);
+  expect([...s.locked].sort()).toEqual([0, 2]);
   s.advance(24.1);
   expect(s.status).toBe('playing');
-  // Se puede volver a acertar la primera nota.
-  expect(s.judge({ string: 1, fret: 2, kind: 'pluck' }, 24.1).hit).not.toBeNull();
+  s.judge({ string: 1, fret: 2, kind: 'pluck' }, 24);
+  expect(s.totalScore).toBe(8);
+  // ...y la que se falló se puede recuperar.
+  expect(s.judge({ string: 1, fret: 4, kind: 'pluck' }, 25).hit?.id).toBe(1);
+  expect(s.totalScore).toBe(12);
+});
+
+test('motor: continuar con OTROS ajustes (velocidad, acompañamiento) hereda la partida nota a nota', () => {
+  const old = pausedInBar3();
+  const chart = old.chart;
+  const next = new RiffSession(chart, { ...ritmo, toBar: 3, speed: 0.5 }, 30, 'nada');
+  next.continueFrom(old, 30);
+  expect(next.options.speed).toBe(0.5);
+  expect(next.status).toBe('countin');
+  expect(next.countInTarget).toBe(0);
+  expect(next.totalScore).toBe(8);
+  expect([...next.locked].sort()).toEqual([0, 2]);
+  expect(next.hitAt.has(0) && next.hitAt.has(2)).toBe(true);
+});
+
+test('motor: continuar con OTRA pista guarda los puntos y bloquea las notas del mismo instante que ya puntuaron', () => {
+  const old = pausedInBar3();
+  const other = threeBarChart([3, 5, 8, 10]);
+  const next = new RiffSession(other, { ...ritmo, toBar: 3 }, 30, 'nada');
+  next.continueFrom(old, 30);
+  expect(next.totalScore).toBe(8);
+  expect([...next.locked].sort()).toEqual([0, 2]);
+  // Cuenta de entrada de 4 s desde real = 30: la nota de t=1 cae en real = 35.
+  expect(next.judge({ string: 1, fret: 5, kind: 'pluck' }, 35).hit?.id).toBe(1);
+  expect(next.totalScore).toBe(12);
+});
+
+test('motor: continuar con un tramo de compases que ya no incluye la pausa empieza al principio del tramo', () => {
+  const old = pausedInBar3();
+  const next = new RiffSession(old.chart, { ...ritmo, fromBar: 2, toBar: 2 }, 30, 'nada');
+  next.continueFrom(old, 30);
+  expect(next.countInTarget).toBe(4);
 });
 
 test('motor: CONTINUAR desde el primer compás del tramo vuelve a su inicio (no se sale del tramo)', () => {
@@ -350,18 +411,19 @@ test('arcoíris por traste: con 0-5, los 6 colores de las cuerdas en orden; con 
 // cuenta de 4 s y reloj desde 0, caen en real = 4, 5, 6.
 
 test('puntos: tabla de márgenes y categorías (exacta 4/3/2, cercana 1/0,5, si no 0)', () => {
-  expect([0, 0.2, 0.21, 0.3, 0.31, 0.5, 0.51].map((d) => points(true, d))).toEqual([4, 4, 3, 3, 2, 2, 0]);
-  expect([0, 0.3, 0.31, 0.5, 0.51].map((d) => points(false, d))).toEqual([1, 1, 0.5, 0.5, 0]);
+  // Márgenes recortados 0,1 s el 2026-10-28: exacta 0,1 / 0,2 / 0,4; cercana 0,2 / 0,4.
+  expect([0, 0.1, 0.11, 0.2, 0.21, 0.4, 0.41].map((d) => points(true, d))).toEqual([4, 4, 3, 3, 2, 2, 0]);
+  expect([0, 0.2, 0.21, 0.4, 0.41].map((d) => points(false, d))).toEqual([1, 1, 0.5, 0.5, 0]);
 });
 
 test('puntos: cada margen, a los dos lados de la nota', () => {
-  for (const [offset, expected] of [[-0.15, 4], [0.15, 4], [-0.25, 3], [0.25, 3], [-0.45, 2], [0.45, 2]] as const) {
+  for (const [offset, expected] of [[-0.05, 4], [0.05, 4], [-0.15, 3], [0.15, 3], [-0.35, 2], [0.35, 2]] as const) {
     const s = new RiffSession(fakeChart(), ritmo, 0, 'nada');
     s.judge({ string: 1, fret: 2, kind: 'pluck' }, 4 + offset);
     expect(s.scoreOf.get(0), `desviación ${offset}`).toMatchObject({ points: expected, exact: true });
   }
   const late = new RiffSession(fakeChart(), ritmo, 0, 'nada');
-  late.judge({ string: 1, fret: 2, kind: 'pluck' }, 4.55);
+  late.judge({ string: 1, fret: 2, kind: 'pluck' }, 4.45);
   expect(late.scoreOf.size).toBe(0);
   expect(late.totalScore).toBe(0);
 });
@@ -373,8 +435,8 @@ test('puntos: nota cercana (casilla de al lado en la cuerda, o cuerda vecina en 
     return { points: s.scoreOf.get(0)?.points ?? 0, hit: result.hit, gain: result.gain };
   };
   expect(near({ string: 1, fret: 3 }, 4.1)).toEqual({ points: 1, hit: null, gain: 0 }); // traste de al lado
-  expect(near({ string: 1, fret: 1 }, 4.3)).toMatchObject({ points: 1 });
-  expect(near({ string: 2, fret: 2 }, 3.6)).toMatchObject({ points: 0.5 }); // cuerda vecina, 0,4 s antes
+  expect(near({ string: 1, fret: 1 }, 4.15)).toMatchObject({ points: 1 });
+  expect(near({ string: 2, fret: 2 }, 3.65)).toMatchObject({ points: 0.5 }); // cuerda vecina, 0,35 s antes
   expect(near({ string: 2, fret: 3 }, 4)).toMatchObject({ points: 0 }); // en diagonal: lejana
   expect(near({ string: 1, fret: 7 }, 4)).toMatchObject({ points: 0 });
   expect(near({ string: 3, fret: 2 }, 4)).toMatchObject({ points: 0 });
@@ -396,7 +458,7 @@ test('puntos: no se acumulan -- la exacta sustituye a la cercana; cada nota y ca
   expect(s.totalScore).toBe(4);
   expect(s.scoreOf.size).toBe(1);
   // Una pulsación en el traste 4 entre la nota 0 (ya puntuada) y la 1 solo puntúa la 1.
-  s.judge({ string: 1, fret: 4, kind: 'pluck' }, 4.6);
+  s.judge({ string: 1, fret: 4, kind: 'pluck' }, 4.65);
   expect(s.scoreOf.get(1)).toMatchObject({ points: 2, exact: true });
   expect(s.scoreOf.size).toBe(2);
   expect(s.maxScore).toBe(12);
@@ -404,7 +466,7 @@ test('puntos: no se acumulan -- la exacta sustituye a la cercana; cada nota y ca
 
 test('puntos: al 50 % los márgenes siguen siendo en segundos reales', () => {
   // A media velocidad la nota 0 cae en real = 8.
-  for (const [offset, expected] of [[0.15, 4], [0.25, 3], [0.45, 2]] as const) {
+  for (const [offset, expected] of [[0.05, 4], [0.15, 3], [0.35, 2]] as const) {
     const s = new RiffSession(fakeChart(), { ...ritmo, speed: 0.5 }, 0, 'nada');
     s.judge({ string: 1, fret: 2, kind: 'pluck' }, 8 + offset);
     expect(s.scoreOf.get(0)?.points).toBe(expected);
@@ -421,18 +483,20 @@ test('puntos: paso a paso no puntúa nada, aunque sigue contando aciertos', () =
   expect(s.scoring).toBe(false);
 });
 
-test('puntos: continuar tras pausa y el bucle vuelven a dejar las notas por puntuar', () => {
-  const s = new RiffSession(twoBarChart(), { ...ritmo, toBar: 2 }, 0, 'nada');
-  s.judge({ string: 1, fret: 2, kind: 'pluck' }, 4);
-  s.judge({ string: 1, fret: 7, kind: 'pluck' }, 9);
-  expect(s.totalScore).toBe(8);
-  s.pause(9.6);
-  s.resume(20); // vuelve al compás 1: todo por puntuar otra vez
-  expect(s.totalScore).toBe(0);
+test('puntos: con bucle ("modo práctica") cada nota se valora (se ve) pero no se suma', () => {
   const loop = new RiffSession(fakeChart(), { ...ritmo, loop: true }, 0, 'nada');
-  loop.judge({ string: 1, fret: 2, kind: 'pluck' }, 4);
-  loop.advance(4 + 5.1);
+  expect(loop.scoring).toBe(false);
+  expect(loop.rated).toBe(true);
+  expect(loop.judge({ string: 1, fret: 2, kind: 'pluck' }, 4).hit?.id).toBe(0);
+  expect(loop.scoreOf.get(0)).toMatchObject({ points: 4, exact: true });
   expect(loop.totalScore).toBe(0);
+  // Al quitar el bucle y continuar, lo valorado en práctica no pasa a la partida que suma.
+  loop.pause(4.5);
+  const real = new RiffSession(loop.chart, ritmo, 10, 'nada');
+  real.continueFrom(loop, 10);
+  expect(real.totalScore).toBe(0);
+  expect(real.scoreOf.size).toBe(0);
+  expect(real.locked.size).toBe(0);
 });
 
 // --- Notas repetidas con la pulsación MANTENIDA.
@@ -615,22 +679,24 @@ test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {
 
 // Altura de las notas por nivel (lanes.ts, decisión del usuario 2026-10-27): fuera de Experto, las
 // cuerdas se reparten centradas entre las filas de La (5) y Si (2); los Mi quedan para Experto.
-test('carriles: 1 cuerda al centro, 2 arriba/abajo, 3 arriba/centro/abajo, 4 en las filas de La a Si', () => {
+test('carriles: 1 cuerda al centro, 2 en las filas de La y Sol, 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
   expect([...laneRows([6])]).toEqual([[6, 3.5]]);
-  expect([...laneRows([5, 6])]).toEqual([[6, 4.25], [5, 2.75]]);
+  // 2026-10-28 (usuario): más separadas -- Medio en las filas de La y Sol; Difícil, 1,2 filas.
+  expect([...laneRows([5, 6])]).toEqual([[6, 5], [5, 3]]);
   expect([...laneRows([4, 5, 6])]).toEqual([[6, 5], [5, 3.5], [4, 2]]);
-  expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5], [5, 4], [4, 3], [3, 2]]);
+  expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5.3], [5, 4.1], [4, 2.9], [3, 1.7]]);
   for (const strings of [[6], [5, 6], [4, 5, 6], [3, 4, 5, 6]]) {
     for (const row of laneRows(strings).values()) {
-      expect(row).toBeGreaterThanOrEqual(2);
-      expect(row).toBeLessThanOrEqual(5);
+      // Nunca en las filas de los dos Mi (los bordes del mástil).
+      expect(row).toBeGreaterThan(1);
+      expect(row).toBeLessThan(6);
     }
   }
   // Casillas: hasta la mitad del camino a la vecina; las de fuera, hasta el borde del mástil.
   const two = laneRows([5, 6]);
   expect(laneAt(two, 1)).toBe(5);
-  expect(laneAt(two, 3.4)).toBe(5);
-  expect(laneAt(two, 3.6)).toBe(6);
+  expect(laneAt(two, 3.9)).toBe(5);
+  expect(laneAt(two, 4.1)).toBe(6);
   expect(laneAt(two, 6)).toBe(6);
   expect(laneAt(laneRows([6]), 1)).toBe(6);
 });

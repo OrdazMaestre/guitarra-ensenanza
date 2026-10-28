@@ -10,13 +10,17 @@ import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
 import { isAdjacentSlide, type PracticeNoteEvent } from '../useFretboardPractice';
 
 // Puntuación por nota (decisión del usuario), con márgenes en segundos REALES (también al 50 %):
-// exacta ≤0,2 s = 4 "Perfecto", ≤0,3 = 3, ≤0,5 = 2; cercana (a una casilla) ≤0,3 = 1, ≤0,5 = 0,5;
+// exacta ≤0,1 s = 4 "Perfecto", ≤0,2 = 3, ≤0,4 = 2; cercana (a una casilla) ≤0,2 = 1, ≤0,4 = 0,5;
 // lejana o más tarde, 0. Cada nota puntúa UNA vez: una cercana se puede cambiar por la exacta
-// (nunca se suman) y una pulsación solo cuenta para una nota.
-export const PERFECT_SECONDS = 0.2;
-export const GOOD_SECONDS = 0.3;
-export const HIT_WINDOW_SECONDS = 0.5;
+// (nunca se suman) y una pulsación solo cuenta para una nota. Todos los márgenes se recortaron
+// 0,1 s el 2026-10-28 (eran 0,2 / 0,3 / 0,5; usuario: "demasiado fácil"); HIT_WINDOW_SECONDS también
+// decide qué cuenta como acierto (abre el sonido de la canción).
+export const PERFECT_SECONDS = 0.1;
+export const GOOD_SECONDS = 0.2;
+export const HIT_WINDOW_SECONDS = 0.4;
 export const PERFECT_POINTS = 4;
+// Compases que se retrocede al continuar tras una pausa.
+export const RESUME_BARS_BACK = 2;
 // Nota repetida con la pulsación MANTENIDA (ver `autoHold`): cuenta SIEMPRE, quede lo que quede
 // hasta ella, pero puntúa según el hueco con la anterior (decisión del usuario, para que mantener
 // compense solo cuando hace falta): semicorchea (o menos) +1, corchea +2, negra +1, blanca o más +½.
@@ -130,15 +134,28 @@ export class RiffSession {
   readonly scoreOf = new Map<number, NoteScore>();
   // Pulsación mantenida: clave de posición -> id de la última nota acertada con ella (ver `autoHold`).
   private readonly holdChains = new Map<string, number>();
+  // Notas que ya puntuaron antes de una PAUSA y vuelven a pasar al continuar (los compases de margen):
+  // no pueden volver a puntuar (petición del usuario). Las que no puntuaron sí se pueden recuperar.
+  readonly locked = new Set<number>();
   songPos: number;
   status: RiffStatus = 'countin';
   // Cuántas veces se ha reiniciado el tramo en bucle (la vista lo usa para limpiar efectos).
   loopCount = 0;
+  // Puntúa solo "Con ritmo" y SIN bucle: un bucle es un "modo práctica" (petición del usuario,
+  // 2026-10-28; ahí se puede cambiar hasta la dificultad en mitad de la partida).
   get scoring(): boolean {
+    return this.options.mode === 'ritmo' && !this.options.loop;
+  }
+
+  // Se VALORA cada nota (sus puntos salen sobre su traste) en "Con ritmo", también con bucle: en
+  // modo práctica se ven los puntos de cada nota pero no se suman en ningún lado (petición del
+  // usuario, 2026-10-28; ver `totalScore`).
+  get rated(): boolean {
     return this.options.mode === 'ritmo';
   }
 
   get totalScore(): number {
+    if (!this.scoring) return this.bankedScore;
     let total = this.bankedScore;
     for (const score of this.scoreOf.values()) total += score.points;
     return total;
@@ -182,7 +199,7 @@ export class RiffSession {
   private readonly ownerOf = new Map<number, number>();
   readonly translated: boolean;
 
-  constructor(readonly chart: Chart, readonly options: RiffOptions, now: number, backing: RiffBacking) {
+  constructor(readonly chart: Chart, readonly options: RiffOptions, now: number, readonly backing: RiffBacking) {
     const first = chart.bars.find((bar) => bar.number >= options.fromBar) ?? chart.bars[0];
     const lastIndex = findLastIndex(chart.bars, (bar) => bar.number <= options.toBar);
     const last = chart.bars[lastIndex] ?? chart.bars[chart.bars.length - 1];
@@ -230,8 +247,10 @@ export class RiffSession {
     this.status = 'paused';
   }
 
-  // CONTINUAR tras una pausa: retrocede UN compás (al inicio del compás anterior al de la pausa,
-  // sin salirse del tramo), con cuenta de entrada. Las notas desde ahí vuelven a estar por tocar.
+  // CONTINUAR tras una pausa: retrocede DOS compases (al inicio del segundo compás anterior al de la
+  // pausa, sin salirse del tramo), con cuenta de entrada (petición del usuario, 2026-10-28; antes,
+  // uno). En ese margen, las notas que YA puntuaron no vuelven a contar (`locked`) y las que no
+  // puntuaron se pueden recuperar.
   resume(now: number): void {
     if (this.status !== 'paused') return;
     if (this.stoppedAtBreak !== null) {
@@ -241,12 +260,9 @@ export class RiffSession {
     const bars = this.chart.bars.filter((bar) => bar.t >= this.startT - 1e-6 && bar.t < this.endT - 1e-6);
     let current = 0;
     bars.forEach((bar, i) => { if (bar.t <= this.songPos + 1e-6) current = i; });
-    const target = bars[Math.max(0, current - 1)]?.t ?? this.startT;
+    const target = bars[Math.max(0, current - RESUME_BARS_BACK)]?.t ?? this.startT;
     for (const note of this.notes) {
-      if (note.t >= target - 1e-6) {
-        this.hitAt.delete(note.id);
-        this.scoreOf.delete(note.id);
-      }
+      if (note.t >= target - 1e-6 && (this.scoreOf.has(note.id) || this.hitAt.has(note.id))) this.locked.add(note.id);
     }
     this.holdChains.clear();
     this.countInTarget = target;
@@ -258,6 +274,39 @@ export class RiffSession {
     this.nextBand = this.bandIndexFrom(target);
     this.status = 'countin';
     this.lastReal = now;
+  }
+
+  // Continuar con OTROS ajustes (velocidad, pista, acompañamiento, ritmo, compases...; todo menos la
+  // dificultad, petición del usuario): esta sesión nueva hereda la que estaba en pausa y sigue desde
+  // donde se paró, dos compases antes. Con el mismo chart (otros ajustes) hereda nota a nota lo
+  // acertado y lo puntuado; con otro chart (otra pista) guarda los puntos ya ganados y bloquea las
+  // notas que caen en el mismo instante que una que ya puntuó. Si el punto de pausa queda fuera del
+  // tramo nuevo, empieza al principio del tramo.
+  continueFrom(old: RiffSession, now: number): void {
+    if (!old.scoring) {
+      // De una partida que no suma (bucle = modo práctica, o "Paso a paso") solo se hereda DÓNDE se
+      // iba: lo acertado o valorado ahí no pasa a una partida que sí suma.
+      this.bankedScore = old.bankedScore;
+    } else if (old.chart === this.chart) {
+      old.hitAt.forEach((t, id) => this.hitAt.set(id, t));
+      old.scoreOf.forEach((score, id) => this.scoreOf.set(id, score));
+      old.locked.forEach((id) => this.locked.add(id));
+      this.bankedScore = old.bankedScore;
+    } else {
+      this.bankedScore = old.totalScore;
+      const key = (t: number) => Math.round(t * 1000);
+      const timeOf = new Map(old.notes.map((note) => [note.id, key(note.t)]));
+      const scored = new Set([...old.scoreOf.keys(), ...old.hitAt.keys()].map((id) => timeOf.get(id)));
+      const hit = new Set([...old.hitAt.keys()].map((id) => timeOf.get(id)));
+      for (const note of this.notes) {
+        if (scored.has(key(note.t))) this.locked.add(note.id);
+        if (hit.has(key(note.t))) this.hitAt.set(note.id, note.t);
+      }
+    }
+    const inside = old.songPos >= this.startT - 1e-6 && old.songPos < this.endT - 1e-6;
+    this.songPos = inside ? old.songPos : this.startT;
+    this.status = 'paused';
+    this.resume(now);
   }
 
   // Tras una parada automática: cuenta de entrada de 4 negras desde donde se paró, sin retroceder.
@@ -326,6 +375,7 @@ export class RiffSession {
     this.stoppedAtBreak = null;
     this.hitAt.clear();
     this.scoreOf.clear();
+    this.locked.clear();
     this.holdChains.clear();
     this.songPos = this.startT - COUNT_IN_BEATS * (60 / this.chart.bpm);
     this.status = 'countin';
@@ -428,7 +478,7 @@ export class RiffSession {
     let best: ChartNote | null = null;
     for (const note of this.notes) {
       if (note.t > this.songPos + window) break;
-      if (this.hitAt.has(note.id) || Math.abs(note.t - this.songPos) > window || !accept(note)) continue;
+      if (this.hitAt.has(note.id) || this.locked.has(note.id) || Math.abs(note.t - this.songPos) > window || !accept(note)) continue;
       if (!best || Math.abs(note.t - this.songPos) < Math.abs(best.t - this.songPos)) best = note;
     }
     return best;
@@ -454,7 +504,7 @@ export class RiffSession {
     const deviation = (note: ChartNote) => Math.abs(note.t - this.songPos) / this.options.speed;
     // La exacta tiene prioridad (y puede cambiar una cercana ya puntuada por sus puntos).
     let best = this.closest(window, (note) => this.matches(note, event));
-    if (!best && this.scoring) {
+    if (!best && this.rated) {
       // Cercana: solo puntos (no abre el sonido), y solo en una nota aún sin puntuar.
       const near = this.closest(window, (note) => !this.scoreOf.has(note.id) && this.isNear(note, event));
       if (near) this.scoreOf.set(near.id, { points: points(false, deviation(near)), exact: false, at: this.songPos });
@@ -469,7 +519,7 @@ export class RiffSession {
       if (best) this.songPos = Math.max(this.songPos, best.t);
     }
     if (!best) return miss;
-    if (this.scoring) this.scoreOf.set(best.id, { points: points(true, deviation(best)), exact: true, at: this.songPos });
+    if (this.rated) this.scoreOf.set(best.id, { points: points(true, deviation(best)), exact: true, at: this.songPos });
     this.hitAt.set(best.id, this.songPos);
     this.holdChains.set(this.holdKey(best), best.id);
     return { gain: 0, hit: best, playNow: this.playNowFor(best) };
@@ -528,10 +578,10 @@ export class RiffSession {
           if (this.options.freeStrings || note.string === prev.string) break;
         }
         const next = this.notes[nextIndex];
-        if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id)) break;
+        if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id) || this.locked.has(next.id)) break;
         this.hitAt.set(next.id, this.songPos);
         const points = holdPoints((next.t - prev.t) / this.quarterSecondsAt(prev.t));
-        if (this.scoring) this.scoreOf.set(next.id, { points, exact: true, at: this.songPos });
+        if (this.rated) this.scoreOf.set(next.id, { points, exact: true, at: this.songPos });
         this.holdChains.set(key, next.id);
         out.push(next);
         index = nextIndex;

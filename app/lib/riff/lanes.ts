@@ -1,30 +1,31 @@
 // Altura (en el mástil) a la que caen las notas del juego en cada nivel. Pura, para probarla en Node.
 //
 // Experto: cada nota cae en su cuerda real. El resto de niveles (decisión del usuario,
-// 2026-10-27) usa una distribución optimizada: sus cuerdas se reparten en el espacio que ocupan La
-// grave (A2, fila de la cuerda 5) -> Si (B3, fila de la cuerda 2), centradas, y las filas de los
-// dos Mi (E2 y E4) quedan reservadas para Experto:
-// - 1 cuerda (modo trastes): en el centro.
-// - 2 cuerdas: una por encima del centro y otra por debajo.
-// - 3: arriba, centro y abajo (filas de la Si y la La).
-// - 4: dos arriba y dos abajo (filas de Si, Sol, Re y La).
-// Separación entre cuerdas: como mucho 1,5 filas, y nunca salirse de ese espacio. La casilla de
-// cada cuerda llega hasta la mitad del camino a la vecina (y hasta el borde del mástil en las de
-// fuera), así que se aprovecha todo el alto.
+// 2026-10-27/28) usa una distribución optimizada, con las cuerdas bien SEPARADAS para no depender
+// de tanta precisión en el eje Y y sin llegar a los bordes del mástil (filas de los dos Mi):
+// - 1 cuerda (modo trastes): en el centro (fila 3,5).
+// - 2 (Medio cuerdas): donde normalmente están La y Sol (filas 5 y 3).
+// - 3 (Avanzado cuerdas): filas 5, 3,5 y 2.
+// - 4 (Difícil): separación de 1,2 filas, centradas (5,3 / 4,1 / 2,9 / 1,7).
+// La casilla de cada cuerda llega hasta la mitad del camino a la vecina (y hasta el borde del
+// mástil en las de fuera), así que se aprovecha todo el alto.
 //
 // "Fila" = posición vertical en unidades de cuerda real: fila 1 = cuerda 1 (Mi agudo, arriba),
 // fila 6 = cuerda 6 (Mi grave, abajo).
 
-const CENTER_ROW = 3.5;
-const SPAN_ROWS = 3; // de la fila 2 (Si) a la 5 (La)
-const MAX_GAP_ROWS = 1.5;
+// Filas por número de cuerdas del nivel, de la más grave (abajo) a la más aguda.
+const LANE_ROWS: Record<number, number[]> = {
+  1: [3.5],
+  2: [5, 3],
+  3: [5, 3.5, 2],
+  4: [5.3, 4.1, 2.9, 1.7],
+};
 
 // Fila de cada cuerda usada (las graves, abajo).
 export function laneRows(strings: number[]): Map<number, number> {
   const sorted = [...new Set(strings)].sort((a, b) => b - a); // 6 (grave) primero
-  const n = sorted.length;
-  const gap = n <= 1 ? 0 : Math.min(MAX_GAP_ROWS, SPAN_ROWS / (n - 1));
-  return new Map(sorted.map((string, k) => [string, CENTER_ROW + gap * ((n - 1) / 2 - k)]));
+  const rows = LANE_ROWS[sorted.length] ?? sorted.map((string) => string);
+  return new Map(sorted.map((string, k) => [string, rows[k]]));
 }
 
 // Cuerda cuya casilla contiene la fila `row` (la de centro más cercano).

@@ -30,6 +30,9 @@ export interface LevelProfile {
   freeStrings: boolean;
   // Tope opcional de notas por segundo real (densidad al estilo Guitar Hero).
   maxNotesPerSecond?: number;
+  // Zonas de trastes (de, a) para niveles de una cuerda: la primera para las notas graves y la
+  // última para las agudas, cortando por la mitad de las octavas del instrumento (ver reduce.ts).
+  zones?: Array<[number, number]>;
   // Hueco mínimo de la rejilla en segundos reales: donde una semicorchea dura menos, la rejilla
   // pasa a corcheas (ver gridSlots en reduce.ts).
   minSlotSeconds?: number;
@@ -65,19 +68,23 @@ const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 //   repeticiones): 100 % de golpes en Master of Puppets, compás 42 entero (9 Mi al aire seguidos).
 // Avanzado (trastes) llega al traste 10 y no al 12: con el teclado físico la cuerda 6 solo tiene
 // teclas hasta el traste 10 (ShiftRight, ver FRETBOARD_KEYMAP). Decisión del usuario.
-// Modo cuerdas: Medio (cuerdas 5-6) y Avanzado (4-6) hechos; Difícil (3-6), aún sin construir
-// (decisión del usuario: de uno en uno).
+// Modo cuerdas: Medio (cuerdas 5-6), Avanzado (4-6) y Difícil (3-6), todos hechos (de uno en uno,
+// decisión del usuario).
 export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = {
   practica: { label: 'Práctica', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minGapBeats: 0.5, minGapSeconds: 0.15, repeatGapSeconds: 0.2, maxChord: 1, colorBy: 'fret', freeStrings: true },
   facil: { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.1, repeatGapSeconds: 0.15, maxChord: 1, colorBy: 'fret', freeStrings: true, maxNotesPerSecond: 6 },
   medio: { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
-  avanzado: { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 10, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
+  // Avanzado: dos "Guitar Hero" seguidos (decisión del usuario, 2026-10-28) -- graves en 0-5, agudas en
+  // 5-10 (el 5, en las dos).
+  avanzado: { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 10, zones: [[0, 5], [5, 10]], gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
   // Modo cuerdas Medio: Mi + La (en cuartas exactas), densidad de Medio (trastes); la tab se
   // coloca en las dos cuerdas con el camino de menor coste (reduce.ts, placeSequence).
   'medio-cuerdas': { label: 'Medio', available: true, strings: [5, 6], minFret: 0, maxFret: 11, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
   // Modo cuerdas Avanzado: Mi + La + Re (cuartas exactas), misma densidad y colocación que Medio.
   'avanzado-cuerdas': { label: 'Avanzado', available: true, strings: [4, 5, 6], minFret: 0, maxFret: 12, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
-  dificil: { label: 'Difícil', available: false, strings: [3, 4, 5, 6], minFret: 0, maxFret: 12, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0.08, maxChord: 3, colorBy: 'string', freeStrings: false },
+  // Modo cuerdas Difícil: Mi + La + Re + Sol (las cuatro en cuartas exactas), mismo motor, densidad y
+  // límites que Medio y Avanzado cuerdas (2026-10-28).
+  dificil: { label: 'Difícil', available: true, strings: [3, 4, 5, 6], minFret: 0, maxFret: 12, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
 };
 
 // Dos modos de juego (decisión del usuario), cada uno con sus niveles de menos a más:

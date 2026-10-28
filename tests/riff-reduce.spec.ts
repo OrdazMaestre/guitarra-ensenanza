@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
 import { buildChart, type Chart } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
-import { OPEN_MIDI, placeSequence, reduceChart } from '../app/lib/riff/reduce';
+import { OPEN_MIDI, octaveSplit, pitchRange, placeSequence, reduceChart } from '../app/lib/riff/reduce';
 import { buildRemix, REMIX_GAP_QUARTERS } from '../app/lib/riff/remix';
 
 // Traducción de la tablatura real a niveles sencillos (app/lib/riff/reduce.ts), estilo Guitar Hero.
@@ -84,15 +84,19 @@ for (const [name, file, track] of SONGS) {
   }
 }
 
-test('Avanzado (trastes): una frase que cabe en la cuerda 6 (trastes 0-12) se coloca EXACTA (mismos intervalos)', () => {
+// Con dos zonas (graves 0-5, agudas 5-10), los intervalos exactos se conservan DENTRO de cada zona;
+// entre una grave y una aguda la distancia cambia a propósito.
+test('Avanzado (trastes): dentro de cada zona, una frase que cabe se coloca EXACTA (mismos intervalos)', () => {
   const real = chartOf('feliz-navidad.gp', 0);
   const chart = reduceChart(real, RIFF_LEVELS.avanzado);
+  const split = octaveSplit(pitchRange([real]));
   // Feliz Navidad va en corcheas: Avanzado (negras) se queda con las notas de cada pulso.
   expect(chart.notes.length).toBeGreaterThan(real.notes.length / 3);
   const realAt = (i: number) => real.notes.find((n) => Math.abs(n.t - chart.notes[i].t) < 0.005)!.midi;
   let compared = 0;
   for (let i = 1; i < chart.notes.length; i++) {
     if (chart.notes[i].phrase !== chart.notes[i - 1].phrase) continue;
+    if ((realAt(i) < split) !== (realAt(i - 1) < split)) continue;
     expect(chart.notes[i].midi - chart.notes[i - 1].midi).toBe(realAt(i) - realAt(i - 1));
     compared++;
   }
@@ -127,8 +131,8 @@ const CUERDAS_SONGS: Array<[string, string, number]> = [
   ['Thunderstruck', 'thunderstruck.gp', 0],
   ['Carol of the Bells', 'carol-of-the-bells.gp', 0],
 ];
-// Niveles del modo cuerdas ya construidos (Medio: Mi + La; Avanzado: + Re).
-const CUERDAS_LEVELS = [['medio-cuerdas', 'Medio (cuerdas)'], ['avanzado-cuerdas', 'Avanzado (cuerdas)']] as const;
+// Niveles del modo cuerdas ya construidos (Medio: Mi + La; Avanzado: + Re; Difícil: + Sol).
+const CUERDAS_LEVELS = [['medio-cuerdas', 'Medio (cuerdas)'], ['avanzado-cuerdas', 'Avanzado (cuerdas)'], ['dificil', 'Difícil']] as const;
 
 for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] of CUERDAS_SONGS) {
   test(`${name} en ${levelName}: sus cuerdas, mismas alturas, repetidas quietas, sin saltos imposibles`, () => {
@@ -319,7 +323,7 @@ for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: cada motivo
 });
 
 // Límite de cuerdas por compás (decisión del usuario, 2026-10-27): si la tab usa 1 o 2 cuerdas en un
-// compás, el juego usa como mucho esas, y contiguas.
+// compás, el juego usa como mucho esas, contiguas o exactamente las mismas que la tab.
 for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] of CUERDAS_SONGS) {
   test(`${name} en ${levelName}: en cada compás, como mucho las cuerdas que usa la tab, y contiguas`, () => {
     const real = chartOf(file, track);
@@ -337,7 +341,9 @@ for (const [level, levelName] of CUERDAS_LEVELS) for (const [name, file, track] 
       const used = [...new Set(inBar(chart.notes).map((n) => n.string))].sort((a, b) => a - b);
       if (used.length === 0) continue;
       expect(used.length, `compás ${bar.number}`).toBeLessThanOrEqual(Math.min(realStrings.size, profile.strings.length));
-      expect(used[used.length - 1] - used[0], `compás ${bar.number}`).toBe(used.length - 1);
+      // Contiguas, o exactamente las mismas cuerdas que la tab (aunque se salte alguna).
+      const sameAsTab = [...realStrings].sort((a, b) => a - b).join() === used.join();
+      if (!sameAsTab) expect(used[used.length - 1] - used[0], `compás ${bar.number}`).toBe(used.length - 1);
     }
   });
 }
@@ -366,17 +372,33 @@ for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: las notas d
   for (const [name, file, track] of CUERDAS_SONGS) {
     const real = chartOf(file, track);
     const chart = reduceChart(real, profile);
+    // Solo en frases donde la tab cabe al menos a medias: en una frase que va casi entera por
+    // cuerdas que el nivel no tiene (la melodía de Carol of the Bells en la Si y el Mi agudo) la
+    // frase entera se traslada, y dejar en su sitio las pocas notas que caben la rompería.
+    const leadOf = (note: (typeof chart.notes)[number]) => {
+      const group = real.notes.filter((n) => Math.abs(n.t - note.t) < 0.005).sort((a, b) => a.midi - b.midi);
+      const power = group.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - group[0].midi));
+      return power ? group[0] : group[group.length - 1];
+    };
+    const fits = (note: (typeof chart.notes)[number]) => {
+      const lead = leadOf(note);
+      return profile.strings.includes(lead.string) && lead.fret <= profile.maxFretByString![lead.string];
+    };
+    const phraseFit = new Map<number, [number, number]>();
+    for (const note of chart.notes) {
+      const [inside, total] = phraseFit.get(note.phrase!) ?? [0, 0];
+      phraseFit.set(note.phrase!, [inside + (fits(note) ? 1 : 0), total + 1]);
+    }
     let fit = 0;
     let exact = 0;
     for (const note of chart.notes) {
-      const group = real.notes.filter((n) => Math.abs(n.t - note.t) < 0.005).sort((a, b) => a.midi - b.midi);
-      const power = group.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - group[0].midi));
-      const lead = power ? group[0] : group[group.length - 1];
-      if (!profile.strings.includes(lead.string) || lead.fret > profile.maxFretByString![lead.string]) continue;
+      const [inside, total] = phraseFit.get(note.phrase!)!;
+      if (!fits(note) || inside * 2 < total) continue;
+      const lead = leadOf(note);
       fit++;
       if (lead.string === note.string && lead.fret === note.fret) exact++;
     }
-    console.log(`${name} (${levelName}): ${exact}/${fit} notas que caben, idénticas a la tab`);
+    console.log(`${name} (${levelName}): ${exact}/${fit} notas que caben (en frases que caben a medias o más), idénticas a la tab`);
     if (fit >= 20) expect(exact / fit, name).toBeGreaterThanOrEqual(0.95);
   }
 });
@@ -398,8 +420,9 @@ test('riffs compartidos: Kirk se coloca igual que James en todo lo que tocan jun
   const jl = leads(james);
   const kl = leads(kirk);
   for (const level of ['practica', 'facil', 'medio', 'avanzado', 'medio-cuerdas', 'avanzado-cuerdas'] as const) {
-    const followed = reduceChart(james, RIFF_LEVELS[level]);
-    const chart = reduceChart(kirk, RIFF_LEVELS[level], followed);
+    const range = pitchRange([james, kirk]);
+    const followed = reduceChart(james, RIFF_LEVELS[level], { range });
+    const chart = reduceChart(kirk, RIFF_LEVELS[level], { follow: followed, range });
     const byTime = new Map(followed.notes.map((n) => [Math.round(n.t * 1000), n]));
     let shared = 0;
     let same = 0;
@@ -413,6 +436,51 @@ test('riffs compartidos: Kirk se coloca igual que James en todo lo que tocan jun
     expect(shared, level).toBeGreaterThan(150);
     expect(same / shared, level).toBeGreaterThanOrEqual(0.99);
   }
+});
+
+// Avanzado (modo trastes): dos "Guitar Hero" seguidos (decisión del usuario, 2026-10-28) -- graves
+// en 0-5, agudas en 5-10, cortando por la mitad de las octavas del instrumento (todas sus pistas).
+test('Avanzado (trastes): graves en los trastes 0-5 y agudas en 5-10, con el corte de octavas del instrumento', () => {
+  expect(octaveSplit([40, 86])).toBe(64);
+  for (const [name, file, track] of CUERDAS_SONGS) {
+    const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+    const guitars = score.tracks.map((t, index) => ({ t, index })).filter(({ t }) => t.staves[0] && !t.staves[0].isPercussion && t.staves[0].tuning.length === 6);
+    const range = pitchRange(guitars.map(({ index }) => buildChart(at, score, index, 24)));
+    const split = octaveSplit(range);
+    const real = chartOf(file, track);
+    const chart = reduceChart(real, RIFF_LEVELS.avanzado, { range });
+    let pairs = 0;
+    let sameDirection = 0;
+    chart.notes.forEach((note, i) => {
+      const group = real.notes.filter((n) => Math.abs(n.t - note.t) < 0.005).sort((a, b) => a.midi - b.midi);
+      const power = group.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - group[0].midi));
+      const lead = (power ? group[0] : group[group.length - 1]).midi;
+      if (lead < split) expect(note.fret, `${name}: grave ${lead}`).toBeLessThanOrEqual(5);
+      else expect(note.fret, `${name}: aguda ${lead}`).toBeGreaterThanOrEqual(5);
+      const prev = chart.notes[i - 1];
+      if (prev && prev.phrase === note.phrase) {
+        const prevGroup = real.notes.filter((n) => Math.abs(n.t - prev.t) < 0.005).sort((a, b) => a.midi - b.midi);
+        const prevPower = prevGroup.every((n) => [0, 5, 7, 12, 17, 19, 24].includes(n.midi - prevGroup[0].midi));
+        const prevLead = (prevPower ? prevGroup[0] : prevGroup[prevGroup.length - 1]).midi;
+        pairs++;
+        if (Math.sign(note.fret - prev.fret) === Math.sign(lead - prevLead)) sameDirection++;
+      }
+    });
+    if (pairs > 0) expect(sameDirection / pairs, name).toBeGreaterThanOrEqual(0.95);
+  }
+});
+
+test('Avanzado (trastes), Master of Puppets: James entero en 0-5; el solo de Kirk (compases 9-12) en 5-10', () => {
+  const james = chartOf('prueba-master-of-puppets.gp', 1);
+  const kirk = chartOf('prueba-master-of-puppets.gp', 2);
+  const range = pitchRange([james, kirk]);
+  const jamesChart = reduceChart(james, RIFF_LEVELS.avanzado, { range });
+  expect(Math.max(...jamesChart.notes.map((n) => n.fret))).toBeLessThanOrEqual(5);
+  const kirkChart = reduceChart(kirk, RIFF_LEVELS.avanzado, { follow: jamesChart, range });
+  const solo = kirk.bars.filter((b) => b.number >= 9 && b.number <= 12).slice(0, 4);
+  const inSolo = kirkChart.notes.filter((n) => solo.some((b) => n.t >= b.t - 1e-6 && n.t < b.end - 1e-6));
+  expect(inSolo.length).toBeGreaterThan(20);
+  expect(Math.min(...inSolo.map((n) => n.fret))).toBeGreaterThanOrEqual(5);
 });
 
 test('placeSequence: salto grande rápido -> cuerda siguiente; paso cromático -> misma cuerda; la tab manda en los empates', () => {

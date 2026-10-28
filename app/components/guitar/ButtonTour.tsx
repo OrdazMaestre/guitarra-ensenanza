@@ -30,13 +30,13 @@ const metronome = anyOf(byLabel('Activar metrónomo'), byLabel('Desactivar metr�
 const keyboardToggle = (root: HTMLElement) => root.querySelector('.midi-kb-toggle');
 
 export const FRETBOARD_TOUR: TourStep[] = [
-  { title: 'JUGAR', lines: ['Abre el juego.', 'Las notas bajan hacia el mástil.', 'Tócalas cuando lleguen.'], find: (root) => root.querySelector('.riff-open-toggle') },
-  { title: 'Diestro o zurdo', lines: ['Da la vuelta al mástil.', 'Úsalo si tocas con la otra mano.'], find: anyOf(byLabel('Cambiar a modo zurdo'), byLabel('Cambiar a modo diestro')) },
-  { title: 'Afinar', lines: ['Cambia la afinación de las cuerdas.', 'Puedes elegir otras afinaciones.'], find: byLabel('Afinar el mástil') },
-  { title: 'CLEAN / OVERDRIVE', lines: ['Cambia el sonido.', 'CLEAN suena limpio.', 'OVERDRIVE suena a rock.'], find: byLabel('Cambiar sonido clean u overdrive') },
+  { title: 'JUGAR', lines: ['Las notas bajan al mástil.', 'Tócalas cuando lleguen.'], find: (root) => root.querySelector('.riff-open-toggle') },
+  { title: 'Diestro o zurdo', lines: ['Dale la vuelta si tocas con la otra mano.'], find: anyOf(byLabel('Cambiar a modo zurdo'), byLabel('Cambiar a modo diestro')) },
+  { title: 'Afinar', lines: ['Cambia la afinación de las cuerdas.'], find: byLabel('Afinar el mástil') },
+  { title: 'CLEAN / OVERDRIVE', lines: ['Cambia el sonido.'], find: byLabel('Cambiar sonido clean u overdrive') },
   { title: 'Colores', lines: ['Pinta notas para ver dónde se repiten.'], find: anyOf(byLabel('Activar marcador de notas'), byLabel('Desactivar marcador de notas')) },
-  { title: 'KEYBOARD', lines: ['Toca con el teclado del ordenador.', 'Graves y Agudas cambian la zona.'], find: keyboardToggle },
-  { title: 'Metrónomo', lines: ['Marca el pulso, como un reloj.', 'Ábrelo para cambiar la velocidad.'], find: metronome },
+  { title: 'KEYBOARD', lines: ['Toca con un teclado de ordenador.'], find: keyboardToggle },
+  { title: 'Metrónomo', lines: ['Marca el pulso, como un reloj.'], find: metronome },
 ];
 
 export const KEYBOARD_TOUR: TourStep[] = [
@@ -47,11 +47,11 @@ export const KEYBOARD_TOUR: TourStep[] = [
 const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.riff-dd-toggle[aria-controls="riff-menu-${id}"]`);
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
-  { title: 'Pista', lines: ['Elige qué guitarra tocas.', 'S es la solista.', 'R es la rítmica.'], find: ddToggle('pista') },
-  { title: 'Nivel', lines: ['Hay dos modos.', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.', 'Experto es la canción de verdad.'], find: ddToggle('nivel') },
-  { title: 'Acompañamiento', lines: ['Elige qué suena contigo:', 'batería, metrónomo o nada.'], find: ddToggle('modo') },
-  { title: 'Velocidad', lines: ['Más lento es más fácil.', 'Empieza al 75 %.'], find: ddToggle('velocidad') },
-  { title: 'Ritmo', lines: ['Con ritmo: la canción no espera.', 'Paso a paso: espera a que toques.'], find: ddToggle('ritmo') },
+  { title: 'Pista', lines: ['Elige qué guitarra tocas.'], find: ddToggle('pista') },
+  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
+  { title: 'Acompañamiento', lines: ['Elige el ritmo:', 'batería, metrónomo o nada.'], find: ddToggle('modo') },
+  { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
+  { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
   { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
   { title: 'Partida de prueba', lines: ['Aprende tres trucos jugando:', 'mantener pulsado, tapping y deslizar.'], find: (root) => root.querySelector('.tour-launch') },

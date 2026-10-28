@@ -14,7 +14,7 @@ test.use({ hasTouch: false });
 const URL = '/lecciones/temario/sala-de-pruebas';
 const SVG = '.test-room-fretboard svg.reduced-fretboard';
 
-function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' = 'experto') {
+function jamesChart(level: 'experto' | 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' = 'experto') {
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   return level === 'experto' ? buildChart(at, score, 1, 12) : reduceChart(buildChart(at, score, 1, 24), RIFF_LEVELS[level]);
 }
@@ -55,13 +55,13 @@ async function openGame(page: Page) {
 
 // Abre el desplegable `menu` ("Pista", "Ritmo"...) del panel y elige `option`.
 // En "Nivel", los dos modos tienen un "Medio" y un "Avanzado": por defecto, el del modo trastes
-// (Experto solo está en el de cuerdas); "Medio cuerdas" elige el del modo cuerdas.
+// (Difícil y Experto solo están en el de cuerdas); "Medio cuerdas" elige el del modo cuerdas.
 async function choose(page: Page, menu: string, option: string) {
   await page.locator('.riff-dd-toggle', { hasText: menu }).click();
   let scope = page.locator('.riff-dd-menu');
   let name = option;
   if (menu === 'Nivel') {
-    const cuerdas = option.endsWith(' cuerdas') || option === 'Experto';
+    const cuerdas = option.endsWith(' cuerdas') || option === 'Experto' || option === 'Difícil';
     name = option.replace(/ cuerdas$/, '');
     scope = scope.getByRole('group', { name: cuerdas ? 'Modo cuerdas' : 'Modo trastes' });
   }
@@ -156,7 +156,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(page.getByRole('button', { name: 'Volver a empezar' })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeEnabled();
 
-  // Continuar: retoma (un compás antes, con cuenta de entrada) y pliega el panel.
+  // Continuar: retoma (dos compases antes, con cuenta de entrada) y pliega el panel.
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
   await expect(overlay).toHaveCount(0);
@@ -169,9 +169,19 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
   await expect(overlay).toHaveCount(0);
 
-  // Cambiar un ajuste en pausa invalida esa partida: ya solo se puede volver a empezar.
+  // Cambiar un ajuste en pausa (velocidad, pista...) NO anula la partida: Continuar sigue con él
+  // (petición del usuario, 2026-10-28).
   await hold(page, pause);
   await choose(page, 'Velocidad', '50%');
+  await choose(page, 'Pista', 'Guitarra rítmica');
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+  await expect(overlay).toHaveCount(0);
+
+  // Cambiar la DIFICULTAD sí la anula: ya solo se puede volver a empezar.
+  await hold(page, pause);
+  await choose(page, 'Nivel', 'Fácil');
   await expect(stage).toHaveAttribute('data-status', 'idle');
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await expect(pause).toHaveCount(0);
@@ -185,7 +195,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas'], ['dificil', 'Difícil']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -207,7 +217,7 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'],
     await tap(page, first.string, first.fret === 0 ? 1 : first.fret - 1);
     // Modo cuerdas: el traste correcto en OTRA cuerda tampoco cuenta.
     // (En Medio cuerdas, pulsando en la franja de la otra cuerda del nivel.)
-    const cuerdas = level === 'medio-cuerdas' || level === 'avanzado-cuerdas';
+    const cuerdas = level === 'medio-cuerdas' || level === 'avanzado-cuerdas' || level === 'dificil';
     const laneRow = (string: number) => (cuerdas ? laneRows(RIFF_LEVELS[level].strings).get(string)! : string);
     if (cuerdas || level === 'experto') await tap(page, first.string === 6 ? 5 : 6, first.fret, laneRow(first.string === 6 ? 5 : 6));
     await page.waitForTimeout(200);
@@ -236,7 +246,7 @@ test('Kirk sigue a James en los riffs compartidos (Avanzado cuerdas, paso a paso
   const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
   const profile = RIFF_LEVELS['avanzado-cuerdas'];
   const james = reduceChart(buildChart(at, score, 1, 24), profile);
-  const kirk = reduceChart(buildChart(at, score, 2, 24), profile, james);
+  const kirk = reduceChart(buildChart(at, score, 2, 24), profile, { follow: james });
   const first = kirk.notes[0];
   expect(james.notes.find((n) => Math.abs(n.t - first.t) < 0.005)).toMatchObject({ string: first.string, fret: first.fret });
   await page.setViewportSize({ width: 1366, height: 900 });
@@ -253,6 +263,80 @@ test('Kirk sigue a James en los riffs compartidos (Avanzado cuerdas, paso a paso
   await expect(panel).toHaveAttribute('data-hits', '1');
 });
 
+// Al empezar (petición del usuario): abajo del todo, los números de traste; encima, todo lo posible
+// de la autopista. La barra MIDI solo entra si cabe todo (pantalla alta).
+for (const [name, width, height, pillVisible] of [['pantalla baja (móvil apaisado)', 760, 420, false], ['pantalla alta', 1366, 1400, true]] as const) {
+  test(`al empezar, ${name}: números de traste abajo, máxima autopista arriba`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.goto(URL);
+    await openGame(page);
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+    await page.waitForTimeout(300);
+    const svg = (await page.locator(SVG).boundingBox())!;
+    const pill = (await page.locator('.test-room-fretboard .midi-float-pill').boundingBox())!;
+    if (pillVisible) {
+      expect(Math.abs(pill.y + pill.height - height)).toBeLessThanOrEqual(3);
+    } else {
+      expect(Math.abs(svg.y + svg.height - height)).toBeLessThanOrEqual(3);
+      expect(pill.y).toBeGreaterThanOrEqual(height - 1);
+    }
+  });
+}
+
+test('MAIkael no se abre mientras se juega (sí en pausa)', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+  const maikael = page.getByRole('button', { name: 'Abrir a MAIkael' });
+  await expect(maikael).toHaveAttribute('aria-disabled', 'true');
+  await maikael.click({ force: true });
+  await page.waitForTimeout(500);
+  await expect(page.getByRole('button', { name: 'Cerrar a MAIkael' })).toHaveCount(0);
+  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'paused');
+  await expect(maikael).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+// Bucle = "modo práctica" (petición del usuario): no puntúa y deja cambiar la DIFICULTAD en pausa
+// y continuar. Sin bucle, cambiar la dificultad sí anula la partida.
+test('con bucle no se puntúa y se puede cambiar la dificultad en pausa y continuar', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.getByLabel('Desde el compás').fill('9');
+  await page.getByLabel('Hasta el compás').fill('12');
+  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
+  await page.keyboard.press('Escape');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+  await expect(page.getByTestId('riff-score')).toHaveText('');
+  const pause = page.getByRole('button', { name: 'PAUSA' });
+  await hold(page, pause);
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await choose(page, 'Nivel', 'Medio cuerdas');
+  await page.waitForTimeout(500);
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  // El tramo del bucle (9-12) se conserva al cambiar de dificultad (bug real: volvía a 1-103).
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toContainText('9–12');
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+  // Quitar el bucle con otra dificultad que la de la partida en pausa sí la anula.
+  await hold(page, pause);
+  await choose(page, 'Nivel', 'Avanzado cuerdas');
+  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
+  await page.keyboard.press('Escape');
+  await expect(stage).toHaveAttribute('data-status', 'idle');
+});
+
 test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
@@ -262,7 +346,7 @@ test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estira
   const before = (await svg.boundingBox())!;
   await openGame(page);
   // Modo trastes Práctica, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
-  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Experto', 13]] as const) {
+  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
