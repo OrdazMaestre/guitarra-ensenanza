@@ -240,9 +240,10 @@ export interface PlaceWeights {
   pattern: number; // por colocar una nota de un motivo repetido distinto de su versión elegida
   leap: number; // por (traste fuera de la caja)²: los saltos largos dentro de la frase, carísimos
   zone: number; // por traste de distancia a la zona de su altura (graves izquierda, agudas derecha)
+  register: number; // por semitono de distancia a la altura que le toca en el mapa de registro
 }
 
-export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 0.2, tab: 1.5, high: 0.1, open: 1, pattern: 3, leap: 0, zone: 0 };
+export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 0.2, tab: 1.5, high: 0.1, open: 1, pattern: 3, leap: 0, zone: 0, register: 0 };
 
 // Pesos del JUEGO (niveles con varias cuerdas; decisión del usuario, 2026-10-27): no se busca
 // imitar a un guitarrista sino que se lea bien jugando -- figuras compactas aunque cambien de
@@ -255,7 +256,7 @@ export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 
 // `tab` 3 (2026-10-27): con la fidelidad bien aplicada (ver placePhraseMulti), 1,5 dejaba transportes
 // innecesarios; con 3, las notas cuya posición real cabe en el nivel salen idénticas a la tab en el
 // 98,8-99,7 % (James y Kirk, Medio y Avanzado cuerdas). Con 5 casi no cambia.
-export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box: 2, leap: 1, zone: 0.7, pattern: 8, tab: 3 };
+export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box: 2, leap: 1, zone: 0.7, pattern: 8, tab: 3, register: 1.5 };
 // Riffs compartidos con la guitarra que manda (ver `followPins`): ir a otro sitio cuesta esto por
 // nota, mucho más que cualquier otro término.
 const PIN_COST = 30;
@@ -265,6 +266,8 @@ const SAME_PITCH_MOVE_COST = 50;
 // Trastes de margen alrededor de la zona preferida sin coste (la zona orienta, no obliga: los
 // tappings pueden abrirse).
 const ZONE_TOLERANCE = 2;
+// Semitonos de margen alrededor de la altura que marca el mapa de registro, sin coste.
+const REGISTER_TOLERANCE = 3;
 
 export interface PlaceItem {
   pitch: number;
@@ -273,6 +276,8 @@ export interface PlaceItem {
   real?: { string: number; fret: number };
   // Traste preferido para esta nota (zonas: graves a la izquierda, agudas a la derecha).
   zoneFret?: number;
+  // Altura que le toca según el mapa de registro de la pista (ver `registerMap`).
+  registerPitch?: number;
 }
 
 // Coste de pasar de `prev` (con la mano en `prevHand`) a `place`, `dt` segundos después.
@@ -292,8 +297,9 @@ export function placeSequence(
   positions: LanePosition[],
   weights: PlaceWeights = PLACE_WEIGHTS,
   unary?: (index: number, place: LanePosition) => number,
-  // Cuerdas permitidas para cada nota (límite de cuerdas por compás); sin él, todas.
-  stringsAt?: (index: number) => Set<number> | null,
+  // Posiciones permitidas para cada nota (límite de cuerdas por compás, mitad derecha de un pasaje
+  // rápido...); sin él, todas.
+  allowedAt?: (index: number, place: LanePosition) => boolean,
 ): { path: LanePosition[]; cost: number } | null {
   if (items.length === 0) return { path: [], cost: 0 };
   type State = { cost: number; place: LanePosition; hand: number | null; back: State | null };
@@ -302,13 +308,13 @@ export function placeSequence(
     if (place.fret === 0) cost -= weights.open;
     if (item.real && (item.real.string !== place.string || item.real.fret !== place.fret)) cost += weights.tab;
     if (item.zoneFret !== undefined) cost += weights.zone * Math.max(0, Math.abs(place.fret - item.zoneFret) - ZONE_TOLERANCE);
+    if (item.registerPitch !== undefined) cost += weights.register * Math.max(0, Math.abs(place.pitch - item.registerPitch) - REGISTER_TOLERANCE);
     return cost + (unary ? unary(index, place) : 0);
   };
   let layer: State[] = [];
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
-    const allowed = stringsAt?.(index) ?? null;
-    const places = positions.filter((p) => p.pitch === item.pitch && (!allowed || allowed.has(p.string)));
+    const places = positions.filter((p) => p.pitch === item.pitch && (!allowedAt || allowedAt(index, p)));
     const next = new Map<string, State>();
     for (const place of places) {
       const own = noteCost(item, index, place);
@@ -372,15 +378,20 @@ function placePhraseMulti(
   phrase: Onset[],
   layout: ReturnType<typeof laneLayout>,
   zoneOf: (pitch: number) => number,
+  registerOf: ((pitch: number) => number) | null,
   // Para cada nota, el grupo de compás al que pertenece; y para cada grupo, sus opciones de cuerdas.
   groupOf: number[],
   groupOptions: number[][][],
   unary?: (index: number, place: LanePosition) => number,
+  // Ventana de trastes [de, a] de cada grupo (pasaje rápido aislado en una cuerda); si no, todos.
+  groupFrets: Array<[number, number]> = [],
 ): LanePosition[] {
   const pitches = phrase.map((onset) => onset.lead.midi);
   const maxFretOf = new Map<number, number>();
   for (const p of layout.positions) maxFretOf.set(p.string, Math.max(maxFretOf.get(p.string) ?? 0, p.fret));
-  const pitchesOn = (strings: number[]) => [...new Set(layout.positions.filter((p) => strings.includes(p.string)).map((p) => p.pitch))].sort((a, b) => a - b);
+  const minOf = (g: number) => groupFrets[g]?.[0] ?? 0;
+  const maxOf = (g: number) => groupFrets[g]?.[1] ?? Infinity;
+  const pitchesOn = (strings: number[], minFret = 0, maxFret = Infinity) => [...new Set(layout.positions.filter((p) => strings.includes(p.string) && p.fret >= minFret && p.fret <= maxFret).map((p) => p.pitch))].sort((a, b) => a - b);
 
   // Cuerdas que cada grupo de compás puede llegar a usar (en alguna de sus opciones).
   const reachable = groupOptions.map((options) => new Set(options.flat()));
@@ -394,16 +405,16 @@ function placePhraseMulti(
     // transporte la frase o la mueva a otras cuerdas sin necesidad paga `tab` por cada nota que se
     // aparta. (Antes solo pagaban los candidatos que conservaban la forma en la combinación probada,
     // y el resto se libraba entero: James salía 6/0 donde la tab dice 6/2, o el compás 33 en la Re.)
-    const fixedReal = phrase.map((onset, k) => (reachable[groupOf[k]].has(onset.lead.string) && onset.lead.fret <= maxFretOf.get(onset.lead.string)!
+    const fixedReal = phrase.map((onset, k) => (reachable[groupOf[k]].has(onset.lead.string) && onset.lead.fret <= maxFretOf.get(onset.lead.string)! && onset.lead.fret >= minOf(groupOf[k]) && onset.lead.fret <= maxOf(groupOf[k])
       ? { string: onset.lead.string, fret: onset.lead.fret }
       : undefined));
-    const availableOf = combo.map((strings) => new Set(pitchesOn(strings)));
+    const availableOf = combo.map((strings, g) => new Set(pitchesOn(strings, minOf(g), maxOf(g))));
     const fits = (k: number, pitch: number) => availableOf[groupOf[k]].has(pitch);
     const shifts = new Map<number, number>();
     const offer = (shift: number, extra: number) => {
       if (pitches.every((p, k) => fits(k, p + shift)) && extra < (shifts.get(shift) ?? Infinity)) shifts.set(shift, extra);
     };
-    const all = pitchesOn([...new Set(combo.flat())]);
+    const all = pitchesOn([...new Set(combo.flat())], Math.min(...combo.map((_, g) => minOf(g))));
     const lo = Math.min(...pitches);
     const hi = Math.max(...pitches);
     for (let shift = all[0] - lo; shift <= all[all.length - 1] - hi; shift++) offer(shift, SEMITONE_SHIFT_COST + Math.abs(shift) * 0.01);
@@ -413,7 +424,9 @@ function placePhraseMulti(
         for (const string of all.length ? [...maxFretOf.keys()] : []) offer(OPEN_MIDI[string] - OPEN_MIDI[realString] + 12 * k, STRING_TRANSFER_COST + OCTAVE_SHIFT_COST * Math.abs(k));
       }
     }
-    const candidates: Array<{ pitches: number[]; extra: number; shift: number | null }> = [...shifts].map(([shift, extra]) => ({
+    // `octaveMoved`: notas que ese candidato baja o sube de octava una a una (no pagan el mapa de
+    // registro: es justo lo que se hace con las pocas que no caben).
+    const candidates: Array<{ pitches: number[]; extra: number; shift: number | null; octaveMoved?: boolean[] }> = [...shifts].map(([shift, extra]) => ({
       pitches: pitches.map((p) => p + shift),
       extra,
       shift,
@@ -446,8 +459,9 @@ function placePhraseMulti(
           out.push(best);
         }
       });
-      if (ok && folded > 0) candidates.push({ pitches: out, extra: OCTAVE_SHIFT_COST * folded, shift: 0 });
-      else if (ok && !shifts.has(0)) candidates.push({ pitches: out, extra: 0, shift: 0 });
+      const octaveMoved = out.map((q, k) => q !== pitches[k]);
+      if (ok && folded > 0) candidates.push({ pitches: out, extra: OCTAVE_SHIFT_COST * folded, shift: 0, octaveMoved });
+      else if (ok && !shifts.has(0)) candidates.push({ pitches: out, extra: 0, shift: 0, octaveMoved });
     }
     if (candidates.length === 0) {
       // Contorno sobre las alturas de cada tramo de compases seguidos con las MISMAS cuerdas (si
@@ -463,7 +477,7 @@ function placePhraseMulti(
       for (let g = 0; g <= segmentOf[segmentOf.length - 1]; g++) {
         const idx = pitches.map((_, k) => k).filter((k) => segmentOf[k] === g);
         if (idx.length === 0) continue;
-        const lanePitches = pitchesOn(combo[groupOf[idx[0]]]);
+        const lanePitches = pitchesOn(combo[groupOf[idx[0]]], minOf(groupOf[idx[0]]), maxOf(groupOf[idx[0]]));
         const seg = idx.map((k) => pitches[k]);
         const lanes = contourLanes(seg, lanePitches.length);
         let laneSeq = seg.map((p) => lanes.get(p)!);
@@ -495,8 +509,8 @@ function placePhraseMulti(
         }
         return undefined;
       };
-      const items: PlaceItem[] = phrase.map((onset, k) => ({ pitch: candidate.pitches[k], t: onset.t, real: realOf(onset, k), zoneFret: zoneOf(onset.lead.midi) }));
-      const placed = placeSequence(items, layout.positions, LEVEL_WEIGHTS, unary, (k) => sets[k]);
+      const items: PlaceItem[] = phrase.map((onset, k) => ({ pitch: candidate.pitches[k], t: onset.t, real: realOf(onset, k), zoneFret: zoneOf(onset.lead.midi), registerPitch: candidate.octaveMoved?.[k] ? undefined : registerOf?.(onset.lead.midi) }));
+      const placed = placeSequence(items, layout.positions, LEVEL_WEIGHTS, unary, (k, place) => sets[k].has(place.string) && place.fret >= minOf(groupOf[k]) && place.fret <= maxOf(groupOf[k]));
       if (placed && (!best || placed.cost + candidate.extra < best.cost)) best = { path: placed.path, cost: placed.cost + candidate.extra };
     }
   };
@@ -544,6 +558,8 @@ function phraseKey(phrase: Onset[]): string {
 // Motivo: trozo de MOTIF_LENGTH notas seguidas (dentro de una frase) con las mismas alturas reales
 // y el mismo ritmo.
 const MOTIF_LENGTH = 4;
+// Hueco medio entre notas (s reales, a velocidad normal) por debajo del cual un compás es "rápido".
+const FAST_GAP_SECONDS = 0.16;
 const MOTIF_PASSES = 4;
 const MOTIF_COST_TOLERANCE = 0.5;
 
@@ -560,9 +576,31 @@ function zoneMap(kept: Onset[], profile: LevelProfile) {
 
 // `barOf`: compás (índice en chart.bars) de cada nota; `stringsUsed`: qué cuerdas usa
 // la tab real en cada compás.
+// MAPA DE REGISTRO (petición del usuario, 2026-10-29): altura real -> altura que le toca en el juego,
+// para conservar el ORDEN de alturas entre frases (lo agudo arriba, lo grave abajo, lo medio en
+// medio). Antes cada frase se colocaba por su cuenta y una que cabía tal cual (el compás 17 de Kirk,
+// en la Sol en Difícil) quedaba por ENCIMA de otra más aguda que había que bajar dos octavas (el 14).
+// Si la pista cabe en lo que toca el nivel, el mapa es la identidad (James: la fidelidad a la tab no cambia). Si no, la
+// mitad GRAVE del registro del nivel se queda tal cual (los riffs siguen en su sitio real) y todo lo
+// que queda por encima se comprime, en orden, en la mitad aguda (el solo de Kirk).
+function registerMap(kept: Onset[], levelPitches: number[]) {
+  const sorted = kept.map((onset) => onset.lead.midi).sort((a, b) => a - b);
+  const hi = sorted[sorted.length - 1] ?? 64;
+  const levelLo = levelPitches[0];
+  const levelHi = levelPitches[levelPitches.length - 1];
+  // Cabe (como mucho un 5 % de notas por encima del nivel, que se bajan de octava una a una sin pagar
+  // el mapa -- James en Medio, con unas pocas en la Re): IDENTIDAD, cada nota quiere su altura real
+  // (así tampoco se va cada frase por su lado cuando ninguna nota está en su sitio de la tab, como
+  // la melodía de Feliz Navidad en las cuerdas agudas). Si se pasan más, se comprime por arriba.
+  if (sorted.filter((pitch) => pitch > levelHi).length <= sorted.length * 0.05) return (pitch: number) => pitch;
+  const knee = (levelLo + levelHi) / 2;
+  return (pitch: number) => (pitch <= knee ? pitch : knee + Math.min(1, (pitch - knee) / (hi - knee)) * (levelHi - knee));
+}
+
 function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, pins: Array<LanePosition | null>): LanePosition[] {
   const layout = laneLayout(profile);
   const zoneOf = zoneMap(kept, profile);
+  const registerOf = registerMap(kept, laneLayout(profile).pitches);
   const phrases: Array<[number, number]> = [];
   for (let i = 0; i < kept.length;) {
     let end = i;
@@ -571,6 +609,9 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
     i = end;
   }
   const samePlace = (a: LanePosition, b: LanePosition) => a.string === b.string && a.fret === b.fret && a.pitch === b.pitch;
+  // Compases de PASAJE RÁPIDO TRANSPORTADO (ver abajo), aislados en una sola cuerda: compás -> cuerda
+  // y traste mínimo. Vacío en la primera pasada.
+  const fastBars = new Map<number, { string: number; frets: [number, number] }>();
   // Una pasada: cada frase por su cuenta; una frase igual que otra anterior se copia tal cual. Las
   // notas ancladas a la guitarra que manda pagan PIN_COST si van a otro sitio.
   const pass = (unaryAt?: (index: number, place: LanePosition) => number) => {
@@ -585,16 +626,19 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
       const bars = [...new Set(barOf.slice(i, end))];
       const groupOf = barOf.slice(i, end).map((bar) => bars.indexOf(bar));
       const groupOptions = bars.map((bar) => {
+        const isolated = fastBars.get(bar);
+        if (isolated) return [[isolated.string]];
         const options = stringGroups(profile.strings, stringsUsed.get(bar) ?? new Set(profile.strings));
         const used = usedInBar.get(bar);
         const compatible = used ? options.filter((option) => [...used].every((string) => option.includes(string))) : options;
         return compatible.length > 0 ? compatible : options;
       });
+      const groupFrets = bars.map((bar): [number, number] => fastBars.get(bar)?.frets ?? [0, Infinity]);
       const pinKey = pins.slice(i, end).map((pin) => (pin ? `${pin.string}/${pin.fret}` : '-')).join(',');
-      const key = `${phraseKey(phrase)}|${groupOf.join(',')}|${JSON.stringify(groupOptions)}|${pinKey}`;
+      const key = `${phraseKey(phrase)}|${groupOf.join(',')}|${JSON.stringify(groupOptions)}|${JSON.stringify(groupFrets)}|${pinKey}`;
       let path = byKey.get(key);
       if (!path) {
-        path = placePhraseMulti(phrase, layout, zoneOf, groupOf, groupOptions, (index, place) => unary(i + index, place));
+        path = placePhraseMulti(phrase, layout, zoneOf, registerOf, groupOf, groupOptions, (index, place) => unary(i + index, place), groupFrets);
         byKey.set(key, path);
       }
       path.forEach((place, k) => {
@@ -624,6 +668,60 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
   const fitsAsTabbed = kept.map((onset) => profile.strings.includes(onset.lead.string) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret));
   const placeKey = (place: LanePosition) => `${place.string}/${place.fret}`;
   let placed = pass();
+
+  // PASAJES RÁPIDOS TRANSPORTADOS (petición del usuario, 2026-10-29): un compás muy rápido (hueco
+  // medio ≤ FAST_GAP_SECONDS) cuya mayoría de notas queda FUERA del registro del nivel (hay que
+  // transportarlas sí o sí; los riffs de James, igual de rápidos, caben y no cuentan) se aísla en la cuerda que más
+  // notas lleva en él y en su MITAD DERECHA (de la mitad de su tope al tope), como el "cromatismo de
+  // una cuerda" del modo trastes: el barrido del solo de Kirk (compases 9-12) ya no salta de cuerda.
+  const levelPitches = laneLayout(profile).pitches;
+  const levelBottom = levelPitches[0];
+  const levelTop = levelPitches[levelPitches.length - 1];
+  const capOf = new Map<number, number>();
+  for (const position of laneLayout(profile).positions) capOf.set(position.string, Math.max(capOf.get(position.string) ?? 0, position.fret));
+  const notesOfBar = new Map<number, number[]>();
+  kept.forEach((_, k) => notesOfBar.set(barOf[k], [...(notesOfBar.get(barOf[k]) ?? []), k]));
+  const fast = [...notesOfBar].filter(([, indices]) => {
+    if (indices.length < 3) return false;
+    const meanGap = (kept[indices[indices.length - 1]].t - kept[indices[0]].t) / (indices.length - 1);
+    // Fuera del registro del nivel: la mayoría de sus notas no podría sonar a su altura real en
+    // ninguna de sus cuerdas (el solo de Kirk, 71-81, por encima de todo lo que tocan Medio, Avanzado
+    // y Difícil; un riff de James en la Re sí cabe en alguna, aunque no en su cuerda).
+    const outside = indices.filter((k) => !pins[k] && (kept[k].lead.midi > levelTop || kept[k].lead.midi < levelBottom)).length;
+    return meanGap <= FAST_GAP_SECONDS && outside * 2 > indices.length;
+  }).map(([bar]) => bar).sort((a, b) => a - b);
+  // Compases rápidos SEGUIDOS = un solo pasaje, todo en la misma cuerda (la que más notas lleva en él).
+  for (let i = 0; i < fast.length;) {
+    let end = i + 1;
+    while (end < fast.length && fast[end] === fast[end - 1] + 1) end++;
+    const passage = fast.slice(i, end);
+    const count = new Map<number, number>();
+    for (const bar of passage) for (const k of notesOfBar.get(bar)!) count.set(placed[k].string, (count.get(placed[k].string) ?? 0) + 1);
+    const notes = passage.flatMap((bar) => notesOfBar.get(bar)!);
+    // Tantos trastes como alturas distintas tiene el pasaje (mín. 3, máx. media cuerda): justo lo que
+    // necesita su cromatismo, y así un pasaje más grave cabe más a la izquierda que uno más agudo.
+    const distinct = new Set(notes.map((k) => kept[k].lead.midi)).size;
+    const target = registerOf ? notes.reduce((sum, k) => sum + registerOf(kept[k].lead.midi), 0) / notes.length : Infinity;
+    // Ventana SIEMPRE en la mitad derecha de su cuerda (petición del usuario), centrada lo mejor
+    // posible en la altura que le toca al pasaje en el mapa de registro. Se elige la cuerda donde esa
+    // ventana queda más cerca de su altura (si empatan, la que más notas lleva): así la altura decide
+    // también la CUERDA y no se invierte el orden entre pasajes (Kirk en Difícil: el 14, lo más
+    // agudo, en la Sol; el barrido y el 21, en la Re).
+    const windowOn = (string: number) => {
+      const cap = capOf.get(string)!;
+      const lowest = Math.ceil(cap / 2);
+      const size = Math.min(cap - lowest + 1, Math.max(3, distinct));
+      const center = Number.isFinite(target) ? target - OPEN_MIDI[string] : cap;
+      const half = (size - 1) / 2;
+      const miss = Math.abs(center - Math.min(cap - half, Math.max(lowest + half, center)));
+      const from = Math.min(cap - size + 1, Math.max(lowest, Math.round(center - half)));
+      return { string, frets: [from, from + size - 1] as [number, number], miss, votes: count.get(string) ?? 0 };
+    };
+    const choice = [...capOf.keys()].map(windowOn).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
+    for (const bar of passage) fastBars.set(bar, { string: choice.string, frets: choice.frets });
+    i = end;
+  }
+  if (fastBars.size > 0) placed = pass();
   for (let round = 0; round < MOTIF_PASSES && repeated.length > 0; round++) {
     const targets = new Map<number, LanePosition[]>();
     for (const starts of repeated) {
@@ -725,7 +823,6 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   }
   const phraseOf = splitPhrases(kept, profile, beatSeconds, barInfo?.barOf);
   const layout = laneLayout(profile);
-  const available = new Set(layout.pitches);
   const pins = followPins(kept, follow);
   const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, pins) : null;
 
