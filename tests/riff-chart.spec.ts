@@ -679,10 +679,11 @@ test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {
 
 // Altura de las notas por nivel (lanes.ts, decisión del usuario 2026-10-27): fuera de Experto, las
 // cuerdas se reparten centradas entre las filas de La (5) y Si (2); los Mi quedan para Experto.
-test('carriles: 1 cuerda al centro, 2 en las filas de La y Sol, 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
+test('carriles: 1 cuerda al centro, 2 sobre los puntos del traste 12 (filas 5 y 2), 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
   expect([...laneRows([6])]).toEqual([[6, 3.5]]);
-  // 2026-10-28 (usuario): más separadas -- Medio en las filas de La y Sol; Difícil, 1,2 filas.
-  expect([...laneRows([5, 6])]).toEqual([[6, 5], [5, 3]]);
+  // Usuario: más separadas -- Medio a la altura de los dos puntos del traste 12 (filas 5 y 2);
+  // Difícil, 1,2 filas.
+  expect([...laneRows([5, 6])]).toEqual([[6, 5], [5, 2]]);
   expect([...laneRows([4, 5, 6])]).toEqual([[6, 5], [5, 3.5], [4, 2]]);
   expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5.3], [5, 4.1], [4, 2.9], [3, 1.7]]);
   for (const strings of [[6], [5, 6], [4, 5, 6], [3, 4, 5, 6]]) {
@@ -695,8 +696,8 @@ test('carriles: 1 cuerda al centro, 2 en las filas de La y Sol, 3 en 5/3,5/2, 4 
   // Casillas: hasta la mitad del camino a la vecina; las de fuera, hasta el borde del mástil.
   const two = laneRows([5, 6]);
   expect(laneAt(two, 1)).toBe(5);
-  expect(laneAt(two, 3.9)).toBe(5);
-  expect(laneAt(two, 4.1)).toBe(6);
+  expect(laneAt(two, 3.4)).toBe(5);
+  expect(laneAt(two, 3.6)).toBe(6);
   expect(laneAt(two, 6)).toBe(6);
   expect(laneAt(laneRows([6]), 1)).toBe(6);
 });

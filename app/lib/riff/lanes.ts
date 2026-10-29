@@ -4,7 +4,7 @@
 // 2026-10-27/28) usa una distribución optimizada, con las cuerdas bien SEPARADAS para no depender
 // de tanta precisión en el eje Y y sin llegar a los bordes del mástil (filas de los dos Mi):
 // - 1 cuerda (modo trastes): en el centro (fila 3,5).
-// - 2 (Medio cuerdas): donde normalmente están La y Sol (filas 5 y 3).
+// - 2 (Medio cuerdas): a la altura de los dos puntos del traste 12 (filas 5 y 2; usuario, 2026-10-29).
 // - 3 (Avanzado cuerdas): filas 5, 3,5 y 2.
 // - 4 (Difícil): separación de 1,2 filas, centradas (5,3 / 4,1 / 2,9 / 1,7).
 // La casilla de cada cuerda llega hasta la mitad del camino a la vecina (y hasta el borde del
@@ -16,7 +16,7 @@
 // Filas por número de cuerdas del nivel, de la más grave (abajo) a la más aguda.
 const LANE_ROWS: Record<number, number[]> = {
   1: [3.5],
-  2: [5, 3],
+  2: [5, 2],
   3: [5, 3.5, 2],
   4: [5.3, 4.1, 2.9, 1.7],
 };
