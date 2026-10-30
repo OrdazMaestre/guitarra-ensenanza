@@ -414,6 +414,8 @@ test('puntos: tabla de márgenes y categorías (exacta 4/3/2, cercana 1/0,5, si 
   // Márgenes recortados 0,1 s el 2026-10-28: exacta 0,1 / 0,2 / 0,4; cercana 0,2 / 0,4.
   expect([0, 0.1, 0.11, 0.2, 0.21, 0.4, 0.41].map((d) => points(true, d))).toEqual([4, 4, 3, 3, 2, 2, 0]);
   expect([0, 0.2, 0.21, 0.4, 0.41].map((d) => points(false, d))).toEqual([1, 1, 0.5, 0.5, 0]);
+  // Cercana en otra cuerda, o en el modo trastes: siempre +½ (decisión del usuario, 2026-10-30).
+  expect([0, 0.2, 0.21, 0.4, 0.41].map((d) => points(false, d, false))).toEqual([0.5, 0.5, 0.5, 0.5, 0]);
 });
 
 test('puntos: cada margen, a los dos lados de la nota', () => {
@@ -437,13 +439,17 @@ test('puntos: nota cercana (casilla de al lado en la cuerda, o cuerda vecina en 
   expect(near({ string: 1, fret: 3 }, 4.1)).toEqual({ points: 1, hit: null, gain: 0 }); // traste de al lado
   expect(near({ string: 1, fret: 1 }, 4.15)).toMatchObject({ points: 1 });
   expect(near({ string: 2, fret: 2 }, 3.65)).toMatchObject({ points: 0.5 }); // cuerda vecina, 0,35 s antes
+  expect(near({ string: 2, fret: 2 }, 4)).toMatchObject({ points: 0.5 }); // cuerda vecina, a tiempo: también ½
   expect(near({ string: 2, fret: 3 }, 4)).toMatchObject({ points: 0 }); // en diagonal: lejana
   expect(near({ string: 1, fret: 7 }, 4)).toMatchObject({ points: 0 });
   expect(near({ string: 3, fret: 2 }, 4)).toMatchObject({ points: 0 });
-  // Con cuerdas libres, "al lado" = traste ±1 en cualquier cuerda.
-  const free = new RiffSession(fakeChart(), { ...ritmo, freeStrings: true }, 0, 'nada');
-  free.judge({ string: 6, fret: 3, kind: 'pluck' }, 4);
-  expect(free.scoreOf.get(0)).toMatchObject({ points: 1, exact: false });
+  // Con cuerdas libres (modo trastes), "al lado" = traste ±1 en cualquier cuerda, y vale siempre ½
+  // (también en la misma cuerda).
+  for (const string of [6, 1]) {
+    const free = new RiffSession(fakeChart(), { ...ritmo, freeStrings: true }, 0, 'nada');
+    free.judge({ string, fret: 3, kind: 'pluck' }, 4);
+    expect(free.scoreOf.get(0)).toMatchObject({ points: 0.5, exact: false });
+  }
 });
 
 test('puntos: no se acumulan -- la exacta sustituye a la cercana; cada nota y cada pulsación, una vez', () => {
@@ -704,4 +710,19 @@ test('carriles: 1 cuerda al centro, 2 sobre los puntos del traste 12 (filas 5 y 
 
 test('colores de cuerda de grave a aguda: rojo, verde, naranja, azul, amarillo, morado', () => {
   expect([6, 5, 4, 3, 2, 1].map((s) => RIFF_STRING_COLORS[s])).toEqual(['#ef4444', '#22c55e', '#f97316', '#3b82f6', '#facc15', '#a855f7']);
+});
+
+test('afinación bajada: el chart va en posiciones estándar y suena en el tono real', () => {
+  const chart = { ...fakeChart(), soundOffset: -3 };
+  const s = new RiffSession(chart, ritmo, 0, 'nada');
+  const guide = s.takeGuideNotes(0, 10);
+  expect(guide.length).toBeGreaterThan(0);
+  for (const note of guide) {
+    const original = chart.notes.find((n) => n.id === note.id)!;
+    expect(note.midi).toBe(original.midi - 3);
+  }
+  // "Paso a paso": la nota real del golpe acertado suena YA, también en su tono real.
+  const step = new RiffSession(chart, { ...ritmo, mode: 'paso' }, 0, 'nada');
+  const hit = chart.notes[0];
+  expect(step.playNowFor(hit)[0].midi).toBe(hit.midi - 3);
 });

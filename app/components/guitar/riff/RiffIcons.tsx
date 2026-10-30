@@ -5,9 +5,9 @@ import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 // Iconos del panel de partida (petición del usuario: en el panel solo se ven iconos; en los menús,
 // icono + nombre). 24×24, trazo fino que hereda el color (`currentColor`).
 
-function Icon({ children, size = 22 }: { children: ReactNode; size?: number }) {
+function Icon({ children, className = 'riff-icon', size = 22 }: { children: ReactNode; className?: string; size?: number }) {
   return (
-    <svg aria-hidden="true" className="riff-icon" fill="none" height={size} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width={size}>
+    <svg aria-hidden="true" className={className} fill="none" height={size} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width={size}>
       {children}
     </svg>
   );
@@ -20,6 +20,20 @@ function Strike() {
       <path d="M3 3l18 18" stroke="#ffffff" strokeWidth="5" />
       <path d="M3 3l18 18" />
     </>
+  );
+}
+
+// Canción: un disco de vinilo (surcos y etiqueta central). Exportado con tamaño variable para
+// el reproductor de tablatura (SongPicker), que le quita la clase `riff-icon` (`className`) para que
+// tome el color de su botón en vez del verde fijo del panel del juego.
+export function DiscIcon({ className, size = 22 }: { className?: string; size?: number }) {
+  return (
+    <Icon className={className} size={size}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 5.5a6.5 6.5 0 0 0-6.5 6.5M12 18.5a6.5 6.5 0 0 0 6.5-6.5" strokeWidth="1.3" />
+      {/* Etiqueta: un anillo grueso, con el agujero del color de fondo. */}
+      <circle cx="12" cy="12" r="2.2" strokeWidth="2.2" />
+    </Icon>
   );
 }
 
@@ -46,17 +60,36 @@ export function TrackIcon({ role }: { role: TrackRole }) {
 
 // Niveles: una carita por nivel, de menos a más miedo (petición del usuario, a partir de sus emojis
 // 😛 😁 😈 😳 😯 😵‍💫 😱 ☠️, dibujados aquí para que se vean igual en todos los equipos): modo trastes
-// Práctica, Fácil, Medio, Avanzado; modo cuerdas Medio, Avanzado, Difícil y Experto. A color (no
+// Principiante, Fácil, Medio, Avanzado; modo cuerdas Medio, Avanzado, Difícil y Experto. A color (no
 // heredan `currentColor`); en el modo oscuro de la web se contra-invierten (ver RiffStyles).
+// De los dos Medio en adelante (petición del usuario, 2026-10-30) son DIABLILLOS: el morado del 😈 de
+// Medio trastes (menos Experto, que sigue siendo calavera) y cuernos en todos, Experto incluido.
 const FACE = '#fcc93a';
 const FACE_EDGE = '#d99a06';
 const INK = '#5b3a00';
+const DEVIL = '#8b5cf6';
+const DEVIL_EDGE = '#5b21b6';
+const DEVIL_INK = '#2e1065';
+// Cuernos cortos y gruesos que SOBRESALEN de la cabeza sin tocar el borde de la caja (petición del
+// usuario): se dibujan detrás, con la base tapada por la cara. Para que quepan, la cara de los
+// diablillos se encoge un poco y baja (DEVIL_HEAD: centro 12,13 y radio 9,5 en vez de 12,12 y 10,5).
+const DEVIL_HORNS = 'M5.6 7.6Q3.6 5.4 4.2 2Q7 3 9.4 4.8ZM18.4 7.6Q20.4 5.4 19.8 2Q17 3 14.6 4.8Z';
+const DEVIL_HEAD = 'translate(1.143 2.143) scale(0.905)';
+// Los de la calavera, los de siempre a los lados del cráneo, un poco más arriba.
+const SKULL_HORNS = 'M3.6 1.4Q3.4 6.2 7.4 7.8L5 10Q2.4 6.6 3.6 1.4ZM20.4 1.4Q20.6 6.2 16.6 7.8L19 10Q21.6 6.6 20.4 1.4Z';
 
-function Face({ children, fill = FACE, edge = FACE_EDGE }: { children: ReactNode; fill?: string; edge?: string }) {
+function Horns({ d = DEVIL_HORNS }: { d?: string }) {
+  return <path d={d} fill="#6d28d9" stroke={DEVIL_EDGE} strokeLinejoin="round" strokeWidth="0.7" />;
+}
+
+function Face({ children, devil = false }: { children: ReactNode; devil?: boolean }) {
   return (
     <svg aria-hidden="true" className="riff-icon riff-level-face" height={22} viewBox="0 0 24 24" width={22}>
-      <circle cx="12" cy="12" fill={fill} r="10.5" stroke={edge} strokeWidth="0.9" />
-      {children}
+      {devil && <Horns />}
+      <g transform={devil ? DEVIL_HEAD : undefined}>
+        <circle cx="12" cy="12" fill={devil ? DEVIL : FACE} r="10.5" stroke={devil ? DEVIL_EDGE : FACE_EDGE} strokeWidth="0.9" />
+        {children}
+      </g>
     </svg>
   );
 }
@@ -82,8 +115,7 @@ export function LevelIcon({ level }: { level: RiffLevel }) {
       );
     case 'medio': // 😈
       return (
-        <Face edge="#5b21b6" fill="#8b5cf6">
-          <path d="M3.6 2.8Q3.4 7.6 7.4 9.2L5 11.4Q2.4 8 3.6 2.8ZM20.4 2.8Q20.6 7.6 16.6 9.2L19 11.4Q21.6 8 20.4 2.8Z" fill="#6d28d9" />
+        <Face devil>
           <path d="M6.6 10L10.2 11.4M17.4 10L13.8 11.4" stroke="#2e1065" strokeLinecap="round" strokeWidth="1.4" />
           <ellipse cx="8.8" cy="13" fill="#2e1065" rx="1.1" ry="1.3" />
           <ellipse cx="15.2" cy="13" fill="#2e1065" rx="1.1" ry="1.3" />
@@ -92,40 +124,40 @@ export function LevelIcon({ level }: { level: RiffLevel }) {
       );
     case 'avanzado': // 😳
       return (
-        <Face>
-          <path d="M5.8 6.8Q8 5.6 10.2 6.6M13.8 6.6Q16 5.6 18.2 6.8" fill="none" stroke={INK} strokeLinecap="round" strokeWidth="1.1" />
-          <circle cx="8.3" cy="10.4" fill="#ffffff" r="2.5" stroke={INK} strokeWidth="0.6" />
-          <circle cx="15.7" cy="10.4" fill="#ffffff" r="2.5" stroke={INK} strokeWidth="0.6" />
-          <circle cx="8.3" cy="10.6" fill={INK} r="1.2" />
-          <circle cx="15.7" cy="10.6" fill={INK} r="1.2" />
+        <Face devil>
+          <path d="M5.8 6.8Q8 5.6 10.2 6.6M13.8 6.6Q16 5.6 18.2 6.8" fill="none" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.1" />
+          <circle cx="8.3" cy="10.4" fill="#ffffff" r="2.5" stroke={DEVIL_INK} strokeWidth="0.6" />
+          <circle cx="15.7" cy="10.4" fill="#ffffff" r="2.5" stroke={DEVIL_INK} strokeWidth="0.6" />
+          <circle cx="8.3" cy="10.6" fill={DEVIL_INK} r="1.2" />
+          <circle cx="15.7" cy="10.6" fill={DEVIL_INK} r="1.2" />
           <ellipse cx="5.9" cy="14.6" fill="#f87171" opacity="0.75" rx="2" ry="1.2" />
           <ellipse cx="18.1" cy="14.6" fill="#f87171" opacity="0.75" rx="2" ry="1.2" />
-          <path d="M10 17H14" stroke={INK} strokeLinecap="round" strokeWidth="1.4" />
+          <path d="M10 17H14" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.4" />
         </Face>
       );
     case 'medio-cuerdas': // 😯
       return (
-        <Face>
-          <path d="M6.4 6.9Q8.4 5.5 10.4 6.5M13.6 6.5Q15.6 5.5 17.6 6.9" fill="none" stroke={INK} strokeLinecap="round" strokeWidth="1.1" />
-          <ellipse cx="8.6" cy="10.2" fill={INK} rx="1.2" ry="1.7" />
-          <ellipse cx="15.4" cy="10.2" fill={INK} rx="1.2" ry="1.7" />
-          <ellipse cx="12" cy="16.2" fill={INK} rx="1.9" ry="2.2" />
+        <Face devil>
+          <path d="M6.4 6.9Q8.4 5.5 10.4 6.5M13.6 6.5Q15.6 5.5 17.6 6.9" fill="none" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.1" />
+          <ellipse cx="8.6" cy="10.2" fill={DEVIL_INK} rx="1.2" ry="1.7" />
+          <ellipse cx="15.4" cy="10.2" fill={DEVIL_INK} rx="1.2" ry="1.7" />
+          <ellipse cx="12" cy="16.2" fill={DEVIL_INK} rx="1.9" ry="2.2" />
         </Face>
       );
     case 'avanzado-cuerdas': // 😵‍💫
       return (
-        <Face>
+        <Face devil>
           {[8.4, 15.6].map((cx) => (
             <path
               d={`M${cx} 10a0.6 0.6 0 1 1 0.6 0.6a1.3 1.3 0 1 1 -1.3 -1.3a2 2 0 1 1 2 2`}
               fill="none"
               key={cx}
-              stroke={INK}
+              stroke={DEVIL_INK}
               strokeLinecap="round"
               strokeWidth="0.95"
             />
           ))}
-          <ellipse cx="12" cy="16.6" fill={INK} rx="2.3" ry="1.7" />
+          <ellipse cx="12" cy="16.6" fill={DEVIL_INK} rx="2.3" ry="1.7" />
         </Face>
       );
     case 'dificil': // 😱
@@ -134,6 +166,7 @@ export function LevelIcon({ level }: { level: RiffLevel }) {
     default:
       return (
         <svg aria-hidden="true" className="riff-icon riff-level-face" height={22} viewBox="0 0 24 24" width={22}>
+          <Horns d={SKULL_HORNS} />
           {/* Tibias cruzadas detrás de la calavera. */}
           <path d="M4 14.5L20 22M20 14.5L4 22" stroke="#9ca3af" strokeLinecap="round" strokeWidth="3.4" />
           <path d="M4 14.5L20 22M20 14.5L4 22" stroke="#f3f4f6" strokeLinecap="round" strokeWidth="2" />
@@ -147,7 +180,7 @@ export function LevelIcon({ level }: { level: RiffLevel }) {
   }
 }
 
-// 😱: la cara se pone azul por arriba (degradado con id único por icono) y se tapa las mejillas.
+// 😱: diablillo que se pone azul por arriba (degradado con id único por icono) y se tapa las mejillas.
 function ScreamFace() {
   const id = useId();
   return (
@@ -155,17 +188,20 @@ function ScreamFace() {
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor="#7aa7e8" />
-          <stop offset="0.55" stopColor={FACE} />
+          <stop offset="0.55" stopColor={DEVIL} />
         </linearGradient>
       </defs>
-      <circle cx="12" cy="12" fill={`url(#${id})`} r="10.5" stroke={FACE_EDGE} strokeWidth="0.9" />
-      <circle cx="8.6" cy="9.8" fill="#ffffff" r="2" stroke={INK} strokeWidth="0.5" />
-      <circle cx="15.4" cy="9.8" fill="#ffffff" r="2" stroke={INK} strokeWidth="0.5" />
-      <circle cx="8.6" cy="9.8" fill={INK} r="0.7" />
-      <circle cx="15.4" cy="9.8" fill={INK} r="0.7" />
-      <ellipse cx="12" cy="16.4" fill={INK} rx="1.9" ry="3.3" />
-      <ellipse cx="3.9" cy="16.4" fill={FACE} rx="2.3" ry="3.4" stroke={FACE_EDGE} strokeWidth="0.8" />
-      <ellipse cx="20.1" cy="16.4" fill={FACE} rx="2.3" ry="3.4" stroke={FACE_EDGE} strokeWidth="0.8" />
+      <Horns />
+      <g transform={DEVIL_HEAD}>
+        <circle cx="12" cy="12" fill={`url(#${id})`} r="10.5" stroke={DEVIL_EDGE} strokeWidth="0.9" />
+        <circle cx="8.6" cy="9.8" fill="#ffffff" r="2" stroke={DEVIL_INK} strokeWidth="0.5" />
+        <circle cx="15.4" cy="9.8" fill="#ffffff" r="2" stroke={DEVIL_INK} strokeWidth="0.5" />
+        <circle cx="8.6" cy="9.8" fill={DEVIL_INK} r="0.7" />
+        <circle cx="15.4" cy="9.8" fill={DEVIL_INK} r="0.7" />
+        <ellipse cx="12" cy="16.4" fill={DEVIL_INK} rx="1.9" ry="3.3" />
+        <ellipse cx="3.9" cy="16.4" fill={DEVIL} rx="2.3" ry="3.4" stroke={DEVIL_EDGE} strokeWidth="0.8" />
+        <ellipse cx="20.1" cy="16.4" fill={DEVIL} rx="2.3" ry="3.4" stroke={DEVIL_EDGE} strokeWidth="0.8" />
+      </g>
     </svg>
   );
 }

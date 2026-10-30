@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { pickTestRoomTabSong } from './sala-song';
 
 // Locks in the percussion notation preview added to AlphaTabPlayer.tsx
 // (opt-in via multiTrack, only exercised today by sala-de-pruebas). See
@@ -13,6 +14,7 @@ test('drum notation preview: toggles render, restores settings exactly, no conso
   page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + err.message));
 
   await page.goto('/lecciones/temario/sala-de-pruebas');
+  await pickTestRoomTabSong(page);
   await page.waitForTimeout(2000);
 
   const svgCountBefore = await page.evaluate(() => document.querySelectorAll('.at-surface-svg').length);
@@ -99,6 +101,7 @@ test('drum notation preview: selecting a different guitar/bass track also exits 
   page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + err.message));
 
   await page.goto('/lecciones/temario/sala-de-pruebas');
+  await pickTestRoomTabSong(page);
   await page.waitForTimeout(2000);
   await page.getByRole('button', { name: 'Pistas' }).click();
   await page.waitForTimeout(200);

@@ -123,6 +123,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
       sourceNotes: translated ? sourceNotes : undefined,
       drums,
       band,
+      soundOffset: sections[0].chart.soundOffset,
       movedAboveMaxFret: 0,
       skippedAboveMaxFret: 0,
     },

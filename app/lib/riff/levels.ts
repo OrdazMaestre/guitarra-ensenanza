@@ -53,10 +53,10 @@ const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 }
 // (en el barrido se quedaba con 17-13-13 y perdía la forma).
 const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 
-// Nombres (decisión del usuario, 2026-10-25): modo trastes = Práctica, Fácil, Medio, Avanzado;
+// Nombres (decisión del usuario, 2026-10-25): modo trastes = Principiante, Fácil, Medio, Avanzado;
 // modo cuerdas = Medio, Avanzado, Difícil, Experto (Experto, el último: la tablatura real).
 // Densidad (decisiones del usuario):
-// - Práctica: quita como MUCHO la mitad de las notas; medido: 49-55 % de golpes en Master of
+// - Principiante: quita como MUCHO la mitad de las notas; medido: 49-55 % de golpes en Master of
 //   Puppets y 84-100 % en canciones lentas.
 // - Fácil (trastes; antes "Neófito"): como el "Difícil" (Hard) de Guitar Hero (en los charts
 //   oficiales Hard tiene ~206 notas/min frente a ~295 en Expert, ≈70 %). Objetivo del usuario:
@@ -71,7 +71,7 @@ const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 // Modo cuerdas: Medio (cuerdas 5-6), Avanzado (4-6) y Difícil (3-6), todos hechos (de uno en uno,
 // decisión del usuario).
 export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = {
-  practica: { label: 'Práctica', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minGapBeats: 0.5, minGapSeconds: 0.15, repeatGapSeconds: 0.2, maxChord: 1, colorBy: 'fret', freeStrings: true },
+  practica: { label: 'Principiante', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minGapBeats: 0.5, minGapSeconds: 0.15, repeatGapSeconds: 0.2, maxChord: 1, colorBy: 'fret', freeStrings: true },
   facil: { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.1, repeatGapSeconds: 0.15, maxChord: 1, colorBy: 'fret', freeStrings: true, maxNotesPerSecond: 6 },
   medio: { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
   // Avanzado: dos "Guitar Hero" seguidos (decisión del usuario, 2026-10-28) -- graves en 0-5, agudas en

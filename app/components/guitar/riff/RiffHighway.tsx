@@ -77,9 +77,9 @@ function scoreText(points: number) {
   return points === 0.5 ? '+½' : `+${points}`;
 }
 
-// Color de cada puntuación (decisión del usuario): +½ blanco, +1 amarillo, +2 verde, +3 naranja,
-// +4 rojo. Dentro del juego el rojo ya es un color "de juego" (cuerda 6), no el rojo de nota especial.
-const SCORE_COLORS: Record<string, string> = { '0.5': '#ffffff', '1': '#fde047', '2': '#4ade80', '3': '#fb923c', '4': '#f87171' };
+// Color de cada puntuación (decisión del usuario, 2026-10-30): +½ y +1 blanco, +2 amarillo, +3 naranja,
+// +4 rojo vivo. Dentro del juego el rojo ya es un color "de juego" (cuerda 6), no el rojo de nota especial.
+const SCORE_COLORS: Record<string, string> = { '0.5': '#ffffff', '1': '#ffffff', '2': '#fde047', '3': '#fb923c', '4': '#ef2b2b' };
 
 export function formatScore(points: number) {
   return Number.isInteger(points) ? String(points) : points.toFixed(1).replace('.', ',');

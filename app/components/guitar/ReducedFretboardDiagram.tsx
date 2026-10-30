@@ -15,7 +15,7 @@ import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
 import HoldGuard, { HoldGuardStyles } from './HoldGuard';
 import { FRETBOARD_TOUR, TutorialButton } from './ButtonTour';
-import type { TrackRole } from './riff/RiffIcons';
+import { findSong, type SongEntry } from '@/app/lib/songs';
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
@@ -55,6 +55,7 @@ const TUNING_PRESETS: TuningPreset[] = [
   { id: 'e', label: 'Estándar E (Estándar)', shiftSemitones: 0 },
   { id: 'eb', label: 'Estándar D# (Media caída)', shiftSemitones: -1 },
   { id: 'd', label: 'Estándar D (Un tono bajo)', shiftSemitones: -2 },
+  { id: 'csharp', label: 'Estándar C# (Tono y medio bajo)', shiftSemitones: -3 },
   { id: 'c', label: 'Estándar C (Dos tonos bajo)', shiftSemitones: -4 },
   { id: 'b', label: 'Estándar B (Barítono)', shiftSemitones: -5 },
 ];
@@ -115,7 +116,9 @@ interface ReducedFretboardDiagramProps {
   practiceExercises?: PracticeExercise[];
   // Juego tipo Rocksmith (opt-in): añade "JUGAR" a la barra de controles, que despliega los ajustes
   // y "Empezar"/"Parar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
-  riffGame?: { source: string; initialTrack?: string; trackRoles?: Record<string, TrackRole> };
+  // `songs`: las canciones que se pueden elegir con el botón del disco (la primera a la izquierda del
+  // panel); `initialSong`: id de la que sale al cargar (si falta, la primera).
+  riffGame?: { songs: SongEntry[]; initialSong?: string };
   // Botón "Tutorial" encima del mástil: enseña los botones de su barra. Por defecto, sí (todos los
   // instrumentos MIDI de la web lo llevan, petición del usuario); `false` lo quita.
   tutorial?: boolean;
@@ -186,7 +189,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Posiciones que suenan AHORA (teclado y ratón/dedo), para las notas repetidas con la pulsación
   // mantenida del juego. Se rellena más abajo, cuando existen los refs de las pulsaciones.
   const heldPositionsRef = useRef<() => { string: number; fret: number }[]>(() => []);
-  const riff = useRiffController({ source: riffGame?.source, initialTrack: riffGame?.initialTrack, trackRoles: riffGame?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
+  const [songId, setSongId] = useState(riffGame?.initialSong);
+  const song = riffGame ? findSong(riffGame.songs, songId) : undefined;
+  const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
   const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret <= STRETCH_MAX_FRET && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
@@ -265,6 +270,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const [cents, setCents] = useState<Record<number, number>>(zeroedCents());
   const centsRef = useRef(cents);
   useEffect(() => { centsRef.current = cents; }, [cents]);
+  // Juego: al cargar una canción con JUGAR abierto, el mástil toma su afinación ORIGINAL (Do# en
+  // Black Gilmur, Mi♭ en Iron Rain...; petición del usuario). El chart sigue en posiciones de la
+  // estándar y suena con `soundOffset` (chart.ts), así que mástil y canción coinciden. Se aplica
+  // una vez por canción (ajuste de estado durante el render, no en un efecto): luego se puede
+  // reafinar a mano con el botón de afinación hasta empezar.
+  const songTuningKey = riffGame && gameOpen && riff.chart && song ? `${song.id}:${riff.chart.soundOffset ?? 0}` : null;
+  const [appliedSongTuning, setAppliedSongTuning] = useState<string | null>(null);
+  if (songTuningKey !== appliedSongTuning) {
+    setAppliedSongTuning(songTuningKey);
+    if (songTuningKey && riff.chart) {
+      const shift = riff.chart.soundOffset ?? 0;
+      setCents(centsForPreset({ id: 'song', label: '', shiftSemitones: shift }));
+    }
+  }
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
   // Altura a la que caen las notas del juego (lanes.ts, decisión del usuario): en Experto, su
   // cuerda real; en el resto de niveles, sus cuerdas repartidas por el centro del mástil (los dos Mi
@@ -367,6 +386,40 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       window.removeEventListener('resize', place);
     };
   }, [overlayOpen]);
+  // Flecha hacia el botón KEYBOARD (petición del usuario): con JUGAR activado y el teclado aún sin
+  // activar, en la fila de los números de traste justo encima del botón. Se mide el botón (su
+  // centro) y la fila de los números (bottomLabelY) respecto al host, y se vuelve a medir si cambia
+  // el tamaño de algo o la barra (al empezar la partida aparece PAUSA y el botón se mueve).
+  const [kbArrow, setKbArrow] = useState<{ left: number; top: number } | null>(null);
+  const kbArrowWanted = !!riffGame && gameOpen && !kbMode;
+  useLayoutEffect(() => {
+    if (!kbArrowWanted) return;
+    const place = () => {
+      const host = hostRef.current;
+      const svg = svgRef.current;
+      const button = host?.querySelector<HTMLElement>('.midi-kb-toggle');
+      const ctm = svg?.getScreenCTM();
+      if (!host || !svg || !button || !ctm) return;
+      const hostRect = host.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
+      if (buttonRect.width === 0) {
+        setKbArrow(null);
+        return;
+      }
+      const rowY = ctm.d * (bottomLabelY - 5) + ctm.f;
+      setKbArrow({ left: buttonRect.left + buttonRect.width / 2 - hostRect.left, top: rowY - hostRect.top });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    if (hostRef.current) observer.observe(hostRef.current);
+    const pill = hostRef.current?.querySelector('.midi-float-pill');
+    if (pill) observer.observe(pill);
+    window.addEventListener('resize', place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', place);
+    };
+  }, [kbArrowWanted, bottomLabelY, riff.playing, riff.paused]);
   // Ajustes de la partida: delante del juego mientras no se toca; se pliegan al empezar o
   // continuar, y se despliegan solos al pausar o terminar.
   const settingsOpen = !riff.playing;
@@ -942,8 +995,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         {riff.tutorialOn ? <RiffTutorialCard riff={riff} /> : (
           <RiffControls
             onStart={scrollIntoGame}
+            onSong={setSongId}
             riff={riff}
-            trackRoles={riffGame.trackRoles}
+            song={song}
+            songs={riffGame.songs}
+            trackRoles={song?.trackRoles}
           />
         )}
       </div>
@@ -958,6 +1014,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
       </p>
     )}
+    {kbArrowWanted && kbArrow && <span aria-hidden="true" className="riff-kb-arrow" data-testid="riff-kb-arrow" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>▼</span>}
     <MidiInstrumentChrome
       belowNote={allowLeftHanded && kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (
@@ -1031,7 +1088,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       {!riffInGame && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
       <div className="midi-anchor">
         <button
-          className="midi-kb-toggle"
+          className={`midi-kb-toggle${riffGame && gameOpen ? ' riff-kb-glow' : ''}`}
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
         >

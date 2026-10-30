@@ -7,7 +7,7 @@ import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
-import { RIFF_TUTORIAL } from './riffTutorial';
+import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
 // prop `riffGame`): carga del .gp, pista, ajustes, aviso de pantalla estrecha y la partida.
@@ -38,7 +38,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
   const [loadError, setLoadError] = useState(false);
-  // Configuración inicial (decisión del usuario): Kirk, Práctica, 75 %, Con ritmo, sin bucle y
+  // Configuración inicial (decisión del usuario): Kirk, Principiante, 75 %, Con ritmo, sin bucle y
   // batería (metrónomo si el archivo no trae batería). `resetDefaults` vuelve a ella.
   const [speed, setSpeed] = useState<number>(DEFAULTS.speed);
   const [mode, setMode] = useState<RiffMode>(DEFAULTS.mode);
@@ -47,7 +47,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const [fromBar, setFromBar] = useState(1);
   const [toBar, setToBar] = useState(1);
   const [narrow, setNarrow] = useState(false);
-  // Práctica..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
+  // Principiante..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
   const [level, setLevel] = useState<RiffLevel>(DEFAULTS.level);
   // Partida tutorial (riffTutorial.ts): su canción remix sustituye al chart mientras dura, y sus
   // paradas automáticas (`breaks`) separan las partes. `tutorialOn` = tutorial abierto.
@@ -116,6 +116,11 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     let cancelled = false;
     loadScore(source).then(({ at, score }) => {
       if (cancelled) return;
+      // Recién cambiada la canción, `trackIndex`/`leader` aún son de la anterior: se espera a que
+      // la carga de arriba elija pista (este efecto vuelve a correr entonces).
+      const guitars = listGuitarTracks(score);
+      if (!guitars.some((track) => track.index === trackIndex)) return;
+      if (leader !== null && !guitars.some((track) => track.index === leader)) return;
       const translate = (index: number, profile: (typeof RIFF_LEVELS)[keyof typeof RIFF_LEVELS]) => {
         // Rango del instrumento: todas las guitarras juntas (zonas de graves/agudas compartidas).
         const range = pitchRange(listGuitarTracks(score).map((track) => buildChart(at, score, track.index, 24)));
@@ -185,15 +190,20 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   }
 
   function startTutorial() {
-    if (trackIndex === null || !source) return;
+    if (!source) return;
     stopGame();
     setTutorialOn(true);
     setTutorialRemix(null);
     setHasStarted(true);
-    // La canción remix: cada parte con las notas de su nivel, de la pista elegida.
-    void loadScore(source).then(({ at, score }) => {
-      const real = buildChart(at, score, trackIndex, 24);
-      const leaderReal = leader === null ? null : buildChart(at, score, leader, 24);
+    // La canción remix: cada parte con las notas de su nivel. Siempre de la canción y pista del
+    // tutorial (sus compases están elegidos para ella), sea cual sea la canción elegida.
+    void loadScore(RIFF_TUTORIAL_SONG.source).then(({ at, score }) => {
+      const guitars = listGuitarTracks(score);
+      const track = guitars.find((candidate) => candidate.name === RIFF_TUTORIAL_SONG.track) ?? guitars[0];
+      if (!track) return;
+      const leaderIndex = leaderTrack(guitars, track.index, RIFF_TUTORIAL_SONG.roles);
+      const real = buildChart(at, score, track.index, 24);
+      const leaderReal = leaderIndex === null ? null : buildChart(at, score, leaderIndex, 24);
       const range = pitchRange(listGuitarTracks(score).map((track) => buildChart(at, score, track.index, 24)));
       const remix = buildRemix(RIFF_TUTORIAL.map((part) => {
         const profile = RIFF_LEVELS[part.level as Exclude<RiffLevel, 'experto'>];

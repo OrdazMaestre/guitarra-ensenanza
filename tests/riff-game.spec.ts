@@ -47,10 +47,20 @@ async function hold(page: Page, locator: Locator, ms = 1200) {
   await page.mouse.up();
 }
 
-async function openGame(page: Page) {
+// Abre JUGAR y elige la "Canción de prueba" (Master of Puppets): la sala arranca con Black Gilmur,
+// pero casi todos estos tests están pensados para los compases y las dos guitarras de esa.
+async function openGame(page: Page, song = 'Canción de prueba') {
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
-  await expect(page.locator('.riff-panel')).toBeVisible();
+  // Un clic antes de que React haya hidratado la página se pierde (era el origen de los fallos
+  // intermitentes en pantalla estrecha/baja): se repite hasta que JUGAR queda activado.
+  const jugar = page.getByRole('button', { name: 'JUGAR', exact: true });
+  await expect(async () => {
+    if ((await jugar.getAttribute('aria-pressed')) !== 'true') await jugar.click();
+    await expect(page.locator('.riff-panel')).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15000 });
+  await choose(page, 'Canción', song);
+  // La de prueba tiene dos guitarras: su desplegable de pista confirma que ya cargó.
+  if (song === 'Canción de prueba') await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toBeVisible({ timeout: 10000 });
 }
 
 // Abre el desplegable `menu` ("Pista", "Ritmo"...) del panel y elige `option`.
@@ -80,9 +90,10 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Pista/, /Nivel/, /Modo/, /Velocidad/, /Ritmo/, /Compases/], { timeout: 10000 });
-  // Configuración inicial (decisión del usuario): Kirk, Práctica, 75 %, Con ritmo, sin bucle, batería.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Guitarra solista/, /Práctica/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
+  // El disco (Canción) va a la izquierda del todo.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción/, /Pista/, /Nivel/, /Modo/, /Velocidad/, /Ritmo/, /Compases/], { timeout: 10000 });
+  // Configuración inicial (decisión del usuario): Kirk, Principiante, 75 %, Con ritmo, sin bucle, batería.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción de prueba/, /Guitarra solista/, /Principiante/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -195,7 +206,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-for (const [level, label] of [['experto', 'Experto'], ['practica', 'Práctica'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas'], ['dificil', 'Difícil']] as const) {
+for (const [level, label] of [['experto', 'Experto'], ['practica', 'Principiante'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas'], ['dificil', 'Difícil']] as const) {
   test(`paso a paso (${label}): la canción espera en cada nota y cuenta los aciertos`, async ({ page }) => {
     const chart = jamesChart(level);
     await page.setViewportSize({ width: 1366, height: 900 });
@@ -345,8 +356,8 @@ test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estira
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
-  // Modo trastes Práctica, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
-  for (const [label, frets] of [['Práctica', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
+  // Modo trastes Principiante, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
+  for (const [label, frets] of [['Principiante', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
@@ -446,6 +457,30 @@ test('jugando, el volumen solo se mueve tras mantenerlo 1 s; en pausa y fuera de
   await expect(slider).toHaveValue('0.8');
 });
 
+for (const width of [1280, 760]) {
+  test(`con JUGAR, KEYBOARD resplandece y una flecha en la fila de trastes lo señala (${width}px)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(URL);
+    const kb = page.locator('.test-room-fretboard .midi-kb-toggle');
+    await expect(kb).not.toHaveClass(/riff-kb-glow/);
+    await openGame(page);
+    await expect(kb).toHaveClass(/riff-kb-glow/);
+    const arrow = page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]');
+    await expect(arrow).toBeVisible();
+    const a = (await arrow.boundingBox())!;
+    const k = (await kb.boundingBox())!;
+    expect(Math.abs(a.x + a.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
+    // A la altura de los números de traste (bajo el mástil) y por encima del botón.
+    const number = (await page.locator('.test-room-fretboard .reduced-fret-number').first().boundingBox())!;
+    expect(Math.abs(a.y + a.height / 2 - (number.y + number.height / 2))).toBeLessThan(10);
+    expect(a.y + a.height).toBeLessThan(k.y);
+    // Activado el teclado, la flecha se va (el brillo sigue mientras JUGAR esté abierto).
+    await kb.click();
+    await expect(arrow).toHaveCount(0);
+    await expect(kb).toHaveClass(/riff-kb-glow/);
+  });
+}
+
 test.describe('pantalla táctil', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 1366, height: 900 } });
   test('jugando, un toque corto con el dedo en PAUSA no hace nada; mantenerlo 1 s, sí', async ({ page }) => {
@@ -453,6 +488,8 @@ test.describe('pantalla táctil', () => {
     await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
     await page.getByRole('button', { name: 'JUGAR', exact: true }).tap();
     await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 10000 });
+    // Sin teclado físico no hay botón KEYBOARD, ni flecha hacia él.
+    await expect(page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]')).toBeHidden();
     await page.locator('.riff-actions').scrollIntoViewIfNeeded();
     await page.getByRole('button', { name: 'Empezar' }).tap();
     const stage = page.locator('.test-room-fretboard .riff-stage');
@@ -587,4 +624,45 @@ test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el má
   // como mucho más su columna iluminada cuando llega una nota.
   expect(pixel).toBeGreaterThan(0);
   expect(pixel).toBeLessThan(140);
+});
+
+test('cambiar de canción con el disco: en el juego y en la tablatura de debajo (empiezan en Black Gilmur)', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  const disc = page.locator('.riff-dd-toggle', { hasText: 'Canción' });
+  await expect(disc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
+  // Una sola guitarra: sin desplegable de pista. 44 compases.
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toHaveCount(0);
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–44▾$/, { timeout: 10000 });
+  await choose(page, 'Canción', 'Iron Rain');
+  await expect(disc).toHaveAttribute('aria-label', 'Canción: Iron Rain');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–101▾$/, { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toBeVisible();
+  // Se puede jugar: Empezar arranca la partida.
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/);
+
+  // Tablatura de debajo: su propio disco, a la izquierda del todo de su barra.
+  const tabDisc = page.locator('.test-room-tab').getByRole('button', { name: /^Canción:/ });
+  await tabDisc.scrollIntoViewIfNeeded();
+  await expect(tabDisc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
+  await tabDisc.click();
+  await page.getByRole('menuitemradio', { name: 'Electric Warlock' }).click();
+  await expect(tabDisc).toHaveAttribute('aria-label', 'Canción: Electric Warlock');
+  await expect(page.locator('.test-room-tab .at-surface svg').first()).toBeVisible({ timeout: 15000 });
+});
+
+test('el mástil del juego toma la afinación original de cada canción (Do#, Mi♭, E)', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  // Black Gilmur (por defecto) está en Do#: el botón de afinar (nota de la 6ª al aire) dice C#.
+  await openGame(page, 'Black Gilmur');
+  const tuning = page.locator('.test-room-fretboard').getByRole('button', { name: 'Afinar el mástil' });
+  await expect(tuning).toHaveText('C#', { timeout: 10000 });
+  await choose(page, 'Canción', 'Iron Rain');
+  await expect(tuning).toHaveText('D#', { timeout: 10000 });
+  await choose(page, 'Canción', 'Canción de prueba');
+  await expect(tuning).toHaveText('E', { timeout: 10000 });
 });

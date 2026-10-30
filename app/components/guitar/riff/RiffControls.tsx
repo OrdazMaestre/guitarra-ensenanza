@@ -5,7 +5,8 @@ import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BackingIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BackingIcon, DiscIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import type { SongEntry } from '@/app/lib/songs';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
 // del mástil MIDI (ReducedFretboardDiagram, prop `riffGame`): desplegables de ajustes + "Empezar"
@@ -14,23 +15,27 @@ import { BackingIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type 
 const SPEEDS = [0.5, 0.75, 1] as const;
 const MODE_LABEL: Record<RiffMode, string> = { ritmo: 'Con ritmo', paso: 'Paso a paso' };
 const BACKING_LABEL: Record<RiffBacking, string> = { metronomo: 'Metrónomo', bateria: 'Batería', nada: 'Sin nada' };
-type MenuId = 'nivel' | 'pista' | 'velocidad' | 'ritmo' | 'compases' | 'modo';
+type MenuId = 'cancion' | 'nivel' | 'pista' | 'velocidad' | 'ritmo' | 'compases' | 'modo';
 const ROLE_LABEL: Record<TrackRole, string> = { S: 'Guitarra solista', R: 'Guitarra rítmica' };
 
-// Orden (decisión del usuario): Pista, Nivel, acompañamiento, Velocidad, Ritmo, Compases/bucle.
+// Orden (decisión del usuario): Canción (el disco, a la izquierda del todo), Pista, Nivel, acompañamiento, Velocidad, Ritmo, Compases/bucle.
 // Las notas que pasan del último traste se siguen recolocando (chart.ts), pero ya sin aviso.
 // En el panel solo se ven ICONOS (petición del usuario: ahorrar espacio); el nombre de cada ajuste
 // y su valor siguen en aria-label, en `title` y en texto oculto. En los menús, icono + nombre.
 interface Props {
   // Al pulsar "Empezar" (el mástil lo usa para centrarse en pantalla).
   onStart?: () => void;
+  // Elegir otra canción (botón del disco). Cambiar de canción para la partida.
+  onSong?: (id: string) => void;
   riff: RiffController;
+  song?: SongEntry;
+  songs?: SongEntry[];
   // Papel de cada pista (nombre de pista -> S solista / R rítmica), sin el nombre del músico. Si
   // falta, se deduce del nombre ("Lead"/"Solo" = S; lo demás, R).
   trackRoles?: Record<string, TrackRole>;
 }
 
-export function RiffControls({ onStart, riff, trackRoles }: Props) {
+export function RiffControls({ onSong, onStart, riff, song, songs = [], trackRoles }: Props) {
   const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
   // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
@@ -82,6 +87,16 @@ export function RiffControls({ onStart, riff, trackRoles }: Props) {
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
+        {songs.length > 1 && (
+          <RiffDropdown {...menuProps('cancion')} icon={<DiscIcon />} label="Canción" value={song?.title ?? '—'}>
+            {songs.map((entry) => (
+              <button aria-pressed={song?.id === entry.id} className="riff-chip" key={entry.id} onClick={() => pick(() => onSong?.(entry.id))} type="button">
+                <DiscIcon />
+                {entry.title}
+              </button>
+            ))}
+          </RiffDropdown>
+        )}
         {riff.tracks.length > 1 && (
           <RiffDropdown {...menuProps('pista')} icon={<TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pista" value={currentTrack ? ROLE_LABEL[roleOf(currentTrack.name)] : '—'}>
             {riff.tracks.map((track) => (
@@ -241,6 +256,73 @@ function clampBar(value: string, maxBar: number) {
 export function RiffStyles() {
   return (
     <style>{`
+      /* Con JUGAR activado, el botón KEYBOARD del mástil resplandece como los botones "Tutorial"
+         (petición del usuario: que se vea que con teclado se juega mejor) -- mismo brillo que late,
+         verde; en modo oscuro, el dorado (ver .tour-launch en ButtonTour.tsx). En pantallas táctiles
+         el botón ni se ve (.midi-kb-toggle, globals.css). */
+      .riff-kb-glow {
+        position: relative;
+      }
+      .riff-kb-glow::before,
+      .riff-kb-arrow {
+        --riff-kb-glow: rgba(16, 185, 129, 0.8);
+      }
+      html[data-theme='dark'] .riff-kb-glow::before,
+      html[data-theme='dark'] .riff-kb-arrow {
+        --riff-kb-glow: rgb(144, 105, 0);
+      }
+      .riff-kb-glow::before {
+        animation: riff-kb-glow 2s ease-in-out infinite;
+        border-radius: inherit;
+        content: '';
+        inset: 0;
+        pointer-events: none;
+        position: absolute;
+      }
+      @keyframes riff-kb-glow {
+        0%, 100% { box-shadow: 0 0 2px 0 var(--riff-kb-glow); }
+        50% { box-shadow: 0 0 14px 4px var(--riff-kb-glow); }
+      }
+
+      /* Flecha en la fila de los números de traste, justo encima del botón KEYBOARD mientras no está
+         activado (petición del usuario). Se coloca midiendo el botón (ReducedFretboardDiagram), así que
+         lo sigue en cualquier ancho. Resplandece con el mismo brillo que el botón. Sin teclado
+         físico, fuera, igual que el botón. */
+      .riff-kb-arrow {
+        animation: riff-kb-arrow 1.2s ease-in-out infinite, riff-kb-arrow-glow 2s ease-in-out infinite;
+        color: #047857;
+        font-size: 15px;
+        font-weight: 900;
+        line-height: 1;
+        pointer-events: none;
+        position: absolute;
+        transform: translate(-50%, -50%);
+        z-index: 5;
+      }
+      @keyframes riff-kb-arrow {
+        0%, 100% { transform: translate(-50%, -50%); }
+        50% { transform: translate(-50%, -20%); }
+      }
+      @keyframes riff-kb-arrow-glow {
+        0%, 100% { filter: drop-shadow(0 0 1px var(--riff-kb-glow)); }
+        50% { filter: drop-shadow(0 0 6px var(--riff-kb-glow)) drop-shadow(0 0 3px var(--riff-kb-glow)); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .riff-kb-glow::before {
+          animation: none;
+          box-shadow: 0 0 10px 3px var(--riff-kb-glow);
+        }
+        .riff-kb-arrow {
+          animation: none;
+          filter: drop-shadow(0 0 5px var(--riff-kb-glow));
+        }
+      }
+      @media (hover: none) and (pointer: coarse) {
+        .riff-kb-arrow {
+          display: none;
+        }
+      }
+
       /* Mástil durante la partida (petición del usuario): madera algo transparente; separaciones de
          trastes, cejuela y círculos en AMARILLO, opacos y con un brillo moderado; las cuerdas del
          <svg> se esconden porque las dibuja la autopista (RiffHighway) con su color y su

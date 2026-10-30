@@ -113,14 +113,16 @@ export interface NoteScore {
   at: number;
 }
 
-// Puntos de una nota según si es exacta o cercana y su desviación en segundos reales.
-export function points(exact: boolean, deviation: number): number {
+// Puntos de una nota según si es exacta o cercana y su desviación en segundos reales. Una cercana
+// solo llega a +1 si está en la MISMA cuerda (modo cuerdas); en otra cuerda, o en el modo trastes
+// (cuerdas libres), vale +½ siempre (decisión del usuario, 2026-10-30).
+export function points(exact: boolean, deviation: number, sameString = true): number {
   if (exact) {
     if (deviation <= PERFECT_SECONDS + 1e-9) return PERFECT_POINTS;
     if (deviation <= GOOD_SECONDS + 1e-9) return 3;
     return deviation <= HIT_WINDOW_SECONDS + 1e-9 ? 2 : 0;
   }
-  if (deviation <= GOOD_SECONDS + 1e-9) return 1;
+  if (sameString && deviation <= GOOD_SECONDS + 1e-9) return 1;
   return deviation <= HIT_WINDOW_SECONDS + 1e-9 ? 0.5 : 0;
 }
 
@@ -423,7 +425,7 @@ export class RiffSession {
           id: note.id,
           at: now + Math.max(0, note.t - this.songPos) / this.options.speed,
           duration: note.dur / this.options.speed,
-          midi: note.midi,
+          midi: note.midi + (this.chart.soundOffset ?? 0),
           open: owner !== undefined && this.hitAt.has(owner),
         });
       }
@@ -507,7 +509,10 @@ export class RiffSession {
     if (!best && this.rated) {
       // Cercana: solo puntos (no abre el sonido), y solo en una nota aún sin puntuar.
       const near = this.closest(window, (note) => !this.scoreOf.has(note.id) && this.isNear(note, event));
-      if (near) this.scoreOf.set(near.id, { points: points(false, deviation(near)), exact: false, at: this.songPos });
+      if (near) {
+        const sameString = !this.options.freeStrings && near.string === event.string;
+        this.scoreOf.set(near.id, { points: points(false, deviation(near), sameString), exact: false, at: this.songPos });
+      }
       return miss;
     }
     // Paso a paso no exige ritmo: la siguiente nota pendiente (o acorde) vale aunque se toque antes
@@ -530,7 +535,7 @@ export class RiffSession {
     if (this.options.mode !== 'paso') return [];
     return this.guideNotes
       .filter((note) => Math.abs(note.t - hit.t) < 0.005)
-      .map((note) => ({ midi: note.midi, duration: Math.max(0.15, note.dur / this.options.speed) }));
+      .map((note) => ({ midi: note.midi + (this.chart.soundOffset ?? 0), duration: Math.max(0.15, note.dur / this.options.speed) }));
   }
 
   // Posición de una nota para las pulsaciones mantenidas (con cuerdas libres, solo el traste).

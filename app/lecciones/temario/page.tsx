@@ -2,6 +2,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Caveat_Brush, Poppins, Space_Mono } from 'next/font/google';
 import { RenderTopNotice, VercelLimitNotice } from '../../components/DeploymentNotice';
+import { SITE_SEARCH_ENTRIES } from '../../lib/siteSearchIndex';
 import PortadaShell from './PortadaShell';
 
 // Portada de la web. Las tipografías se cargan solo aquí para no cambiar nada del resto de la web.
@@ -12,7 +13,7 @@ const body = Poppins({ subsets: ['latin'], weight: ['400', '600', '700'], variab
 export default function TemarioPage() {
   return (
     <main className="portada2-main">
-      <PortadaShell className={`${brush.variable} ${mono.variable} ${body.variable}`}>
+      <PortadaShell className={`${brush.variable} ${mono.variable} ${body.variable}`} entries={SITE_SEARCH_ENTRIES}>
         <section className="portada2-stage">
           <div className="portada2-bg-wrap" aria-hidden="true">
             <Image
@@ -27,7 +28,7 @@ export default function TemarioPage() {
 
           <div className="portada2-copy">
             <RenderTopNotice />
-            <p className="portada2-eyebrow">Tu guitarra, tu ritmo</p>
+            <p className="portada2-eyebrow">Tu guitarra, tu ritmo, desde cero</p>
             <h1 className="portada2-title">
               <span className="portada2-title-top">Primeros</span>
               <span className="portada2-title-pasos">
@@ -90,54 +91,129 @@ export default function TemarioPage() {
 
         /* Padding lateral de 64px como mínimo: arriba a la izquierda vive el botón fijo de la mesa
            de mezclas y arriba a la derecha el de claro/oscuro (44px + 12px de margen cada uno). */
+        /* Pantalla ancha: rejilla de 3 columnas — MÚSICA | botón del árbol + buscador | INSTRUMENTOS.
+           El <nav> es display: contents aquí, así que sus botones son celdas de esta rejilla. */
         .portada2-header {
           align-items: center;
-          display: flex;
-          flex-wrap: wrap;
+          display: grid;
           gap: 12px 24px;
-          justify-content: space-between;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
           padding: 14px clamp(64px, 6vw, 96px);
           position: relative;
           z-index: 20;
         }
 
-        .portada2-header.is-midis-open {
+        .portada2-header.is-instruments-open {
           padding-bottom: 76px;
         }
 
-        .portada2-brand {
+        /* Botón del árbol + buscador: los mismos componentes (y estilos de globals.css) que la
+           barra superior del resto de páginas. */
+        .portada2-tools {
           align-items: center;
           display: flex;
-          gap: 14px;
+          gap: 10px;
+          grid-column: 2;
+          grid-row: 1;
           min-width: 0;
         }
 
-        .portada2-logo {
-          border-radius: 10px;
-          display: block;
-          flex: 0 0 auto;
-          height: 48px;
-          width: 48px;
-        }
-
-        .portada2-brand-name {
-          font-family: var(--portada2-mono), monospace;
-          font-size: 15px;
-          font-weight: 700;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-        }
-
         .portada2-nav {
-          align-items: center;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px 8px;
-          position: relative;
+          display: contents;
         }
 
         .portada2-menu {
-          position: static;
+          position: relative;
+        }
+
+        .portada2-menu-lessons {
+          display: none;
+        }
+
+        .portada2-music {
+          grid-column: 1;
+          grid-row: 1;
+          justify-self: start;
+        }
+
+        .portada2-menu-instruments {
+          grid-column: 3;
+          grid-row: 1;
+          justify-self: end;
+        }
+
+        /* ---------- Fila de lecciones (pantalla ancha; en estrecha, desplegable LECCIONES) ---------- */
+
+        .portada2-lessons {
+          align-items: center;
+          box-sizing: border-box;
+          display: flex;
+          gap: 6px;
+          padding: 0 clamp(24px, 4vw, 64px);
+          position: relative;
+          z-index: 15;
+        }
+
+        /* Se desplaza de lado, pero sin barra: para eso están las flechitas. */
+        .portada2-lessons-scroll {
+          display: flex;
+          flex: 1 1 auto;
+          min-width: 0;
+          overflow-x: auto;
+          scrollbar-width: none;
+        }
+
+        .portada2-lessons-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        /* margin: auto la centra mientras cabe; cuando no cabe, el margen se queda en 0 y la fila
+           empieza a la izquierda (justify-content: center recortaría el principio sin poder
+           llegar a él desplazando). */
+        .portada2-lessons-row {
+          display: flex;
+          flex: 0 0 auto;
+          gap: 4px;
+          list-style: none;
+          margin: 0 auto;
+          padding: 0;
+        }
+
+        .portada2-lessons-row .portada2-nav-link {
+          font-size: 15px;
+          gap: 8px;
+          min-height: 40px;
+          padding: 4px 10px 4px 4px;
+          white-space: nowrap;
+        }
+
+        .portada2-lessons-arrow {
+          align-items: center;
+          background: #ffffff;
+          border: 2px solid #111111;
+          border-radius: 999px;
+          color: #111111;
+          cursor: pointer;
+          display: flex;
+          flex: 0 0 auto;
+          height: 34px;
+          justify-content: center;
+          padding: 0;
+          width: 34px;
+        }
+
+        .portada2-lessons-arrow:hover {
+          border-color: #047857;
+          color: #047857;
+        }
+
+        .portada2-lessons-arrow:focus-visible {
+          outline: 3px solid #047857;
+          outline-offset: 2px;
+        }
+
+        .portada2-lessons-arrow.is-hidden {
+          visibility: hidden;
         }
 
         .portada2-nav-button {
@@ -165,7 +241,7 @@ export default function TemarioPage() {
         }
 
         .portada2-nav-button:focus-visible,
-        .portada2-midi-option:focus-visible,
+        .portada2-instrument-option:focus-visible,
         .portada2-nav-link:focus-visible {
           outline: 3px solid #047857;
           outline-offset: 2px;
@@ -223,7 +299,7 @@ export default function TemarioPage() {
           width: 28px;
         }
 
-        .portada2-midi-options {
+        .portada2-instrument-options {
           display: flex;
           gap: 10px;
           justify-content: flex-end;
@@ -232,7 +308,7 @@ export default function TemarioPage() {
           top: calc(100% + 14px);
         }
 
-        .portada2-midi-option {
+        .portada2-instrument-option {
           background: #ffffff;
           border: 2px solid #111111;
           border-radius: 999px;
@@ -247,12 +323,12 @@ export default function TemarioPage() {
           text-transform: uppercase;
         }
 
-        .portada2-midi-option:hover {
+        .portada2-instrument-option:hover {
           border-color: #047857;
           color: #047857;
         }
 
-        .portada2-midi-option[aria-pressed='true'] {
+        .portada2-instrument-option[aria-pressed='true'] {
           background: #047857;
           border-color: #047857;
           color: #ffffff;
@@ -376,7 +452,7 @@ export default function TemarioPage() {
         }
 
         .portada2-title-top {
-          font-size: clamp(62px, 8vw, 118px);
+          font-size: clamp(62px, 9.6vw, 142px);
           transform: rotate(-4deg);
           transform-origin: left center;
         }
@@ -384,7 +460,7 @@ export default function TemarioPage() {
         .portada2-title-pasos {
           align-items: center;
           display: flex !important;
-          font-size: clamp(86px, 11.4vw, 168px);
+          font-size: clamp(86px, 13.7vw, 202px);
           margin: 0.04em 0 0.02em 0.22em;
           transform: rotate(-4deg);
           transform-origin: left center;
@@ -490,7 +566,7 @@ export default function TemarioPage() {
         }
 
         .portada2-title-bottom {
-          font-size: clamp(46px, 5.8vw, 88px);
+          font-size: clamp(46px, 7vw, 106px);
           transform: rotate(-4deg);
           transform-origin: left center;
         }
@@ -552,12 +628,48 @@ export default function TemarioPage() {
 
         /* ---------- Pantallas medianas: la cabecera se centra ---------- */
 
+        /* Estrecha: buscador arriba y, debajo, LECCIONES · MÚSICA · INSTRUMENTOS (orden del DOM del
+           <nav>); las lecciones van en el desplegable y la fila se oculta. Los menús se anclan a toda
+           la fila (position: static) para que sus desplegables salgan centrados. */
         @media (max-width: 980px) {
           .portada2-header {
-            justify-content: center;
+            display: flex;
+            flex-direction: column;
           }
 
-          .portada2-midi-options {
+          .portada2-nav {
+            align-items: center;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            justify-content: center;
+            position: relative;
+            width: 100%;
+          }
+
+          .portada2-menu {
+            position: static;
+          }
+
+          .portada2-menu-lessons {
+            display: block;
+          }
+
+          /* El buscador aprovecha el ancho libre de su fila (entre los botones fijos de las esquinas). */
+          .portada2-tools {
+            max-width: 100%;
+            width: 380px;
+          }
+
+          .portada2-tools .site-search {
+            flex: 1 1 auto;
+          }
+
+          .portada2-lessons {
+            display: none;
+          }
+
+          .portada2-instrument-options {
             justify-content: center;
             left: 0;
           }
@@ -577,18 +689,8 @@ export default function TemarioPage() {
             padding: 10px 56px;
           }
 
-          .portada2-header.is-midis-open {
+          .portada2-header.is-instruments-open {
             padding-bottom: 72px;
-          }
-
-          .portada2-logo {
-            height: 40px;
-            width: 40px;
-          }
-
-          .portada2-brand-name {
-            font-size: 12px;
-            letter-spacing: 0.08em;
           }
 
           /* Aquí la barra de controles del instrumento siempre acaba en el flujo (MidiInstrumentChrome
@@ -611,7 +713,7 @@ export default function TemarioPage() {
             padding: 8px 8px;
           }
 
-          .portada2-midi-option {
+          .portada2-instrument-option {
             font-size: 13px;
             padding: 8px 16px;
           }

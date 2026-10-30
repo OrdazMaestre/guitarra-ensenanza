@@ -1,10 +1,19 @@
 import type { RiffLevel } from '@/app/lib/riff/levels';
+import type { TrackRole } from '@/app/lib/riff/roles';
 
 // Partida tutorial de mecánicas (petición del usuario): una canción "remix" fabricada nota a nota
 // con trozos de la pista cargada (app/lib/riff/remix.ts), que se juega de principio a fin como una
 // canción más. Enseña mantener pulsado, tapping y slide. Se lanza al final del tutorial del panel.
 // Antes de cada parte, la partida se para sola en un compás de silencio y sale su tarjeta
 // (mensajes + animación); "¡A tocar!" sigue desde ahí con la cuenta de entrada.
+
+// La partida de prueba siempre se fabrica con esta canción y pista (los compases de abajo son
+// suyos), aunque en el panel esté elegida otra canción.
+export const RIFF_TUTORIAL_SONG: { source: string; track: string; roles: Record<string, TrackRole> } = {
+  source: '/tabs/prueba-master-of-puppets.gp',
+  track: 'Rhythm Guitar (Kirk)',
+  roles: { 'Rhythm Guitar (Kirk)': 'S', 'Rhythm Guitar (James)': 'R' },
+};
 
 export type TutorialAnimation = 'tapping' | 'slide';
 

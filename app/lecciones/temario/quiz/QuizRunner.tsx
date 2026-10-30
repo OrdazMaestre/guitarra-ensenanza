@@ -298,13 +298,13 @@ export default function QuizRunner() {
           background: transparent;
         }
 
-        /* .site-home-link ("Portada") y .theme-toggle-button (claro/oscuro) son componentes
+        /* La barra superior (.site-search-input, buscador global) y .theme-toggle-button (claro/oscuro) son componentes
            globales del sitio (globals.css) -- se sobreescriben solo mientras el quiz esta
            montado, con el mismo scoping por body.quiz-bg-active que .site-shell arriba, para no
            tocar su aspecto en el resto de paginas. El quiz fuerza data-theme="dark" mientras esta
            montado (ver useEffect de arriba), asi que solo hace falta la variante oscura del
            boton de tema. */
-        body.quiz-bg-active .site-home-link {
+        body.quiz-bg-active .site-search-input {
           background: rgba(255, 255, 255, 0.5);
         }
 

@@ -3,13 +3,14 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
-import SiteHomeLink from "./components/SiteHomeLink";
+import SiteTopBar from "./components/siteNav/SiteTopBar";
 import ThemeToggle from "./components/ThemeToggle";
 import RenderIdleWarning from "./components/RenderIdleWarning";
 import VercelLimitWarning from "./components/VercelLimitWarning";
 import MaikaelWidget from "./components/maikael/MaikaelWidget";
 import MixingConsole from "./components/mixingConsole/MixingConsole";
 import { DEPLOY_TARGET } from "./lib/deployTarget";
+import { SITE_SEARCH_ENTRIES } from "./lib/siteSearchIndex";
 
 export const metadata: Metadata = {
   title: "Primeros Pasos con mi Guitarra",
@@ -47,7 +48,7 @@ export default function RootLayout({
           enabled={process.env.SHOW_LIMIT_WARNING === '1'}
         />
         <div className="site-shell">
-          <SiteHomeLink />
+          <SiteTopBar entries={SITE_SEARCH_ENTRIES} />
           {children}
         </div>
         <MaikaelWidget />

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { pickTestRoomTabSong } from './sala-song';
 
 // Locks in experimentalScheduler (AlphaTabPlayer.tsx, opt-in, only used by
 // sala-de-pruebas today). The legacy setTimeout chain in playEvent let
@@ -24,6 +25,7 @@ async function recordGuitarNoteTimes(page: Page, disableFollow: boolean) {
   });
 
   await page.goto('/lecciones/temario/sala-de-pruebas');
+  await pickTestRoomTabSong(page);
   await page.waitForSelector('.test-room-tab .at-surface-svg', { timeout: 60000 });
   await page.waitForTimeout(1500);
   await page.evaluate(() => document.querySelector('.test-room-tab')?.scrollIntoView({ block: 'start' }));

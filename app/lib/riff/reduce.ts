@@ -471,7 +471,10 @@ function placePhraseMulti(
       const out = new Array<number>(pitches.length);
       const segmentOf: number[] = [];
       pitches.forEach((_, k) => {
-        const same = k > 0 && combo[groupOf[k]].join() === combo[groupOf[k - 1]].join();
+        // Mismas cuerdas Y misma ventana de trastes (un pasaje rápido aislado tiene la suya): si no,
+        // las alturas de un tramo podrían no caber en los compases del otro.
+        const same = k > 0 && combo[groupOf[k]].join() === combo[groupOf[k - 1]].join()
+          && minOf(groupOf[k]) === minOf(groupOf[k - 1]) && maxOf(groupOf[k]) === maxOf(groupOf[k - 1]);
         segmentOf.push(k === 0 ? 0 : same ? segmentOf[k - 1] : segmentOf[k - 1] + 1);
       });
       for (let g = 0; g <= segmentOf[segmentOf.length - 1]; g++) {

@@ -47,7 +47,10 @@ test('tutorial del panel de partida: pone la configuración de base y enseña su
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   const toggles = page.locator('.riff-dd-toggle');
-  await expect(toggles.first()).toContainText('Guitarra solista', { timeout: 10000 });
+  // La sala arranca con Black Gilmur (una sola guitarra): la de prueba tiene las dos pistas.
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'Canción de prueba', exact: true }).click();
+  await expect(toggles.nth(1)).toContainText('Guitarra solista', { timeout: 10000 });
   // Cambiar ajustes...
   await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'Experto', exact: true }).click();
@@ -55,9 +58,9 @@ test('tutorial del panel de partida: pone la configuración de base y enseña su
   await page.locator('.riff-dd-menu').getByRole('button', { name: '100%', exact: true }).click();
   // ...y el tutorial los devuelve a la configuración de base.
   await page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' }).click();
-  await expect(toggles).toHaveText([/Guitarra solista/, /Práctica/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
+  await expect(toggles).toHaveText([/Canción de prueba/, /Guitarra solista/, /Principiante/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
   // El último paso ofrece la partida de prueba ("¡A jugar!"); aquí se rechaza con "Ahora no".
-  await walk(page, ['Pista', 'Nivel', 'Acompañamiento', 'Velocidad', 'Ritmo', 'Compases y bucle', 'Partida de prueba'], 'Ahora no');
+  await walk(page, ['Canción', 'Pista', 'Nivel', 'Acompañamiento', 'Velocidad', 'Ritmo', 'Compases y bucle', 'Partida de prueba'], 'Ahora no');
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
 });
 
@@ -123,12 +126,12 @@ for (const path of MIDI_PAGES) {
   });
 }
 
-test('portada: la guitarra y el teclado del menú Midis llevan su tutorial', async ({ page }) => {
+test('portada: la guitarra y el teclado del menú Instrumentos llevan su tutorial', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto('/lecciones/temario');
   for (const name of ['Guitarra', 'Teclado']) {
-    if ((await page.locator('#portada2-midis').count()) === 0) await page.getByRole('button', { name: 'Midis' }).click();
-    await page.locator('#portada2-midis').getByRole('button', { name }).click();
+    if ((await page.locator('#portada2-instrumentos').count()) === 0) await page.getByRole('button', { name: 'Instrumentos' }).click();
+    await page.locator('#portada2-instrumentos').getByRole('button', { name }).click();
     const section = page.locator('.portada2-instrument');
     const launch = section.getByRole('button', { name: 'Tutorial' });
     await launch.scrollIntoViewIfNeeded();

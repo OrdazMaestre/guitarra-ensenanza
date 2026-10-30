@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { pickTestRoomTabSong } from './sala-song';
 
 // Locks in the "every 10 bars" drum-notation-only notice added to the
 // percussion preview (AlphaTabPlayer.tsx's applyPercussionPreviewNotice /
@@ -18,6 +19,7 @@ test('drum notation notice: appears only in the drum preview, never in guitar/ba
   page.on('pageerror', (err) => consoleErrors.push('pageerror: ' + err.message));
 
   await page.goto('/lecciones/temario/sala-de-pruebas');
+  await pickTestRoomTabSong(page);
   await page.waitForTimeout(2000);
 
   // Before entering the preview (guitar/bass tab visible): the notice text

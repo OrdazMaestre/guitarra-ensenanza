@@ -5,13 +5,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, PointerEvent, ReactNode, UIEvent } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 import {
+  createOverdriveChain,
   getAudioCurrentTime,
+  OVERDRIVE_VOICE_LEVEL,
   playBassNote,
   playMetronomeClick as playDrumClick,
   touchAudioContext,
 } from '@/app/lib/guitarAudioEngine';
 
 interface AlphaTabPlayerProps {
+  // Opt-in: adds a CLEAN/OVERDRIVE toolbar button that routes every guitar
+  // note (playPluckedNote: primary and auxiliary guitar tracks; bass and
+  // drums untouched) through the same amp chain as the fretboard's overdrive
+  // (createOverdriveChain in guitarAudioEngine.ts), built on THIS player's
+  // own AudioContext. See "Overdrive en la tablatura" in NOTES.
+  allowOverdrive?: boolean;
   centerHorizontalContent?: boolean;
   compact?: boolean;
   disablePlaybackScrollFollow?: boolean;
@@ -61,6 +69,11 @@ interface AlphaTabPlayerProps {
   // shown first on load (falls back to the first guitar track if missing).
   initialTrack?: string;
   showHorizontalScrollbar?: boolean;
+  // Optional extra control rendered FIRST in the toolbar (left of "Pistas"),
+  // e.g. the Sala de pruebas song picker (SongTabPlayer). Purely additive:
+  // the player never reads or controls it. See "Selector de canción" in
+  // AlphaTabPlayer.NOTES.md.
+  toolbarStart?: ReactNode;
   trackOrder?: string[];
   source?: string;
   tab?: string;
@@ -1134,6 +1147,7 @@ function applyExplicitHorizontalBarWidths(score: AlphaTabScoreLike, widths: numb
 }
 
 export default function AlphaTabPlayer({
+  allowOverdrive = false,
   centerHorizontalContent = false,
   compact = false,
   disablePlaybackScrollFollow = false,
@@ -1153,6 +1167,7 @@ export default function AlphaTabPlayer({
   showHorizontalScrollbar = true,
   source,
   tab = '',
+  toolbarStart,
   trackOrder,
 }: AlphaTabPlayerProps) {
   // The lookahead scheduler & co. started as an opt-in experiment named
@@ -1293,6 +1308,12 @@ export default function AlphaTabPlayer({
   const tabScrollbarRef = useRef<HTMLDivElement | null>(null);
   const tabScrollElementRef = useRef<HTMLElement | null>(null);
   const volumeRef = useRef(DEFAULT_VOLUME);
+  // allowOverdrive only: guitar tone, read at schedule time (ref, like
+  // volumeRef) so toggling mid-playback affects the next notes, and the
+  // player's own overdrive chain (lazily built on its AudioContext).
+  const [guitarTone, setGuitarTone] = useState<'clean' | 'overdrive'>('clean');
+  const guitarToneRef = useRef<'clean' | 'overdrive'>('clean');
+  const overdriveChainRef = useRef<{ input: GainNode; output: GainNode } | null>(null);
   const voiceIdRef = useRef(0);
   const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
   // detectedScoreTempo is the real score.tempo (BPM) read off the loaded file,
@@ -3157,17 +3178,33 @@ export default function AlphaTabPlayer({
       source.loopEnd = sample.loopEnd / sample.sampleRate;
     }
 
+    // Overdrive (allowOverdrive): like the fretboard, the shared volume
+    // slider goes AFTER the saturation (chain output), so the voice enters
+    // the chain without it, scaled so a plain single note (articulation
+    // 0.58) hits OVERDRIVE_VOICE_LEVEL. Per-track volume and chord/palm-mute
+    // balance stay before the drive. Clean: exactly the historical path.
+    const overdrive = allowOverdrive && guitarToneRef.current === 'overdrive';
+    const voiceLevel = overdrive
+      ? (volumeRef.current > 0 ? level / volumeRef.current : 0) * (OVERDRIVE_VOICE_LEVEL / 0.58)
+      : level;
+
     toneFilter.type = 'lowpass';
     toneFilter.frequency.setValueAtTime(cutoff, startTime);
     toneFilter.Q.setValueAtTime(0.55, startTime);
     voiceGain.gain.setValueAtTime(0.0001, startTime);
-    voiceGain.gain.linearRampToValueAtTime(Math.max(0.0001, level), startTime + 0.004);
-    voiceGain.gain.setValueAtTime(Math.max(0.0001, level * (isPalmMuted ? 0.22 : 0.82)), startTime + sustainDuration);
+    voiceGain.gain.linearRampToValueAtTime(Math.max(0.0001, voiceLevel), startTime + 0.004);
+    voiceGain.gain.setValueAtTime(Math.max(0.0001, voiceLevel * (isPalmMuted ? 0.22 : 0.82)), startTime + sustainDuration);
     voiceGain.gain.exponentialRampToValueAtTime(0.0001, startTime + sustainDuration + release);
 
     source.connect(toneFilter);
     toneFilter.connect(voiceGain);
-    voiceGain.connect(getAudioOutput(context).input);
+    if (overdrive) {
+      if (!overdriveChainRef.current) overdriveChainRef.current = createOverdriveChain(context, getAudioOutput(context).input);
+      overdriveChainRef.current.output.gain.setTargetAtTime(volumeRef.current, context.currentTime, 0.02);
+      voiceGain.connect(overdriveChainRef.current.input);
+    } else {
+      voiceGain.connect(getAudioOutput(context).input);
+    }
 
     source.start(startTime);
     source.stop(startTime + sustainDuration + release + 0.03);
@@ -3922,6 +3959,7 @@ export default function AlphaTabPlayer({
       <div className={`${compact ? 'flex justify-center px-1 pb-2' : 'sticky top-3 z-[100] flex justify-center px-1 pb-4'}`}>
         <div className={`flex flex-wrap items-center justify-center border border-zinc-700 bg-zinc-950/95 shadow-xl backdrop-blur ${compact ? 'gap-2 px-2 py-2' : 'gap-4 px-4 py-3'}`}>
           <div className="flex items-center justify-center gap-2">
+            {toolbarStart}
             {multiTrack && scoreTracks.length > 1 && (
               <div className="relative flex items-center gap-2">
                 <IconButton label="Pistas" active={trackMenuOpen || soloTrackIndex !== null} onClick={toggleTrackMenu}>
@@ -4097,6 +4135,40 @@ export default function AlphaTabPlayer({
             <IconButton label={isPlaying ? 'Parar' : 'Reproducir'} active={isPlaying} onClick={isPlaying ? stop : playPause}>
               {isPlaying ? <StopIcon /> : <PlayIcon />}
             </IconButton>
+            {allowOverdrive && (
+              // Same look as IconButton (data-active hooks the toolbar
+              // styles in globals.css) but sized to its text, like the
+              // fretboard's CLEAN/OVERDRIVE button.
+              <button
+                type="button"
+                aria-label="Cambiar sonido clean u overdrive"
+                aria-pressed={guitarTone === 'overdrive'}
+                title="Sonido de las guitarras: clean u overdrive"
+                data-active={guitarTone === 'overdrive' ? 'true' : 'false'}
+                onClick={() => {
+                  const next = guitarToneRef.current === 'clean' ? 'overdrive' : 'clean';
+                  guitarToneRef.current = next;
+                  setGuitarTone(next);
+                }}
+                style={{
+                  alignItems: 'center',
+                  background: guitarTone === 'overdrive' ? '#34d399' : '#27272a',
+                  border: `1px solid ${guitarTone === 'overdrive' ? '#6ee7b7' : '#52525b'}`,
+                  color: guitarTone === 'overdrive' ? '#09090b' : '#ffffff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  height: 52,
+                  justifyContent: 'center',
+                  // Wide enough for "OVERDRIVE": toggling never shifts the toolbar.
+                  minWidth: 104,
+                  padding: '0 10px',
+                }}
+              >
+                {guitarTone === 'overdrive' ? 'OVERDRIVE' : 'CLEAN'}
+              </button>
+            )}
             {followLockEnabled && (
               <IconButton label="Seguir la tablatura" active={followLock} onClick={toggleFollowLock}>
                 <FollowScrollIcon />

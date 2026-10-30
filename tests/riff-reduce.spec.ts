@@ -30,7 +30,7 @@ for (const [name, file, track] of SONGS) {
 
       expect(chart.notes.length).toBeGreaterThan(0);
       expect(chart.notes.length).toBeLessThanOrEqual(real.notes.length);
-      // Práctica quita como MUCHO la mitad de los golpes; Medio y Avanzado, como Guitar Hero
+      // Principiante quita como MUCHO la mitad de los golpes; Medio y Avanzado, como Guitar Hero
       // Experto, casi ninguno (decisiones del usuario).
       const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
       // Fácil, como el "Hard" de Guitar Hero: 65-70 % de las notas en Master of Puppets (decisión
@@ -117,7 +117,7 @@ test('Medio y Avanzado (trastes) conservan el compás 42 de Master of Puppets en
       expect(new Set(notes.map((n) => `${n.string}/${n.fret}`)).size).toBe(1);
     }
     expect(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length).toBeLessThan(9);
-    // Fácil quita parte de los "chugs", pero menos que Práctica.
+    // Fácil quita parte de los "chugs", pero menos que Principiante.
     const facil = inBar(reduceChart(real, RIFF_LEVELS.facil).notes).length;
     expect(facil).toBeLessThan(9);
     expect(facil).toBeGreaterThan(inBar(reduceChart(real, RIFF_LEVELS.practica).notes).length);
@@ -594,6 +594,34 @@ test('remix: compás 42 ×6, silencio, 9-12 ×2 (Fácil), silencio, 9-12 ×2 (Me
     for (const id of n.sourceIds ?? []) {
       expect(chart.sourceNotes![id].id).toBe(id);
       expect(chart.sourceNotes![id].t).toBeGreaterThanOrEqual(n.t - 1e-6);
+    }
+  }
+});
+
+// Canciones de la Sala de pruebas (botón del disco). Black Gilmur y Electric Warlock están en Do#
+// e Iron Rain en Mi♭: el chart las lee como en afinación estándar (soundOffset, chart.ts). Todas
+// sus guitarras se traducen a TODOS los niveles sin romperse (Iron Rain rompía el contorno de un
+// tramo con pasaje rápido aislado y compás normal en la misma cuerda), dentro de las cuerdas y
+// trastes del nivel.
+test('canciones de la Sala de pruebas: todas las guitarras, todos los niveles', () => {
+  for (const [file, offset] of [['black-gilmur.gp', -3], ['electric-warlock.gp', -3], ['iron-rain.gp', -1]] as const) {
+    const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+    const guitars = score.tracks.map((track, index) => ({ track, index })).filter(({ track }) => !track.staves[0].isPercussion && track.staves[0].tuning.length === 6);
+    const charts = guitars.map(({ index }) => buildChart(at, score, index, 24));
+    const range = pitchRange(charts);
+    for (const real of charts) {
+      expect(real.soundOffset, file).toBe(offset);
+      for (const [id, profile] of Object.entries(RIFF_LEVELS)) {
+        if (!profile.available) continue;
+        const reduced = reduceChart(real, profile, { range });
+        expect(reduced.notes.length, `${file} ${id}`).toBeGreaterThan(real.notes.length * 0.3);
+        expect(reduced.soundOffset, `${file} ${id}`).toBe(offset);
+        for (const note of reduced.notes) {
+          if (!profile.freeStrings) expect(profile.strings, `${file} ${id}`).toContain(note.string);
+          expect(note.fret, `${file} ${id}`).toBeGreaterThanOrEqual(profile.minFret);
+          expect(note.fret, `${file} ${id}`).toBeLessThanOrEqual(profile.maxFretByString?.[note.string] ?? profile.maxFret);
+        }
+      }
     }
   }
 });

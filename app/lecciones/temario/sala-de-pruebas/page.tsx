@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
 import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
-import AlphaTabPlayer from '../../../components/guitar/AlphaTabPlayer';
+import SongTabPlayer from '../../../components/guitar/SongTabPlayer';
 import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 import SpotlightCorners from './SpotlightCorners';
+import { TEST_ROOM_SONGS } from './songs';
 
 export default function SalaDePruebasPage() {
   return (
@@ -26,7 +27,8 @@ export default function SalaDePruebasPage() {
 
       <section className="test-room-instruments">
         <div className="test-room-fretboard">
-          {/* JUGAR (en la barra del mástil) abre el juego tipo Rocksmith con la tablatura de esta sala. */}
+          {/* JUGAR (en la barra del mástil) abre el juego tipo Rocksmith; el disco del panel elige
+              la canción (TEST_ROOM_SONGS). */}
           <ReducedFretboardDiagram
             allowLeftHanded
             allowOverdrive
@@ -36,13 +38,7 @@ export default function SalaDePruebasPage() {
             endFret={12}
             fretLabels
             notes={[]}
-            riffGame={{
-              source: '/tabs/prueba-master-of-puppets.gp',
-              initialTrack: 'Rhythm Guitar (Kirk)',
-              // Las dos pistas se llaman "Rhythm Guitar", pero en este trozo (empieza en el solo)
-              // Kirk toca la solista: S; James, la rítmica: R.
-              trackRoles: { 'Rhythm Guitar (Kirk)': 'S', 'Rhythm Guitar (James)': 'R' },
-            }}
+            riffGame={{ songs: TEST_ROOM_SONGS, initialSong: 'black-gilmur' }}
             tutorial
           />
         </div>
@@ -51,14 +47,8 @@ export default function SalaDePruebasPage() {
       </section>
 
       <section className="test-room-tab">
-        <AlphaTabPlayer
-          source="/tabs/prueba-master-of-puppets.gp"
-          multiTrack
-          layout="horizontal"
-          minHeight={240}
-          initialTrack="Rhythm Guitar (Kirk)"
-          trackOrder={['Rhythm Guitar (Kirk)', 'Rhythm Guitar (James)', 'Bass', 'Drums']}
-        />
+        {/* Misma lista de canciones; el disco, a la izquierda de su barra. */}
+        <SongTabPlayer initialSong="black-gilmur" minHeight={240} songs={TEST_ROOM_SONGS} />
       </section>
 
       <Link href="/lecciones/temario/pasos" className="test-room-back">

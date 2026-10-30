@@ -149,7 +149,8 @@ test('overdrive tone: no clipping, loudness parity with clean, working volume', 
 
 test('CLEAN/OVERDRIVE toggle exists only where opted in', async ({ page }) => {
   await page.goto('/lecciones/temario/sala-de-pruebas');
-  const btn = page.getByRole('button', { name: 'Cambiar sonido clean u overdrive' });
+  // El del mástil (la tablatura de la sala tiene el suyo: tests/tab-song-tuning-overdrive.spec.ts).
+  const btn = page.locator('.test-room-fretboard').getByRole('button', { name: 'Cambiar sonido clean u overdrive' });
   await expect(btn).toHaveText('CLEAN');
   await expect(btn).toHaveAttribute('aria-pressed', 'false');
   await btn.click();

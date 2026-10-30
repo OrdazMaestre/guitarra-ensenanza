@@ -440,7 +440,7 @@ export default function MixingConsole() {
          * también convierte a .site-shell en el "containing block" de cualquier position:fixed que
          * viva dentro de él. Eso rompía DOS cosas a la vez cuando el botón/panel vivían dentro de
          * .site-shell: (1) su posición quedaba desplazada respecto al modo claro (.site-shell no
-         * arranca en (0,0): margin de <body> + margin-top de .site-home-link colapsando hacia
+         * arranca en (0,0): margin de <body> + margin-top de la barra superior colapsando hacia
          * arriba), y (2) al ser .site-shell un bloque normal que SE DESPLAZA con el scroll de la
          * página, el botón/panel dejaban de estar realmente "pegados" al viewport -- se movían con
          * el contenido, con el retraso justo de que algo (JS) tuviera que perseguir el offset en

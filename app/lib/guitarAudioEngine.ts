@@ -229,6 +229,9 @@ function startOscillatorVoice(midi: number, context: AudioContext, volume = 1.0)
 export type GuitarTone = 'clean' | 'overdrive';
 
 const OD_VOICE_LEVEL = 0.52;
+// Nivel fijo al que entra a la saturación una nota sola (el volumen va después, en `output`):
+// exportado para que el reproductor de tablatura (AlphaTabPlayer) alimente su propia cadena igual.
+export const OVERDRIVE_VOICE_LEVEL = OD_VOICE_LEVEL;
 const OD_DRIVE = 3;
 const OD_SHAPE_K = 6;
 const OD_SHAPE_BIAS = 0.12;
@@ -274,6 +277,17 @@ function biquad(context: BaseAudioContext, type: BiquadFilterType, frequency: nu
 
 function getOverdriveBus(context: AudioContext): GainNode {
   if (overdriveIn) return overdriveIn;
+  const chain = createOverdriveChain(context, getMaster(context));
+  overdriveIn = chain.input;
+  overdriveOutGain = chain.output;
+  return chain.input;
+}
+
+// La cadena de ampli entera (ver arriba), en `context`, saliendo a `destination`. `input` recibe
+// las voces a nivel fijo (OVERDRIVE_VOICE_LEVEL); `output` es la ganancia de volumen DESPUÉS de
+// saturar. El mástil usa una sola (getOverdriveBus); el reproductor de tablatura, que tiene su
+// propio AudioContext, crea la suya.
+export function createOverdriveChain(context: BaseAudioContext, destination: AudioNode): { input: GainNode; output: GainNode } {
   const input = context.createGain();
 
   // 1. Pre-EQ (Tube Screamer)
@@ -337,11 +351,9 @@ function getOverdriveBus(context: AudioContext): GainNode {
   wet.connect(makeup);
   makeup.connect(outVol);
   outVol.connect(safety);
-  safety.connect(getMaster(context));
+  safety.connect(destination);
 
-  overdriveIn = input;
-  overdriveOutGain = outVol;
-  return input;
+  return { input, output: outVol };
 }
 
 // Fretboard path: guitar sample with pitch correction and natural decay + loop tail.

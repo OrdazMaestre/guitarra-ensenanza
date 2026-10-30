@@ -47,6 +47,7 @@ export const KEYBOARD_TOUR: TourStep[] = [
 const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.riff-dd-toggle[aria-controls="riff-menu-${id}"]`);
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
+  { title: 'Canción', lines: ['Elige qué canción tocar.'], find: ddToggle('cancion') },
   { title: 'Pista', lines: ['Elige qué guitarra tocas.'], find: ddToggle('pista') },
   { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
   { title: 'Acompañamiento', lines: ['Elige el ritmo:', 'batería, metrónomo o nada.'], find: ddToggle('modo') },

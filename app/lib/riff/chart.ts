@@ -24,7 +24,9 @@ export interface ChartNote {
   dur: number;
   string: number;
   fret: number;
-  // Altura real de la nota en su posición (afinación de la pista).
+  // Altura de la nota en su posición con el mástil en afinación ESTÁNDAR (la del mástil del juego).
+  // Con una pista afinada más grave (todas las cuerdas igual, p. ej. Do#), lo que SUENA es
+  // `midi + chart.soundOffset`.
   midi: number;
   palmMute: boolean;
   tech: ChartTech[];
@@ -85,6 +87,11 @@ export interface Chart {
   drums: ChartDrumHit[];
   // Notas de las demás pistas con altura (ver ChartBandNote), ordenadas por tiempo.
   band?: ChartBandNote[];
+  // Semitonos entre la afinación de la pista y la estándar cuando todas sus cuerdas están bajadas
+  // (o subidas) lo mismo: -3 en Do#, -1 en Mi♭. Las notas del chart van en posiciones/alturas de la
+  // afinación estándar (el mástil del juego y los niveles traducidos razonan sobre él); al SONAR se
+  // suma esto, para que la canción suene en su tono real. Sin él (o afinaciones mixtas), 0.
+  soundOffset?: number;
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -103,6 +110,9 @@ export function listGuitarTracks(score: Score): GuitarTrackInfo[] {
     .filter(({ staff }) => staff && !staff.isPercussion && staff.tuning.length === 6)
     .map(({ index, name }) => ({ index, name }));
 }
+
+// Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
+const STANDARD_TUNING = [64, 59, 55, 50, 45, 40];
 
 export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number, maxFret = 24): Chart {
   const track = score.tracks[trackIndex];
@@ -158,7 +168,11 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     });
   let skippedAboveMaxFret = 0;
   let movedAboveMaxFret = 0;
-  const openMidi = (string: number) => staff.tuning[string - 1];
+  // Afinación uniformemente bajada/subida (Do#, Mi♭...): las notas se leen como en la estándar y la
+  // diferencia se guarda en `soundOffset` (ver Chart). Afinaciones mixtas (Drop D...): alturas reales.
+  const offsets = staff.tuning.map((open, k) => open - STANDARD_TUNING[k]);
+  const soundOffset = offsets.length === 6 && offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0;
+  const openMidi = (string: number) => staff.tuning[string - 1] - soundOffset;
   let nextId = 0;
 
   for (const lookup of lookups) {
@@ -271,6 +285,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     beats,
     drums,
     band,
+    ...(soundOffset ? { soundOffset } : {}),
     movedAboveMaxFret,
     skippedAboveMaxFret,
   };
