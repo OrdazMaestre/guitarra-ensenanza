@@ -57,6 +57,9 @@ export interface RiffOptions {
   toBar: number;
   // Cuerdas libres (modo trastes): vale el traste correcto en CUALQUIER cuerda.
   freeStrings?: boolean;
+  // Factor de TODOS los márgenes de tiempo (acierto y cada puntuación); 0,6 = al 60 % (Medio y
+  // Avanzado trastes, ver `timingScale` en levels.ts). Por defecto 1.
+  timingScale?: number;
   // Tocar el tramo N veces seguidas (partida tutorial); los puntos de cada vuelta se SUMAN. Sin
   // esto, una sola vez (o infinitas con `loop`, que en cada vuelta empieza de cero).
   repeats?: number;
@@ -80,6 +83,8 @@ export interface ScheduledBandNote {
   midi: number;
   kind: 'guitar' | 'bass';
   palmMute: boolean;
+  // Pista + cuerda (ChartBandNote.voice): una nota nueva en la misma corta la anterior.
+  voice?: string;
 }
 
 export interface ScheduledGuideNote {
@@ -91,6 +96,8 @@ export interface ScheduledGuideNote {
   midi: number;
   // Niveles traducidos: true si su nota traducida "dueña" ya se acertó -> sale a OPEN_GAIN.
   open: boolean;
+  // Cuerda de la nota real: una nota nueva en la misma cuerda corta la anterior (ver useRiffGame).
+  voice: string;
 }
 
 export interface JudgeResult {
@@ -427,6 +434,7 @@ export class RiffSession {
           duration: note.dur / this.options.speed,
           midi: note.midi + (this.chart.soundOffset ?? 0),
           open: owner !== undefined && this.hitAt.has(owner),
+          voice: `own/${note.string}`,
         });
       }
       this.nextGuide++;
@@ -456,6 +464,7 @@ export class RiffSession {
           midi: note.midi,
           kind: note.kind,
           palmMute: note.palmMute,
+          voice: note.voice,
         });
       }
       this.nextBand++;
@@ -502,8 +511,11 @@ export class RiffSession {
     if (this.status === 'finished' || this.status === 'paused') return { gain: 1, hit: null, playNow: [] };
     if (event.kind === 'slide' && (!event.from || !isAdjacentSlide(event.from, event))) return miss;
 
-    const window = HIT_WINDOW_SECONDS * this.options.speed;
-    const deviation = (note: ChartNote) => Math.abs(note.t - this.songPos) / this.options.speed;
+    // Con `timingScale` se encogen todos los márgenes a la vez: la ventana de acierto y, al medir la
+    // desviación en "márgenes normales", cada escalón de puntos (4/3/2, 1/½).
+    const scale = this.options.timingScale ?? 1;
+    const window = HIT_WINDOW_SECONDS * scale * this.options.speed;
+    const deviation = (note: ChartNote) => Math.abs(note.t - this.songPos) / this.options.speed / scale;
     // La exacta tiene prioridad (y puede cambiar una cercana ya puntuada por sus puntos).
     let best = this.closest(window, (note) => this.matches(note, event));
     if (!best && this.rated) {

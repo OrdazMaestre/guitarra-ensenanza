@@ -15,10 +15,14 @@ import MetronomeControls from './MetronomeControls';
 import MidiInstrumentChrome from './MidiInstrumentChrome';
 import HoldGuard, { HoldGuardStyles } from './HoldGuard';
 import { FRETBOARD_TOUR, TutorialButton } from './ButtonTour';
-import { findSong, type SongEntry } from '@/app/lib/songs';
+import type { SongEntry } from '@/app/lib/songs';
+import { useSongChoice } from './LocalSongSearch';
+
+const NO_SONGS: SongEntry[] = [];
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
+import { stretchesLane } from '@/app/lib/riff/levels';
 import { setGameInProgress } from '@/app/lib/gameInProgress';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
@@ -189,8 +193,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Posiciones que suenan AHORA (teclado y ratón/dedo), para las notas repetidas con la pulsación
   // mantenida del juego. Se rellena más abajo, cuando existen los refs de las pulsaciones.
   const heldPositionsRef = useRef<() => { string: number; fret: number }[]>(() => []);
-  const [songId, setSongId] = useState(riffGame?.initialSong);
-  const song = riffGame ? findSong(riffGame.songs, songId) : undefined;
+  // Canción del disco: las de la web + las del propio dispositivo (LocalSongSearch.tsx).
+  const songChoice = useSongChoice(riffGame?.songs ?? NO_SONGS, riffGame?.initialSong);
+  const song = riffGame ? songChoice.song : undefined;
   const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
   const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret <= STRETCH_MAX_FRET && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
@@ -987,6 +992,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         previewTime={riff.previewTime}
         sessionRef={riff.game.sessionRef}
         stageRef={stageRef}
+        stretch={stretchesLane(riff.level) && !riff.tutorialOn}
       />
     )}
     {riffGame && gameOpen && settingsOpen && (
@@ -995,10 +1001,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         {riff.tutorialOn ? <RiffTutorialCard riff={riff} /> : (
           <RiffControls
             onStart={scrollIntoGame}
-            onSong={setSongId}
+            onSong={(id) => void songChoice.pick(id)}
             riff={riff}
             song={song}
-            songs={riffGame.songs}
+            songNotice={songChoice.notice}
+            songs={songChoice.songs}
             trackRoles={song?.trackRoles}
           />
         )}

@@ -12,6 +12,10 @@ import { lessonBlocks } from './temarioData';
 
 type Instrument = 'guitarra' | 'teclado';
 
+// Títulos que solo cambian en la portada (en el árbol, el buscador y la propia lección siguen
+// siendo los de temarioData.ts).
+const COVER_TITLES: Record<string, string> = { 'notacion-musical': 'Notas musicales' };
+
 const INSTRUMENTS: { id: Instrument; label: string }[] = [
   { id: 'guitarra', label: 'Guitarra' },
   { id: 'teclado', label: 'Teclado' },
@@ -72,7 +76,7 @@ export default function PortadaShell({
     <li key={lesson.slug}>
       <Link href={`/lecciones/temario/${lesson.slug}`} className="portada2-nav-link">
         <span className="portada2-lesson-number">{lesson.number}</span>
-        {lesson.title}
+        {COVER_TITLES[lesson.slug] ?? lesson.title}
       </Link>
     </li>
   ));

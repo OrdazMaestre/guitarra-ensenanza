@@ -92,8 +92,8 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await openGame(page);
   // El disco (Canción) va a la izquierda del todo.
   await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción/, /Pista/, /Nivel/, /Modo/, /Velocidad/, /Ritmo/, /Compases/], { timeout: 10000 });
-  // Configuración inicial (decisión del usuario): Kirk, Principiante, 75 %, Con ritmo, sin bucle, batería.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción de prueba/, /Guitarra solista/, /Principiante/, /Batería/, /75%/, /Con ritmo/, /^Compases1–\d+▾$/]);
+  // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle, batería.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción de prueba/, /Guitarra solista/, /Principiante/, /Batería/, /100%/, /Con ritmo/, /^Compases1–\d+▾$/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -115,8 +115,8 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
 
   await choose(page, 'Modo', 'Batería');
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Modo' })).toContainText('Batería');
-  await choose(page, 'Velocidad', '100%');
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('100%');
+  await choose(page, 'Velocidad', '75%');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('75%');
 
   // Solo un desplegable abierto, y se cierra al pulsar fuera.
   await page.locator('.riff-dd-toggle', { hasText: 'Pista' }).click();
@@ -404,7 +404,6 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await page.mouse.click(5, 5);
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
-  const t0 = Date.now();
   await page.waitForTimeout(200);
   const p = await page.evaluate((selector) => {
     const svg = document.querySelector(selector) as SVGSVGElement;
@@ -414,12 +413,15 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
     const r = pt.matrixTransform(svg.getScreenCTM()!);
     return { x: r.x, y: r.y };
   }, SVG);
-  // 212 bpm al 50 %: 4 negras de cuenta = 2,26 s reales; el compás dura 2,26 s más.
-  const countIn = (4 * 60) / 212 / 0.5;
+  // 212 bpm al 50 %: el compás dura 2,26 s reales. Se pulsa cuando la canción EMPIEZA de verdad (fin
+  // de la cuenta de entrada, `data-status` = playing, vigilado en cada frame): medir desde que
+  // vuelve el clic de "Empezar" llegaba ~0,5 s tarde (la página se recoloca al empezar) y se perdía
+  // la última nota.
+  const bar = (4 * 60) / 212 / 0.5;
   await page.mouse.move(p.x, p.y);
-  await page.waitForTimeout(countIn * 1000 - (Date.now() - t0));
+  await page.waitForFunction(() => document.querySelector('.test-room-fretboard .riff-stage')?.getAttribute('data-status') === 'playing', null, { polling: 'raf', timeout: 10000 });
   await page.mouse.down();
-  await page.waitForTimeout(countIn * 1000 + 200);
+  await page.waitForTimeout(bar * 1000 + 200);
   await page.mouse.up();
   await expect(stage).toHaveAttribute('data-hits', '9');
   // La primera según su tiempo (2-4 puntos) y las 8 siguientes según su hueco: 7 corcheas (+2) y
@@ -665,4 +667,206 @@ test('el mástil del juego toma la afinación original de cada canción (Do#, Mi
   await expect(tuning).toHaveText('D#', { timeout: 10000 });
   await choose(page, 'Canción', 'Canción de prueba');
   await expect(tuning).toHaveText('E', { timeout: 10000 });
+});
+
+test.describe('canciones del dispositivo', () => {
+  // Cuenta las URLs blob: borradas (la canción anterior del dispositivo se borra al cambiar).
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __revoked: string[] };
+      w.__revoked = [];
+      // globalThis.URL: en este archivo `URL` es la ruta de la página.
+      const original = globalThis.URL.revokeObjectURL.bind(globalThis.URL);
+      globalThis.URL.revokeObjectURL = (url: string) => {
+        w.__revoked.push(url);
+        original(url);
+      };
+    });
+  });
+
+  test('elegir archivos: solo los válidos, se juega, uno roto avisa, y al cambiar se borra', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await expect(page.locator('.local-song-card')).toContainText('Elige la carpeta donde las guardas.');
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'mi-cancion.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/electric-warlock.gp') },
+      { name: 'roto.gp', mimeType: 'application/octet-stream', buffer: Buffer.from('esto no es una tablatura') },
+      { name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('hola') },
+    ]);
+    await expect(page.locator('.local-song-card')).toContainText('He encontrado 2 canciones nuevas.');
+    const menu = page.locator('.riff-dd-menu');
+    await expect(menu.getByRole('button', { name: 'notas', exact: true })).toHaveCount(0);
+
+    // Uno roto: aviso y la canción no cambia.
+    await menu.getByRole('button', { name: 'roto', exact: true }).click();
+    await expect(page.locator('.riff-panel')).toContainText('«roto» no tiene guitarra para jugar.');
+    const disc = page.locator('.riff-dd-toggle', { hasText: 'Canción' });
+    await expect(disc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
+
+    // El bueno: se juega (Electric Warlock tiene 128 compases).
+    await choose(page, 'Canción', 'mi-cancion');
+    await expect(disc).toHaveAttribute('aria-label', 'Canción: mi-cancion');
+    await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–128▾$/, { timeout: 10000 });
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/);
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+
+    // Volver a una de la web BORRA la del dispositivo de la memoria.
+    const before = await page.evaluate(() => (window as unknown as { __revoked: string[] }).__revoked.length);
+    await choose(page, 'Canción', 'Iron Rain');
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __revoked: string[] }).__revoked.length)).toBeGreaterThan(before);
+  });
+
+  // Petición del usuario (2026-10-31): cada canción lleva la carita de su dificultad (😛 fácil, 😁 normal,
+  // 😈 difícil) y las del dispositivo se ordenan de más fácil a más difícil; las de la web, en su orden.
+  test('dificultad: carita en cada canción y las del dispositivo ordenadas de fácil a difícil', async ({ page }) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    // Nombres en orden alfabético contrario al de dificultad.
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'alfa.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/iron-rain.gp') },
+      { name: 'medio.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/electric-warlock.gp') },
+      { name: 'zeta.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/feliz-navidad.gp') },
+    ]);
+    const rows = page.locator('.riff-song-list .riff-chip');
+    await expect(rows.locator('xpath=self::*[not(@data-difficulty)]')).toHaveCount(0, { timeout: 30000 });
+    await expect(rows.locator('.riff-song-title')).toHaveText(['Black Gilmur', 'Electric Warlock', 'Iron Rain', 'Canción de prueba', 'zeta', 'medio', 'alfa']);
+    expect(await rows.evaluateAll((els) => els.map((el) => el.getAttribute('data-difficulty')))).toEqual(['facil', 'normal', 'dificil', 'dificil', 'facil', 'normal', 'dificil']);
+    // La carita es la del nivel: Principiante (😛) para fácil, Medio (😈, con cuernos) para difícil.
+    await expect(rows.nth(4).locator('svg.riff-level-face')).toHaveCount(1);
+    await expect(page.getByTestId('song-difficulty-legend').first()).toContainText('fácil');
+    await expect(rows.nth(6)).toHaveAttribute('title', 'alfa (canción difícil)');
+  });
+
+  test('carpeta recordada: tras recargar (el navegador pide permiso otra vez) hay un botón "Buscar en «carpeta»" a la vista', async ({ page }) => {
+    // Bug real: se recordaba la carpeta pero, al recargar, la lista (solo en memoria) estaba vacía y el
+    // botón para volver a buscar quedaba escondido. Carpeta REAL del navegador (OPFS) con un .gp.
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await page.evaluate(async () => {
+      const root = await navigator.storage.getDirectory();
+      const dir = await root.getDirectoryHandle('Covers', { create: true });
+      const handle = await dir.getFileHandle('Mi tema.gp', { create: true });
+      const writable = await handle.createWritable();
+      await writable.write(await (await fetch('/tabs/iron-rain.gp')).arrayBuffer());
+      await writable.close();
+      (window as unknown as { showDirectoryPicker: () => Promise<unknown> }).showDirectoryPicker = async () => dir;
+    });
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByRole('button', { name: 'Elegir carpeta', exact: true }).click();
+    await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Mi tema', exact: true })).toBeVisible();
+
+    // Recargar: Chrome vuelve a preguntar ("prompt") hasta que el usuario pulse.
+    await page.addInitScript(() => {
+      const proto = (window as unknown as { FileSystemHandle: { prototype: Record<string, unknown> } }).FileSystemHandle.prototype;
+      proto.queryPermission = async () => 'prompt';
+      proto.requestPermission = async () => 'granted';
+    });
+    await page.reload();
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    const menu = page.locator('.riff-dd-menu');
+    const again = menu.getByRole('button', { name: 'Buscar en «Covers»', exact: true });
+    await expect(again).toBeVisible();
+    await expect(menu.getByRole('button', { name: 'Mi tema', exact: true })).toHaveCount(0);
+    await again.click();
+    await expect(menu.getByRole('button', { name: 'Mi tema', exact: true })).toBeVisible();
+    await expect(again).toHaveCount(0);
+  });
+
+  test('Chrome/Edge: elegir carpeta busca dentro (subcarpetas incluidas)', async ({ page }) => {
+    await page.addInitScript(() => {
+      // Carpeta simulada: Canciones/{uno.gp, foto.jpg, rock/{dos.gp}}.
+      const fileHandle = (name: string, url: string) => ({
+        kind: 'file', name,
+        getFile: async () => new File([await (await fetch(url)).arrayBuffer()], name, { lastModified: name.length }),
+      });
+      const dir = (name: string, entries: unknown[]) => ({ kind: 'directory', name, async *values() { yield* entries; } });
+      (window as unknown as { showDirectoryPicker: () => Promise<unknown> }).showDirectoryPicker = async () => dir('Canciones', [
+        fileHandle('uno.gp', '/tabs/iron-rain.gp'),
+        fileHandle('foto.jpg', '/tabs/iron-rain.gp'),
+        dir('rock', [fileHandle('dos.gp', '/tabs/black-gilmur.gp')]),
+      ]);
+    });
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByRole('button', { name: 'Elegir carpeta', exact: true }).click();
+    await expect(page.locator('.local-song-card')).toContainText('He encontrado 2 canciones nuevas.');
+    await expect(page.locator('.local-song-card')).toContainText('Ya me acuerdo de tu carpeta «Canciones».');
+    const menu = page.locator('.riff-dd-menu');
+    await expect(menu.getByRole('button', { name: 'uno', exact: true })).toBeVisible();
+    await expect(menu.getByRole('button', { name: 'dos', exact: true })).toBeVisible();
+    await expect(menu.getByRole('button', { name: 'foto', exact: true })).toHaveCount(0);
+  });
+});
+
+// Cortes de audio en canciones muy densas (petición del usuario, 2026-10-31): con 4 instrumentos y
+// notas muy cortas y rápidas se amontonaban decenas de notas de fondo y cada golpe de batería creaba
+// buffers nuevos. Canción de estrés (2 guitarras + bajo + batería en semicorcheas a 220 bpm, generada
+// para el test) cargada como "tus canciones": nunca más de MAX_GUIDE_VOICES (24) notas de fondo
+// sonando a la vez, y la batería reutiliza sus ráfagas de ruido en vez de crear una por golpe.
+test('canción muy densa: notas de fondo con tope y batería sin buffers nuevos por golpe', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.addInitScript(() => {
+    const m = { buffers: 0, sounding: 0, maxSounding: 0 };
+    (window as unknown as { __audio: typeof m }).__audio = m;
+    const proto = AudioContext.prototype;
+    const createBuffer = proto.createBuffer;
+    proto.createBuffer = function (...args: Parameters<typeof createBuffer>) {
+      m.buffers++;
+      return createBuffer.apply(this, args);
+    };
+    const createBufferSource = proto.createBufferSource;
+    proto.createBufferSource = function () {
+      const node = createBufferSource.call(this);
+      const start = node.start.bind(node);
+      node.start = (when = 0, ...rest: number[]) => {
+        // Solo las notas de guitarra (samples en bucle): cuentan desde que EMPIEZAN a sonar.
+        if (node.loop) {
+          const delay = Math.max(0, when - this.currentTime) * 1000;
+          let ended = false;
+          node.addEventListener('ended', () => { if (!ended) { ended = true; m.sounding--; } });
+          setTimeout(() => {
+            if (ended) return;
+            m.sounding++;
+            m.maxSounding = Math.max(m.maxSounding, m.sounding);
+          }, delay);
+        }
+        return start(when, ...rest);
+      };
+      return node;
+    };
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await page.getByTestId('local-song-files').setInputFiles([
+    { name: 'estres.musicxml', mimeType: 'application/xml', buffer: fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml') },
+  ]);
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'estres', exact: true }).click();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–110▾$/, { timeout: 20000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Modo' })).toContainText('Batería');
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 20000 });
+  const buffersAtStart = await page.evaluate(() => (window as unknown as { __audio: { buffers: number } }).__audio.buffers);
+  await page.waitForTimeout(15000);
+  const m = await page.evaluate(() => (window as unknown as { __audio: { buffers: number; maxSounding: number } }).__audio);
+  // ~15 golpes de batería por segundo: antes, 2-3 buffers nuevos por golpe (cientos en 15 s).
+  expect(m.buffers - buffersAtStart).toBeLessThan(30);
+  expect(m.maxSounding).toBeGreaterThan(3);
+  expect(m.maxSounding).toBeLessThanOrEqual(24);
 });

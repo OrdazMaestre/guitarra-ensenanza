@@ -168,10 +168,10 @@ export default function NoiseFormation({ isDark }: { isDark: boolean }) {
 
   return (
     <div className="nf">
-      <canvas ref={canvasRef} className="nf-cv" />
+      <canvas ref={canvasRef} className="nf-cv" data-tour="dibujo" />
 
       <div className="nf-row">
-        <label className="nf-lbl">
+        <label className="nf-lbl" data-tour="numero">
           Número de ondas:&nbsp;<strong>{count}</strong>
           <input
             type="range" min={1} max={20} value={count}
@@ -180,10 +180,10 @@ export default function NoiseFormation({ isDark }: { isDark: boolean }) {
             aria-label="Número de ondas"
           />
         </label>
-        <button onClick={regenerate} className="nf-regen">↻ Regenerar</button>
+        <button onClick={regenerate} className="nf-regen" data-tour="regenerar">↻ Regenerar</button>
       </div>
 
-      <div className="nf-legend">
+      <div className="nf-legend" data-tour="leyenda">
         {Array.from({ length: count }, (_, i) => (
           <span key={i} className="nf-leg">
             <span className="nf-sw" style={{ background: PASTEL[i % PASTEL.length] }} />

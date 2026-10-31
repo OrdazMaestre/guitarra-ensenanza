@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { laneLookaheadSeconds, stretchesLane } from '../app/lib/riff/levels';
 import type { ChartNote } from '../app/lib/riff/chart';
-import { barsAheadSeconds, FADE_IN_SECONDS, FADE_OUT_SECONDS, notesOnString, STRING_MIN_ALPHA, stringAlpha, usageLevel } from '../app/lib/riff/visuals';
+import { barsAheadSeconds, FADE_IN_SECONDS, FADE_OUT_SECONDS, mirroredFadeInSeconds, notesOnString, STRING_MIN_ALPHA, stringAlpha, usageLevel } from '../app/lib/riff/visuals';
 
 // Transparencia de cuerdas / brillo de columnas del juego (app/lib/riff/visuals.ts): solo depende
 // del tiempo de canción, igual que las gemas, así que va siempre sincronizada con ellas.
@@ -66,4 +67,35 @@ test('ventana de compases: 4 veces el compás que suena', () => {
   expect(barsAheadSeconds(bars, 1, 4, 99)).toBe(8);
   expect(barsAheadSeconds(bars, 3, 4, 99)).toBe(12);
   expect(barsAheadSeconds([], 3, 4, 99)).toBe(99);
+});
+
+test('carril estirado: desde Fácil (trastes) y en todo el modo cuerdas, a 100 % compases un 33 % más largos que a 75 %', () => {
+  expect(stretchesLane('practica')).toBe(false);
+  for (const level of ['facil', 'medio', 'avanzado', 'medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'experto'] as const) expect(stretchesLane(level), level).toBe(true);
+  // Segundos reales en pantalla: 1,8 s a 100 %, 2,22 s a 90 %; a 75 % y 50 %, igual que antes.
+  expect(laneLookaheadSeconds(3.2, 1, true)).toBeCloseTo(1.8);
+  expect(laneLookaheadSeconds(3.2, 0.9, true)).toBeCloseTo(2.222, 2);
+  // Lo que ocupa un segundo de canción en el carril: 1 / (speed × lookahead). A 100 %, 4/3 de lo de 75 %.
+  const spacing = (speed: number) => 1 / (speed * laneLookaheadSeconds(3.2, speed, true));
+  expect(spacing(1) / spacing(0.75)).toBeCloseTo(4 / 3);
+  expect(laneLookaheadSeconds(3.2, 0.75, true)).toBe(3.2);
+  expect(laneLookaheadSeconds(3.2, 0.5, true)).toBe(3.2);
+  expect(laneLookaheadSeconds(3.2, 1, false)).toBe(3.2);
+});
+
+// Petición del usuario (2026-10-31): la marca de la columna se enciende a la mitad de velocidad de lo
+// que tarda en irse tras llegar la nota (dura 0,5 + 0,5 s en irse -> 2 s de subida).
+test('columna de traste: la subida dura el doble de lo que tarda en irse tras llegar la nota', () => {
+  const notes = [note(0, 10, 0.5)];
+  const after = 0.5 + FADE_OUT_SECONDS;
+  expect(mirroredFadeInSeconds(notes[0], 1)).toBeCloseTo(2 * after);
+  expect(usageLevel(notes, 10 - 2 * after, 1, 0, mirroredFadeInSeconds)).toBeCloseTo(0);
+  expect(usageLevel(notes, 10 - after, 1, 0, mirroredFadeInSeconds)).toBeCloseTo(0.5);
+  expect(usageLevel(notes, 10, 1, 0, mirroredFadeInSeconds)).toBeCloseTo(1);
+  // Tras llegar: igual que antes (encendida mientras suena, se va en FADE_OUT_SECONDS).
+  expect(usageLevel(notes, 10 + after, 1, 0, mirroredFadeInSeconds)).toBeCloseTo(0);
+  // Tiempos reales: al 50 %, la nota dura 1 s real, así que la subida es de 3 s reales = 1,5 s de canción.
+  expect(usageLevel(notes, 10 - 1.5, 0.5, 0, mirroredFadeInSeconds)).toBeCloseTo(0);
+  // Por defecto (cuerdas), sin cambios: 1 s.
+  expect(usageLevel(notes, 9.5, 1)).toBeCloseTo(0.5);
 });

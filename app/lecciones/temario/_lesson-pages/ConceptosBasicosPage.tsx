@@ -94,7 +94,7 @@ export default function ConceptosBasicosPage({ previous, next, quizHref }: Lesso
             </div>
 
             <div className="mastil-copy">
-              <p>Aquí están los trastes: </p>
+              <p>Aquí están los <strong>trastes</strong>: </p>
               <p>Serán nuestro mapa y también los números que escribiremos en las tablaturas </p><p>Indicarán qué celda/traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>
@@ -295,7 +295,7 @@ export default function ConceptosBasicosPage({ previous, next, quizHref }: Lesso
 
           .overview-notes {
             font-size: clamp(21px, 2vw, 30px);
-            font-weight: 800;
+            font-weight: 500;
             line-height: 1.28;
             max-width: 560px;
           }

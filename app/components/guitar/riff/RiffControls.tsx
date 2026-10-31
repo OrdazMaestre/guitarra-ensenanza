@@ -5,8 +5,10 @@ import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BackingIcon, DiscIcon, LevelIcon, LoopIcon, ModeIcon, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BackingIcon, DiscIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
+import { LocalSongSearch } from '../LocalSongSearch';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
 // del mástil MIDI (ReducedFretboardDiagram, prop `riffGame`): desplegables de ajustes + "Empezar"
@@ -29,16 +31,21 @@ interface Props {
   onSong?: (id: string) => void;
   riff: RiffController;
   song?: SongEntry;
+  // Aviso al elegir una canción del dispositivo que no se puede jugar.
+  songNotice?: string | null;
+  // Las de la web y, con `local`, las del propio dispositivo.
   songs?: SongEntry[];
   // Papel de cada pista (nombre de pista -> S solista / R rítmica), sin el nombre del músico. Si
   // falta, se deduce del nombre ("Lead"/"Solo" = S; lo demás, R).
   trackRoles?: Record<string, TrackRole>;
 }
 
-export function RiffControls({ onSong, onStart, riff, song, songs = [], trackRoles }: Props) {
+export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = [], trackRoles }: Props) {
   const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
   // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
+  // Tarjeta "Buscar mis canciones" abierta: el menú del disco pasa a dos columnas.
+  const [songSearchOpen, setSongSearchOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const { chart, playing } = riff;
 
@@ -87,14 +94,27 @@ export function RiffControls({ onSong, onStart, riff, song, songs = [], trackRol
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
-        {songs.length > 1 && (
-          <RiffDropdown {...menuProps('cancion')} icon={<DiscIcon />} label="Canción" value={song?.title ?? '—'}>
-            {songs.map((entry) => (
-              <button aria-pressed={song?.id === entry.id} className="riff-chip" key={entry.id} onClick={() => pick(() => onSong?.(entry.id))} type="button">
-                <DiscIcon />
-                {entry.title}
-              </button>
-            ))}
+        {songs.length > 0 && (
+          <RiffDropdown {...menuProps('cancion')} align="start" icon={<DiscIcon />} label="Canción" value={song?.title ?? '—'}>
+            {/* Las de la web, las del propio dispositivo y "Buscar mis canciones" (localSongs.ts). */}
+            <div className={`riff-song-menu${songSearchOpen ? ' is-searching' : ''}`}>
+              {/* Una sola lista (petición del usuario): las de la web y, a continuación, las del
+                  dispositivo, con el nombre recortado si es largo (entero en `title`). */}
+              <div className="riff-song-list">
+                {/* Delante del título, la carita de su dificultad (difficulty.ts); el disco mientras se mide. */}
+                {songs.map((entry) => {
+                  const name = entry.difficulty ? `${entry.title} (canción ${DIFFICULTY_LABEL[entry.difficulty]})` : entry.title;
+                  return (
+                    <button aria-pressed={song?.id === entry.id} className="riff-chip" data-difficulty={entry.difficulty} key={entry.id} onClick={() => pick(() => onSong?.(entry.id))} title={name} type="button">
+                      <SongDifficultyIcon difficulty={entry.difficulty} pending={<DiscIcon />} />
+                      <span className="riff-song-title">{entry.title}</span>
+                    </button>
+                  );
+                })}
+                <SongDifficultyLegend className="riff-song-legend" />
+              </div>
+              <LocalSongSearch onOpenChange={setSongSearchOpen} variant="light" />
+            </div>
           </RiffDropdown>
         )}
         {riff.tracks.length > 1 && (
@@ -196,6 +216,7 @@ export function RiffControls({ onSong, onStart, riff, song, songs = [], trackRol
       </div>
 
       {riff.loadError && <p className="riff-note">No se pudo cargar la tablatura.</p>}
+      {songNotice && <p className="riff-note" role="status">{songNotice}</p>}
       {riff.narrow && (
         <p className="riff-narrow-warning" role="status">
           Esta pantalla es muy estrecha para jugar.
@@ -208,6 +229,9 @@ export function RiffControls({ onSong, onStart, riff, song, songs = [], trackRol
 }
 
 interface DropdownProps {
+  // 'start': el menú se abre desde el borde izquierdo del botón en vez de centrado (el disco es
+  // el primer botón del panel: centrado, su menú ancho se salía por la izquierda de la pantalla).
+  align?: 'start';
   children: ReactNode;
   disabled: boolean;
   icon: ReactNode;
@@ -220,7 +244,7 @@ interface DropdownProps {
 
 // Desplegable de los ajustes: un botón "icono ▾" (nombre y valor ocultos a la vista) y, encima,
 // una columna flotante con las opciones.
-function RiffDropdown({ children, disabled, icon, id, label, onToggle, open, value }: DropdownProps) {
+function RiffDropdown({ align, children, disabled, icon, id, label, onToggle, open, value }: DropdownProps) {
   return (
     <div className="riff-dd">
       <button
@@ -239,7 +263,7 @@ function RiffDropdown({ children, disabled, icon, id, label, onToggle, open, val
         <span aria-hidden="true" className="riff-dd-caret">▾</span>
       </button>
       {open && (
-        <div className="riff-dd-menu" id={`riff-menu-${id}`} role="group" aria-label={label}>
+        <div className={`riff-dd-menu${align === 'start' ? ' riff-dd-menu-start' : ''}`} id={`riff-menu-${id}`} role="group" aria-label={label}>
           {children}
         </div>
       )}
@@ -537,6 +561,58 @@ export function RiffStyles() {
         display: flex;
         flex-direction: column;
         gap: 6px;
+      }
+
+      /* Menú del disco: puede crecer con las canciones del dispositivo -> altura máxima y scroll. */
+      .riff-song-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: min(55vh, 380px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+      }
+
+      .riff-song-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .riff-song-list .riff-chip {
+        max-width: 240px;
+      }
+
+      .riff-song-legend {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        font-size: 12px;
+        font-weight: 700;
+        gap: 10px;
+        margin: 2px 0 0;
+        opacity: 0.85;
+      }
+
+      .riff-song-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .riff-dd-menu.riff-dd-menu-start {
+        left: 0;
+        transform: none;
+      }
+
+      /* Con la tarjeta abierta: lista a la izquierda y tarjeta a la derecha, todo a la vista. */
+      .riff-song-menu.is-searching {
+        align-items: flex-start;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
       }
 
       .riff-level-heading {

@@ -18,7 +18,7 @@ import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 const MIN_PX_PER_FRET = 44;
 const SIDE_MARGIN_PX = 60;
 
-const DEFAULTS = { level: 'practica' as RiffLevel, speed: 0.75, mode: 'ritmo' as RiffMode, loop: false };
+const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as RiffMode, loop: false };
 
 interface Options {
   source?: string;
@@ -38,7 +38,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
   const [loadError, setLoadError] = useState(false);
-  // Configuración inicial (decisión del usuario): Kirk, Principiante, 75 %, Con ritmo, sin bucle y
+  // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 % (antes 75 %; usuario, 2026-10-31), Con ritmo, sin bucle y
   // batería (metrónomo si el archivo no trae batería). `resetDefaults` vuelve a ella.
   const [speed, setSpeed] = useState<number>(DEFAULTS.speed);
   const [mode, setMode] = useState<RiffMode>(DEFAULTS.mode);
@@ -248,7 +248,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setToBar(maxBar);
   }
 
-  const gameOptions = () => ({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings });
+  const gameOptions = () => ({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings, timingScale: profile?.timingScale });
 
   function start() {
     setHasStarted(true);

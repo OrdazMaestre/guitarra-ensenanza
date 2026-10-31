@@ -418,6 +418,21 @@ test('puntos: tabla de márgenes y categorías (exacta 4/3/2, cercana 1/0,5, si 
   expect([0, 0.2, 0.21, 0.4, 0.41].map((d) => points(false, d, false))).toEqual([0.5, 0.5, 0.5, 0.5, 0]);
 });
 
+// Petición del usuario (2026-10-31): en Medio y Avanzado (trastes), todos los márgenes al 60 %.
+test('puntos: con timingScale 0,6 cada margen (y el de acierto) se encoge al 60 %', () => {
+  const scaled = { ...ritmo, timingScale: 0.6 };
+  for (const [offset, expected] of [[-0.05, 4], [0.06, 4], [0.1, 3], [-0.12, 3], [0.2, 2], [-0.23, 2]] as const) {
+    const s = new RiffSession(fakeChart(), scaled, 0, 'nada');
+    expect(s.judge({ string: 1, fret: 2, kind: 'pluck' }, 4 + offset).hit, `desviación ${offset}`).not.toBeNull();
+    expect(s.scoreOf.get(0), `desviación ${offset}`).toMatchObject({ points: expected, exact: true });
+  }
+  const late = new RiffSession(fakeChart(), scaled, 0, 'nada');
+  expect(late.judge({ string: 1, fret: 2, kind: 'pluck' }, 4.27).hit).toBeNull();
+  expect(late.scoreOf.size).toBe(0);
+  // Solo Medio y Avanzado (trastes) lo llevan.
+  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.timingScale).map(([id, p]) => [id, p.timingScale])).toEqual([['medio', 0.6], ['avanzado', 0.6]]);
+});
+
 test('puntos: cada margen, a los dos lados de la nota', () => {
   for (const [offset, expected] of [[-0.05, 4], [0.05, 4], [-0.15, 3], [0.15, 3], [-0.35, 2], [0.35, 2]] as const) {
     const s = new RiffSession(fakeChart(), ritmo, 0, 'nada');
@@ -654,6 +669,22 @@ test('chart: la banda son las demás pistas con altura (la otra guitarra y el ba
   expect(Math.max(...bass(kirk).map((n) => n.midi))).toBeLessThan(52);
   // Ordenada por tiempo.
   kirk.band!.forEach((n, i) => { if (i > 0) expect(n.t).toBeGreaterThanOrEqual(kirk.band![i - 1].t); });
+});
+
+// Cortes de audio en canciones muy densas (2026-10-31): cada nota de la banda y de fondo lleva su
+// "cuerda" (pista + cuerda) para que una nota nueva en la misma corte la anterior (useRiffGame), como
+// en una guitarra de verdad, en vez de amontonarse.
+test('chart: cada nota de la banda y de fondo lleva su cuerda (pista/cuerda) para cortar la anterior', () => {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
+  const kirk = buildChart(at, score, 2, 24);
+  for (const note of kirk.band!) expect(note.voice).toMatch(/^\d+\/[1-6]$/);
+  // La otra guitarra (James, pista 1) usa sus 6 cuerdas; el bajo tiene la suya propia.
+  expect(new Set(kirk.band!.filter((n) => n.kind === 'guitar').map((n) => n.voice!.split('/')[0]))).toEqual(new Set(['1']));
+  const s = new RiffSession(kirk, { ...ritmo, toBar: kirk.bars.length }, 0, 'nada');
+  s.advance(10);
+  const guide = s.takeGuideNotes(10, 5);
+  expect(guide.length).toBeGreaterThan(0);
+  for (const note of guide) expect(note.voice).toMatch(/^own\/[1-6]$/);
 });
 
 test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {

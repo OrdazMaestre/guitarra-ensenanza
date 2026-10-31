@@ -1,5 +1,6 @@
-import { type ReactNode, useId } from 'react';
+import { type CSSProperties, type ReactNode, useId } from 'react';
 import type { RiffLevel } from '@/app/lib/riff/levels';
+import { DIFFICULTY_LABEL, DIFFICULTY_LEVEL, type SongDifficulty } from '@/app/lib/riff/difficulty';
 import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 
 // Iconos del panel de partida (petición del usuario: en el panel solo se ven iconos; en los menús,
@@ -259,5 +260,25 @@ export function BackingIcon({ backing }: { backing: RiffBacking }) {
       <path d="M4 9c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v7c0 1.7 3.6 3 8 3s8-1.3 8-3V9M8 2l3 5M16 2l-3 5" />
       {backing === 'nada' && <Strike />}
     </Icon>
+  );
+}
+
+// Dificultad de una canción en los discos (difficulty.ts): la carita del nivel del modo trastes que le
+// corresponde -- 😛 fácil, 😁 normal, 😈 difícil --; mientras se mide, el disco de siempre (`pending`).
+export function SongDifficultyIcon({ difficulty, pending }: { difficulty?: SongDifficulty; pending: ReactNode }) {
+  return difficulty ? <LevelIcon level={DIFFICULTY_LEVEL[difficulty]} /> : <>{pending}</>;
+}
+
+// Leyenda corta bajo la lista de canciones (para niños: carita + palabra).
+export function SongDifficultyLegend({ className, style }: { className?: string; style?: CSSProperties }) {
+  return (
+    <p className={className} data-testid="song-difficulty-legend" style={style}>
+      {(['facil', 'normal', 'dificil'] as const).map((difficulty) => (
+        <span key={difficulty} style={{ alignItems: 'center', display: 'inline-flex', gap: 4 }}>
+          <LevelIcon level={DIFFICULTY_LEVEL[difficulty]} />
+          {DIFFICULTY_LABEL[difficulty]}
+        </span>
+      ))}
+    </p>
   );
 }

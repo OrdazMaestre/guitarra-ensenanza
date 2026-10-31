@@ -10,6 +10,12 @@ export const STRING_MIN_ALPHA = 0.15;
 export const FADE_OUT_SECONDS = 0.5;
 // ...y vuelve a su tono normal durante el segundo (real) anterior a la llegada de su próxima nota.
 export const FADE_IN_SECONDS = 1;
+// Columnas de traste (cuerdas libres; petición del usuario, 2026-10-31): la marca se enciende a la
+// MITAD de velocidad de lo que tarda en irse tras llegar la nota (lo que dura + FADE_OUT_SECONDS), es
+// decir, empieza el doble de ese tiempo antes. Así se ve antes dónde cae la siguiente nota.
+export function mirroredFadeInSeconds(note: ChartNote, speed: number) {
+  return 2 * (note.dur / speed + FADE_OUT_SECONDS);
+}
 // Cuerdas: se quedan encendidas mientras tengan alguna nota en los próximos 4 compases (petición
 // del usuario: antes se encendían y apagaban demasiadas veces y demasiado rápido).
 export const STRING_LOOKAHEAD_BARS = 4;
@@ -21,8 +27,9 @@ const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 // después. Notas solapadas o muy seguidas: se queda arriba (el máximo de las dos curvas).
 // `aheadSeconds` (de canción): se adelanta ese tiempo -- la subida termina cuando a la próxima
 // nota le quedan `aheadSeconds`, así que mientras haya una nota dentro de esa ventana se queda
-// arriba. `notes` ordenadas por tiempo.
-export function usageLevel(notes: ChartNote[], songPos: number, speed: number, aheadSeconds = 0): number {
+// arriba. `notes` ordenadas por tiempo. `fadeIn` cambia lo que dura la subida de cada nota (por
+// defecto FADE_IN_SECONDS; las columnas usan `mirroredFadeInSeconds`).
+export function usageLevel(notes: ChartNote[], songPos: number, speed: number, aheadSeconds = 0, fadeIn: (note: ChartNote, speed: number) => number = () => FADE_IN_SECONDS): number {
   // Primera nota que aún no ha empezado.
   let lo = 0;
   let hi = notes.length;
@@ -33,15 +40,16 @@ export function usageLevel(notes: ChartNote[], songPos: number, speed: number, a
   }
   let level = 0;
   const next = notes[lo];
-  if (next) level = clamp01(1 - (next.t - aheadSeconds - songPos) / speed / FADE_IN_SECONDS);
+  const nextFadeIn = next ? fadeIn(next, speed) : FADE_IN_SECONDS;
+  if (next) level = clamp01(1 - (next.t - aheadSeconds - songPos) / speed / nextFadeIn);
   // Notas ya empezadas: la que acaba más tarde (una larga puede seguir sonando tras otras cortas).
   let lastEnd = Number.NEGATIVE_INFINITY;
   for (let i = lo - 1; i >= 0 && i >= lo - 8; i--) lastEnd = Math.max(lastEnd, notes[i].t + notes[i].dur);
   if (lastEnd > Number.NEGATIVE_INFINITY) {
     const since = (songPos - lastEnd) / speed;
-    // Hueco corto hasta la siguiente (menos de FADE_IN_SECONDS): la cuerda sigue haciendo falta,
-    // se queda encendida en vez de apagarse a medias y volver a encenderse (parpadeo).
-    if (next && (next.t - lastEnd) / speed <= FADE_IN_SECONDS) return 1;
+    // Hueco corto hasta la siguiente (menos de lo que dura su subida): la cuerda sigue haciendo
+    // falta, se queda encendida en vez de apagarse a medias y volver a encenderse (parpadeo).
+    if (next && (next.t - lastEnd) / speed <= nextFadeIn) return 1;
     level = Math.max(level, since <= 0 ? 1 : clamp01(1 - since / FADE_OUT_SECONDS));
   }
   return level;

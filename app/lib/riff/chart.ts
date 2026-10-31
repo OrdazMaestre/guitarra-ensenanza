@@ -72,6 +72,9 @@ export interface ChartBandNote {
   midi: number;
   kind: 'guitar' | 'bass';
   palmMute: boolean;
+  // Pista + cuerda ("2/5"): en una guitarra de verdad, una nota nueva en la misma cuerda corta la
+  // anterior. El juego hace lo mismo con el sonido de fondo (ver useRiffGame) para no amontonar notas.
+  voice?: string;
 }
 
 export interface Chart {
@@ -212,7 +215,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
             if (note.isDead || note.isTieDestination) continue;
             let durTicks = beat.playbackDuration;
             for (let tied: Note | null = note.tieDestination; tied; tied = tied.tieDestination) durTicks += tied.beat.playbackDuration;
-            band.push({ t, dur: tickToSec(startTick + durTicks) - t, midi: note.realValue, kind, palmMute: beat.isPalmMute });
+            band.push({ t, dur: tickToSec(startTick + durTicks) - t, midi: note.realValue, kind, palmMute: beat.isPalmMute, voice: `${bandTrack.index}/${note.string}` });
           }
         }
       }
@@ -342,6 +345,21 @@ function percussionMidi(track: AlphaTab.model.Track, note: Note): number | undef
 }
 
 const scoreCache = new Map<string, Promise<{ at: AlphaTabModule; score: Score }>>();
+
+// Olvida una canción ya leída (una canción del dispositivo, al cambiar a otra: localSongs.ts).
+export function forgetScore(url: string) {
+  scoreCache.delete(url);
+}
+
+// ¿Se puede jugar? Se carga y tiene al menos una guitarra de 6 cuerdas.
+export async function isPlayableScore(url: string): Promise<boolean> {
+  try {
+    const { score } = await loadScore(url);
+    return listGuitarTracks(score).length > 0;
+  } catch {
+    return false;
+  }
+}
 
 export function loadScore(url: string) {
   let cached = scoreCache.get(url);

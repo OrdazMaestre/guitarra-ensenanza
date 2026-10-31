@@ -150,8 +150,8 @@ export default function FourierWave({ isDark: isDarkProp }: { isDark?: boolean }
 
   return (
     <div className="fw">
-      <canvas ref={canvasRef} width={800} height={280} className="fw-canvas" />
-      <div className="fw-ctrl">
+      <canvas ref={canvasRef} width={800} height={280} className="fw-canvas" data-tour="dibujo" />
+      <div className="fw-ctrl" data-tour="armonicos">
         <span className="fw-ctrl-lbl">Armónicos: <strong>{h}</strong></span>
         <input
           type="range" min={1} max={15} value={h}
@@ -160,7 +160,7 @@ export default function FourierWave({ isDark: isDarkProp }: { isDark?: boolean }
           className="fw-range"
         />
       </div>
-      <div className="fw-legend">
+      <div className="fw-legend" data-tour="leyenda">
         {labels.map(({ text, color }) => (
           <span key={text} className="fw-leg">
             <span className="fw-sw" style={{ background: color }} />

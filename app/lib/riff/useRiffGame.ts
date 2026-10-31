@@ -1,5 +1,5 @@
 'use client';
-import { type MutableRefObject, useCallback, useRef, useState } from 'react';
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
@@ -16,7 +16,9 @@ const TICK_MS = 25;
 // El bajo, como el del reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
 const BAND_GUITAR_GAIN = 0.195;
 const BAND_BASS_GAIN = 0.5;
-const CLICK_LOOKAHEAD_SECONDS = 0.15;
+// Cuánto se programa por adelantado (segundos reales). 0,3 s (antes 0,15): con canciones muy densas
+// el temporizador llegaba a retrasarse 130 ms, y una nota programada tarde se oye a destiempo.
+const CLICK_LOOKAHEAD_SECONDS = 0.3;
 
 export type RiffGameStatus = 'idle' | RiffStatus;
 
@@ -43,6 +45,14 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number }>());
   // Notas de la otra guitarra ya programadas (para callarlas en PAUSA).
   const bandHandlesRef = useRef<{ handle: GuideNoteHandle; end: number }[]>([]);
+  // Última nota de fondo de cada cuerda (de la propia pista o de la banda): la siguiente en la misma
+  // cuerda la corta, como en una guitarra de verdad (si no, con notas muy rápidas se amontonaban).
+  const lastOnVoiceRef = useRef(new Map<string, GuideNoteHandle>());
+  const onVoice = useCallback((voice: string | undefined, handle: GuideNoteHandle, at: number) => {
+    if (!voice) return;
+    lastOnVoiceRef.current.get(voice)?.stopAt(at);
+    lastOnVoiceRef.current.set(voice, handle);
+  }, []);
 
   // Un acierto "abre" sus notas reales: las ya programadas suben de volumen (las siguientes saldrán
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
@@ -58,15 +68,38 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     }
   }, []);
 
+  // Calla las notas de fondo y de la banda ya programadas (PAUSA, parar y salir de la página).
+  const silence = useCallback(() => {
+    for (const { handle } of guideHandlesRef.current.values()) handle.setVolume(0);
+    guideHandlesRef.current.clear();
+    for (const { handle } of bandHandlesRef.current) handle.setVolume(0);
+    bandHandlesRef.current = [];
+    lastOnVoiceRef.current.clear();
+  }, []);
+
+  // Cada "Empezar" tiene su turno: si se para (o se vuelve a empezar) mientras se cargan los sonidos,
+  // el arranque anterior ya no sigue.
+  const startTokenRef = useRef(0);
+
   const stop = useCallback(() => {
+    startTokenRef.current++;
     clearTimer();
+    silence();
     sessionRef.current = null;
     setStatus('idle');
     setHitCount(0);
     setScore(0);
     setRepetition(null);
     setAtBreak(null);
-  }, [clearTimer]);
+  }, [clearTimer, silence]);
+
+  // Al salir de la página con la partida en marcha: sin esto el temporizador seguía vivo (el
+  // AudioContext es de toda la web) y la canción seguía sonando hasta el final.
+  useEffect(() => () => {
+    clearTimer();
+    silence();
+    sessionRef.current = null;
+  }, [clearTimer, silence]);
 
   // Pone en marcha una sesión: el temporizador que la avanza, programa los sonidos y publica su estado.
   const run = useCallback((session: RiffSession) => {
@@ -87,7 +120,13 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       }
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
         void scheduleGuideNote(note.midi, note.at, note.duration, note.open ? OPEN_GAIN : GUIDE_GAIN).then((handle) => {
-          if (handle && sessionRef.current === session) handles.set(note.id, { handle, end: note.at + note.duration });
+          if (!handle) return;
+          // Llegó tarde (ya se paró o se salió de la página): se calla en vez de quedarse sonando.
+          if (sessionRef.current !== session) handle.setVolume(0);
+          else {
+            handles.set(note.id, { handle, end: note.at + note.duration });
+            onVoice(note.voice, handle, note.at);
+          }
         });
       }
       for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
@@ -95,7 +134,12 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
           playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute);
         } else {
           void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN).then((handle) => {
-            if (handle && sessionRef.current === session) bandHandlesRef.current.push({ handle, end: note.at + note.duration });
+            if (!handle) return;
+            if (sessionRef.current !== session) handle.setVolume(0);
+            else {
+              bandHandlesRef.current.push({ handle, end: note.at + note.duration });
+              onVoice(note.voice, handle, note.at);
+            }
           });
         }
       }
@@ -110,10 +154,15 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
     }, TICK_MS);
-  }, [applyHit, clearTimer, heldRef]);
+  }, [applyHit, clearTimer, heldRef, onVoice]);
 
-  const start = useCallback((options: RiffOptions, backing: RiffBacking) => {
+  // Todos los sonidos cargados ANTES de la cuenta de entrada: nada se carga a mitad de partida.
+  const start = useCallback(async (options: RiffOptions, backing: RiffBacking) => {
     if (!chart) return;
+    const token = ++startTokenRef.current;
+    touchAudioContext();
+    await preloadSamples();
+    if (token !== startTokenRef.current) return;
     run(new RiffSession(chart, options, getAudioCurrentTime(), backing));
   }, [chart, run]);
 
@@ -122,12 +171,9 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     const session = sessionRef.current;
     if (!session) return;
     session.pause(getAudioCurrentTime());
-    for (const { handle } of guideHandlesRef.current.values()) handle.setVolume(0);
-    guideHandlesRef.current.clear();
-    for (const { handle } of bandHandlesRef.current) handle.setVolume(0);
-    bandHandlesRef.current = [];
+    silence();
     setStatus(session.status);
-  }, []);
+  }, [silence]);
 
   // CONTINUAR: dos compases atrás, con cuenta de entrada (ver RiffSession.resume). Con `next` (los
   // ajustes actuales), si algo cambió durante la pausa -- velocidad, pista, acompañamiento, ritmo,

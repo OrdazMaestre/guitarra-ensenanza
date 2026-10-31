@@ -1,29 +1,38 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { TutorialButton } from '@/app/components/guitar/ButtonTour';
 import FourierWave from './FourierWave';
 import NoiseFormation from './NoiseFormation';
 import WaveCancellation from './WaveCancellation';
 import TimbreHarmonics from './TimbreHarmonics';
+import { ACOUSTICS_TOURS } from './soundTours';
 
+// Orden pedido por el usuario: onda cuadrada, timbre, cancelación, ruido. ACOUSTICS_TOURS
+// (soundTours.ts) sigue este mismo orden.
 const SCREENS = [
-  'Formación de ruido',
-  'Cancelación de ondas',
   'Construcción de onda cuadrada',
   'Timbre: suma de armónicos',
+  'Cancelación de ondas',
+  'Formación de ruido',
 ];
 
 export default function AcousticsCarousel() {
   const [screen, setScreen] = useState(0);
   const [isDark, setIsDark] = useState(false);
   const total = SCREENS.length;
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const prev = () => setScreen(s => (s - 1 + total) % total);
   const next = () => setScreen(s => (s + 1) % total);
 
   return (
-    <div className="ac" data-ac-theme={isDark ? 'dark' : undefined}>
+    <div className="ac" data-ac-theme={isDark ? 'dark' : undefined} ref={rootRef}>
+      {/* Tutorial del diagrama visible (sus pasos cambian con la pantalla) */}
+      <div className="instrument-tutorial-row">
+        <TutorialButton rootRef={rootRef} steps={ACOUSTICS_TOURS[screen]} />
+      </div>
       {/* Barra de navegación */}
-      <div className="ac-bar">
+      <div className="ac-bar" data-tour="flechas">
         <button onClick={prev} className="ac-nav" aria-label="Pantalla anterior">←</button>
         <div className="ac-info">
           <span className="ac-title">{SCREENS[screen]}</span>
@@ -41,10 +50,10 @@ export default function AcousticsCarousel() {
 
       {/* Pantalla activa — solo se monta una a la vez */}
       <div className="ac-stage">
-        {screen === 0 && <NoiseFormation isDark={isDark} />}
-        {screen === 1 && <WaveCancellation isDark={isDark} />}
-        {screen === 2 && <FourierWave isDark={isDark} />}
-        {screen === 3 && <TimbreHarmonics isDark={isDark} />}
+        {screen === 0 && <FourierWave isDark={isDark} />}
+        {screen === 1 && <TimbreHarmonics isDark={isDark} />}
+        {screen === 2 && <WaveCancellation isDark={isDark} />}
+        {screen === 3 && <NoiseFormation isDark={isDark} />}
       </div>
 
       <style>{`
@@ -62,6 +71,9 @@ export default function AcousticsCarousel() {
           --shadow:     0 1px 6px rgba(0,0,0,0.07);
           display: grid;
           gap: 10px;
+          /* minmax(0, …): sin esto la columna toma el ancho mínimo del contenido (canvas, barra) y
+             en móvil desborda la caja: se cortaban la flecha →, el tema y el botón Tutorial. */
+          grid-template-columns: minmax(0, 1fr);
         }
         .ac[data-ac-theme="dark"] {
           --bg:         #14151a;

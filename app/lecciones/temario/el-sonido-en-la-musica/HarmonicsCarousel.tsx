@@ -1,6 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { TutorialButton } from '@/app/components/guitar/ButtonTour';
 import StringHarmonics from './StringHarmonics';
+import { HARMONICS_TOURS } from './soundTours';
 
 // ── Posiciones de armónicos naturales en el mástil ─────────────────────────
 const HARM_FRETS = [
@@ -36,6 +38,7 @@ function GuitarHarmonicsMap() {
     <svg
       viewBox={`0 0 700 ${SVG_H}`}
       role="img"
+      data-tour="mastil"
       aria-label="Mástil de guitarra con los trastes II, V, VII y XII marcados como posiciones de armónicos naturales"
       style={{ display: 'block', width: '100%', height: 'auto' }}
     >
@@ -118,11 +121,16 @@ function GuitarHarmonicsMap() {
 // ── Carrusel ────────────────────────────────────────────────────────────────
 export default function HarmonicsCarousel() {
   const [slide, setSlide] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="hmc">
+    <div className="hmc" ref={rootRef}>
+      {/* Tutorial del diagrama visible (sus pasos cambian con la pantalla) */}
+      <div className="instrument-tutorial-row">
+        <TutorialButton rootRef={rootRef} steps={HARMONICS_TOURS[slide]} />
+      </div>
       {/* Barra de navegación */}
-      <div className="hmc-bar">
+      <div className="hmc-bar" data-tour="flechas">
         <button
           onClick={() => setSlide(s => (s - 1 + 2) % 2)}
           className="hmc-nav"
@@ -154,7 +162,7 @@ export default function HarmonicsCarousel() {
             <>
               <figcaption>Dónde rozar para sacar armónicos</figcaption>
               <GuitarHarmonicsMap />
-              <div className="hmc-legend">
+              <div className="hmc-legend" data-tour="leyenda">
                 {HARM_FRETS.map(({ roman, desc, color, fraction }) => (
                   <div key={roman} className="hmc-leg-row">
                     <span className="hmc-leg-dot" style={{ background: color }} />
@@ -202,6 +210,7 @@ export default function HarmonicsCarousel() {
         .hmc {
           display: grid;
           gap: 16px;
+          grid-template-columns: minmax(0, 1fr);
           margin-top: clamp(44px, 8vw, 92px);
         }
 

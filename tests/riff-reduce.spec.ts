@@ -19,6 +19,38 @@ const SONGS: Array<[string, string, number]> = [
   ['Master of Puppets (James)', 'prueba-master-of-puppets.gp', 1],
   ['Master of Puppets (Kirk)', 'prueba-master-of-puppets.gp', 2],
 ];
+// Canciones de la web (Sala de pruebas), por ahora solo en el test de densidad.
+const WEB_SONGS: Array<[string, string, number]> = [
+  ['Black Gilmur', 'black-gilmur.gp', 0],
+  ['Electric Warlock', 'electric-warlock.gp', 0],
+  ['Iron Rain (MAIkael)', 'iron-rain.gp', 0],
+  ['Iron Rain (Ordaz)', 'iron-rain.gp', 1],
+];
+
+// Densidad (decisión del usuario, 2026-10-31): Principiante como entre el Fácil y el Medio de Guitar
+// Hero, Fácil como su Difícil y Medio como su Experto. En las canciones densas (Master of Puppets,
+// Iron Rain) los tres niveles tienen que ser claramente distintos.
+const DENSE = new Set(['prueba-master-of-puppets.gp', 'iron-rain.gp']);
+
+for (const [name, file, track] of [...SONGS, ...WEB_SONGS]) {
+  test(`${name}: Principiante < Fácil < Medio (trastes) en número de notas`, () => {
+    const real = chartOf(file, track);
+    const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
+    const [p, f, m] = (['practica', 'facil', 'medio'] as const).map((level) => reduceChart(real, RIFF_LEVELS[level]).notes.length / onsets);
+    expect(m).toBeGreaterThanOrEqual(0.99);
+    if (DENSE.has(file)) {
+      expect(p).toBeGreaterThanOrEqual(0.3);
+      expect(p).toBeLessThanOrEqual(0.5);
+      expect(f).toBeGreaterThanOrEqual(0.55);
+      expect(f).toBeLessThanOrEqual(0.75);
+    }
+    // Electric Warlock y Black Gilmur (corcheas de 175 ms, semicorcheas de 217 ms): Principiante
+    // pierde de verdad notas, aunque la canción no sea densa.
+    if (file === 'electric-warlock.gp' || file === 'black-gilmur.gp') expect(p).toBeLessThanOrEqual(0.65);
+    expect(p).toBeLessThanOrEqual(f);
+    expect(f).toBeLessThanOrEqual(m);
+  });
+}
 
 for (const [name, file, track] of SONGS) {
   for (const level of ['practica', 'facil', 'medio', 'avanzado'] as const) {
@@ -30,16 +62,25 @@ for (const [name, file, track] of SONGS) {
 
       expect(chart.notes.length).toBeGreaterThan(0);
       expect(chart.notes.length).toBeLessThanOrEqual(real.notes.length);
-      // Principiante quita como MUCHO la mitad de los golpes; Medio y Avanzado, como Guitar Hero
-      // Experto, casi ninguno (decisiones del usuario).
+      // Medio y Avanzado, como Guitar Hero Experto, casi no quitan golpes (las proporciones de
+      // Principiante y Fácil, en el test de arriba).
       const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
-      // Fácil, como el "Hard" de Guitar Hero: 65-70 % de las notas en Master of Puppets (decisión
-      // del usuario); las canciones lentas casi no se tocan.
-      expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(level === 'practica' ? 0.45 : level === 'facil' ? 0.65 : 0.9);
-      if (level === 'facil' && file.includes('master-of-puppets')) expect(chart.notes.length / onsets).toBeLessThanOrEqual(0.7);
-      if (profile.maxNotesPerSecond) {
-        for (let i = 0; i < chart.notes.length; i++) {
-          expect(chart.notes.filter((n) => n.t <= chart.notes[i].t && chart.notes[i].t - n.t < 1 - 1e-3).length).toBeLessThanOrEqual(profile.maxNotesPerSecond);
+      if (level === 'medio' || level === 'avanzado') expect(chart.notes.length / onsets).toBeGreaterThanOrEqual(0.9);
+      // Tope por ventana del compás: en las partes rápidas, nunca más de `max` notas por tramo.
+      const window = profile.fastWindow;
+      if (window) {
+        const barStarts = real.beats.filter((b) => b.isBarStart);
+        const groups = new Map<string, number[]>();
+        for (const note of chart.notes) {
+          const bar = [...barStarts].reverse().find((b) => b.t <= note.t + 1e-6) ?? barStarts[0];
+          const beatsFromBar = real.beats.filter((b) => b.t >= bar.t - 1e-6 && b.t <= note.t + 1e-6);
+          const last = beatsFromBar[beatsFromBar.length - 1];
+          const key = `${bar.q}:${Math.floor((last.q - bar.q) / window.quarters + 1e-6)}`;
+          groups.set(key, [...(groups.get(key) ?? []), note.t]);
+        }
+        for (const times of groups.values()) {
+          const fast = times.slice(1).some((t, k) => t - times[k] < window.belowSeconds - 1e-3);
+          if (fast) expect(times.length).toBeLessThanOrEqual(window.max);
         }
       }
       expect(chart.sourceNotes).toBe(real.notes);
@@ -614,7 +655,8 @@ test('canciones de la Sala de pruebas: todas las guitarras, todos los niveles', 
       for (const [id, profile] of Object.entries(RIFF_LEVELS)) {
         if (!profile.available) continue;
         const reduced = reduceChart(real, profile, { range });
-        expect(reduced.notes.length, `${file} ${id}`).toBeGreaterThan(real.notes.length * 0.3);
+        const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
+        expect(reduced.notes.length, `${file} ${id}`).toBeGreaterThan(onsets * 0.3);
         expect(reduced.soundOffset, `${file} ${id}`).toBe(offset);
         for (const note of reduced.notes) {
           if (!profile.freeStrings) expect(profile.strings, `${file} ${id}`).toContain(note.string);

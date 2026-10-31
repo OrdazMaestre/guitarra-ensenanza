@@ -28,8 +28,13 @@ export interface LevelProfile {
   colorBy: 'fret' | 'string';
   // Cuerdas libres: vale el traste correcto en CUALQUIER cuerda (solo cuenta el traste).
   freeStrings: boolean;
-  // Tope opcional de notas por segundo real (densidad al estilo Guitar Hero).
-  maxNotesPerSecond?: number;
+  // Tope opcional de notas por ventana del compás (`quarters` negras desde el inicio del compás):
+  // como mucho `max`, solo si van rápido (algún hueco de menos de `belowSeconds` reales). Ligado a
+  // la posición en el compás, así un riff repetido pierde siempre las mismas notas (ver reduce.ts).
+  fastWindow?: { quarters: number; max: number; belowSeconds: number };
+  // Factor de los márgenes de tiempo para puntuar y acertar (session.ts, `RiffOptions.timingScale`):
+  // 0,6 = todos al 60 %. Sin él, los márgenes normales.
+  timingScale?: number;
   // Zonas de trastes (de, a) para niveles de una cuerda: la primera para las notas graves y la
   // última para las agudas, cortando por la mitad de las octavas del instrumento (ver reduce.ts).
   zones?: Array<[number, number]>;
@@ -55,14 +60,17 @@ const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 
 // Nombres (decisión del usuario, 2026-10-25): modo trastes = Principiante, Fácil, Medio, Avanzado;
 // modo cuerdas = Medio, Avanzado, Difícil, Experto (Experto, el último: la tablatura real).
-// Densidad (decisiones del usuario):
-// - Principiante: quita como MUCHO la mitad de las notas; medido: 49-55 % de golpes en Master of
-//   Puppets y 84-100 % en canciones lentas.
+// Densidad (decisiones del usuario; revisada el 2026-10-31 con las canciones de la web: en Electric
+// Warlock e Iron Rain, que van en corcheas a 150-175 ms, Principiante y Fácil salían casi iguales que
+// Medio, porque la rejilla en pulsos no les quitaba nada). Ahora los filtros van en SEGUNDOS reales:
+// - Principiante: como entre el "Fácil" y el "Medio" de Guitar Hero. Nunca dos notas a menos de
+//   0,25 s; donde una corchea dura menos de 0,24 s la rejilla pasa a negras (`minSlotSeconds`).
+//   Medido: Master of Puppets 38-40 %, Iron Rain 37-39 %, Electric Warlock 60 %, Black Gilmur 57 %.
 // - Fácil (trastes; antes "Neófito"): como el "Difícil" (Hard) de Guitar Hero (en los charts
-//   oficiales Hard tiene ~206 notas/min frente a ~295 en Expert, ≈70 %). Objetivo del usuario:
-//   65-70 % de las notas. Medido en Master of Puppets: Kirk 65,2 %, James 69,5 %; del compás 42
-//   (9 Mi seguidos) deja 5. Ahí casi todo va en corcheas (140 ms), así que los huecos mínimos solos
-//   saltan de ~73 % a ~63 %; el ajuste fino lo da `maxNotesPerSecond` (6).
+//   oficiales Hard tiene ~206 notas/min frente a ~295 en Expert, ≈70 %). Repeticiones a menos de
+//   0,22 s fuera, y en las partes rápidas como mucho 3 notas por cada 2 negras (`fastWindow`).
+//   Medido: Master of Puppets 62-68 %, Iron Rain 70-72 %; del compás 42 (9 Mi seguidos) deja 5.
+//   Las canciones poco densas (Electric Warlock, Black Gilmur, ~3 notas/s) quedan en 90-96 %.
 // - Medio y Avanzado (trastes; antes "Principiante" y "Fácil"): como Guitar Hero EXPERTO, casi
 //   todas las notas, "chugs" rápidos incluidos (rejilla de semicorchea, sin hueco extra para
 //   repeticiones): 100 % de golpes en Master of Puppets, compás 42 entero (9 Mi al aire seguidos).
@@ -71,12 +79,15 @@ const CUERDAS_MIN_SLOT_SECONDS = 0.1;
 // Modo cuerdas: Medio (cuerdas 5-6), Avanzado (4-6) y Difícil (3-6), todos hechos (de uno en uno,
 // decisión del usuario).
 export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = {
-  practica: { label: 'Principiante', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minGapBeats: 0.5, minGapSeconds: 0.15, repeatGapSeconds: 0.2, maxChord: 1, colorBy: 'fret', freeStrings: true },
-  facil: { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.1, repeatGapSeconds: 0.15, maxChord: 1, colorBy: 'fret', freeStrings: true, maxNotesPerSecond: 6 },
-  medio: { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
+  practica: { label: 'Principiante', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.5, minSlotSeconds: 0.24, minGapBeats: 0.5, minGapSeconds: 0.25, repeatGapSeconds: 0.35, maxChord: 1, colorBy: 'fret', freeStrings: true },
+  facil: { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minSlotSeconds: 0.13, minGapBeats: 0.25, minGapSeconds: 0.13, repeatGapSeconds: 0.22, maxChord: 1, colorBy: 'fret', freeStrings: true, fastWindow: { quarters: 2, max: 3, belowSeconds: 0.2 } },
+  // Medio y Avanzado (trastes): márgenes de puntuación al 60 % (petición del usuario, 2026-10-31: los
+  // dos primeros niveles del modo trastes han de ser fáciles y motivadores, y el modo cuerdas ya es
+  // bastante difícil, así que esos se quedan con los márgenes normales).
+  medio: { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true, timingScale: 0.6 },
   // Avanzado: dos "Guitar Hero" seguidos (decisión del usuario, 2026-10-28) -- graves en 0-5, agudas en
   // 5-10 (el 5, en las dos).
-  avanzado: { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 10, zones: [[0, 5], [5, 10]], gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true },
+  avanzado: { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 10, zones: [[0, 5], [5, 10]], gridBeats: 0.25, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true, timingScale: 0.6 },
   // Modo cuerdas Medio: Mi + La (en cuartas exactas), densidad de Medio (trastes); la tab se
   // coloca en las dos cuerdas con el camino de menor coste (reduce.ts, placeSequence).
   'medio-cuerdas': { label: 'Medio', available: true, strings: [5, 6], minFret: 0, maxFret: 11, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.25, minSlotSeconds: CUERDAS_MIN_SLOT_SECONDS, minGapBeats: 0.25, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
@@ -105,4 +116,21 @@ export function levelGroup(level: RiffLevel): RiffLevelGroup {
 
 export function levelLabel(level: RiffLevel) {
   return level === 'experto' ? 'Experto' : RIFF_LEVELS[level].label;
+}
+
+// Carril ESTIRADO (petición del usuario, 2026-10-31): desde Fácil en modo trastes y en todo el modo
+// cuerdas, por encima del 75 % de velocidad los compases se ven MÁS LARGOS en la autopista y las notas
+// caen más deprisa (al 100 %: compases un 33 % más largos que al 75 %; notas más separadas en pasajes
+// rápidos, se ve mejor el orden). Principiante ya tiene pocas notas y se queda igual.
+export const STRETCH_LANE_SPEED = 0.75;
+export function stretchesLane(level: RiffLevel) {
+  return level !== 'practica';
+}
+
+// Segundos REALES que caben en la autopista. Un segundo de canción ocupa 1 / (speed × lookahead) del
+// carril: con el factor (0,75 / speed) a secas, a 100 % ocupaba lo mismo que a 75 % (compases iguales,
+// el usuario no veía diferencia); al CUADRADO, a 100 % ocupa 4/3 (1,8 s reales en pantalla, caída
+// ×1,78). Hasta 75 %, igual que siempre.
+export function laneLookaheadSeconds(base: number, speed: number, stretch: boolean) {
+  return stretch && speed > STRETCH_LANE_SPEED ? base * (STRETCH_LANE_SPEED / speed) ** 2 : base;
 }

@@ -33,6 +33,9 @@ test('wide screen: MÚSICA left, search centered, INSTRUMENTOS right; lessons in
   await expect(links.last()).toHaveAttribute('href', '/lecciones/temario/funciones-tonales');
   const rows = await links.evaluateAll((items) => new Set(items.map((item) => Math.round(item.getBoundingClientRect().top))).size);
   expect(rows).toBe(1);
+  // Solo en la portada, "Notación musical" se llama "Notas musicales".
+  await expect(links.nth(1)).toContainText('Notas musicales');
+  await expect(page.locator('.portada2-lessons-row')).not.toContainText('Notación musical');
   await expect(page.getByRole('button', { name: 'Lecciones', exact: true })).toBeHidden();
 });
 
@@ -86,9 +89,42 @@ test('narrow screen: LECCIONES · MÚSICA · INSTRUMENTOS under the search, and 
   await expect(links).toHaveCount(10);
   await expect(links.first()).toHaveAttribute('href', '/lecciones/temario/conceptos-basicos');
   await expect(links.last()).toHaveAttribute('href', '/lecciones/temario/funciones-tonales');
+  await expect(links.nth(1)).toContainText('Notas musicales');
 
   await page.keyboard.press('Escape');
   await expect(links).toHaveCount(0);
+});
+
+// Las lecciones solo se agrupan cuando la fila de arriba (MÚSICA | logo + buscador | INSTRUMENTOS)
+// deja de caber en una línea (el buscador se descentra para aprovechar el hueco): 650px todavía
+// cabe; 649px ya es el modo estrecho (page.tsx).
+test('the lessons are grouped only when the top row stops fitting on one line', async ({ page }) => {
+  await page.setViewportSize({ width: 650, height: 800 });
+  await page.goto(HOME);
+  const music = (await page.getByRole('button', { name: 'Música' }).boundingBox())!;
+  const tools = (await page.locator('.portada2-tools').boundingBox())!;
+  const instruments = (await page.getByRole('button', { name: 'Instrumentos' }).boundingBox())!;
+  expect(Math.abs(music.y + music.height / 2 - (tools.y + tools.height / 2))).toBeLessThanOrEqual(3);
+  expect(Math.abs(instruments.y + instruments.height / 2 - (tools.y + tools.height / 2))).toBeLessThanOrEqual(3);
+  expect(tools.x - (music.x + music.width)).toBeGreaterThanOrEqual(12);
+  expect(instruments.x - (tools.x + tools.width)).toBeGreaterThanOrEqual(12);
+  // El texto del buscador se lee entero.
+  const room = await page.locator('.portada2-tools .site-search-input').evaluate((input: HTMLInputElement) => {
+    const cs = getComputedStyle(input);
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    return input.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - ctx.measureText(input.placeholder).width;
+  });
+  expect(room).toBeGreaterThan(0);
+  // La flechita de INSTRUMENTOS no se encoge (antes la columna aplastaba el botón).
+  expect((await page.locator('.portada2-menu-instruments button svg').boundingBox())!.width).toBeGreaterThanOrEqual(11);
+  await expect(page.locator('.portada2-lessons')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Lecciones', exact: true })).toBeHidden();
+  expect(await hasHorizontalOverflow(page)).toBe(false);
+
+  await page.setViewportSize({ width: 649, height: 800 });
+  await expect(page.locator('.portada2-lessons')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Lecciones', exact: true })).toBeVisible();
 });
 
 test('INSTRUMENTOS shows one instrument at a time and closing it removes the instrument', async ({ page }) => {
@@ -123,7 +159,7 @@ test('MÚSICA opens the mixing console', async ({ page }) => {
 });
 
 test('no horizontal overflow, with and without an instrument open', async ({ page }) => {
-  for (const width of [360, 600, 850, 1280]) {
+  for (const width of [360, 600, 700, 800, 1100]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto(HOME);
     expect(await hasHorizontalOverflow(page), `${width}px`).toBe(false);

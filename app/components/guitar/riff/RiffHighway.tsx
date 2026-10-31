@@ -5,7 +5,8 @@ import { getAudioCurrentTime } from '@/app/lib/guitarAudioEngine';
 import type { Chart, ChartNote } from '@/app/lib/riff/chart';
 import { fretColor, RIFF_STRING_COLORS } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
-import { barsAheadSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel } from '@/app/lib/riff/visuals';
+import { laneLookaheadSeconds } from '@/app/lib/riff/levels';
+import { barsAheadSeconds, mirroredFadeInSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel } from '@/app/lib/riff/visuals';
 
 export { RIFF_STRING_COLORS };
 
@@ -23,8 +24,10 @@ export { RIFF_STRING_COLORS };
 // a la vez bajan más deprisa junto al mástil (más separadas, se distingue mejor el orden). Las dos
 // cosas a la vez salen de acercar el punto de fuga (`VANISHING_RATIO`, antes 0,9): perspectiva más
 // marcada, ~35 % más de separación cerca del mástil.
-const LOOKAHEAD_SECONDS = 3.2;
-const VANISHING_RATIO = 0.35;
+// Petición del usuario (2026-10-31): las notas se ven desde un poco más atrás (3,8 s), con el punto de
+// fuga ajustado (0,35 -> 0,27) para que la separación junto al mástil quede igual (±1 %).
+const LOOKAHEAD_SECONDS = 3.8;
+const VANISHING_RATIO = 0.27;
 const HIT_FX_SECONDS = 0.35;
 // Etiquetas de puntos ("¡Perfecto!", "+3"...): cuánto duran (segundos reales) y cuántas a la vez.
 const SCORE_LABEL_SECONDS = 0.8;
@@ -35,6 +38,12 @@ const MAX_SCORE_LABELS = 4;
 // dibujan: no hacen falta y liaban (decisión del usuario).
 const FREE_FRET_TINT_ALPHA = 0.2;
 const MISS_FADE_SECONDS = 0.45;
+// Gris del "fantasma" que deja una nota sobre el mástil al pasar (se va en MISS_FADE_SECONDS) y del
+// AVISO que lo anuncia (petición del usuario, 2026-10-31): en el mismo sitio, aparece GHOST_AHEAD_SECONDS
+// (reales) antes de que llegue la nota, de transparente a ese mismo gris, para predecir dónde cae.
+const GHOST_COLOR = '#6b7280';
+const GHOST_ALPHA = 0.8;
+const GHOST_AHEAD_SECONDS = 1;
 // Notas que ya puntuaron y vuelven a pasar tras continuar una pausa (`RiffSession.locked`).
 const LOCKED_COLOR = '#9ca3af';
 const TOP_MARGIN = 10;
@@ -59,6 +68,8 @@ interface Props {
   previewTime: number;
   sessionRef: MutableRefObject<RiffSession | null>;
   stageRef: RefObject<HTMLDivElement | null>;
+  // Carril estirado a velocidad 100 % (ver `stretchesLane` en levels.ts).
+  stretch?: boolean;
 }
 
 function firstIndexAtOrAfter(notes: ChartNote[], t: number) {
@@ -107,7 +118,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef }: Props) {
+export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
   const [minFret, maxFret] = fretRange ?? [0, 5];
@@ -180,11 +191,14 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       const speed = session?.options.speed ?? 1;
       const songPos = session ? session.songPos : previewRef.current;
 
+      // Carril estirado (levels.ts, `stretchesLane`): a 100 % los compases son un 33 % más largos que a 75 %.
+      const lookahead = laneLookaheadSeconds(LOOKAHEAD_SECONDS, speed, stretch);
+
       // Punto de fuga y escala.
       const vpX = (boardLeft + boardRight) / 2;
-      const vpY = -Math.max(50, y1 * VANISHING_RATIO);
+      const vpY = -Math.max(40, y1 * VANISHING_RATIO);
       const sL = (TOP_MARGIN - vpY) / (y1 - vpY);
-      const a = (1 / sL - 1) / LOOKAHEAD_SECONDS;
+      const a = (1 / sL - 1) / lookahead;
       const scaleAt = (z: number) => 1 / (1 + a * Math.max(z, 0));
       const project = (x: number, y: number, z: number) => {
         const s = scaleAt(z);
@@ -195,8 +209,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // Suelo de la autopista (encima del mástil).
       const nearL = project(boardLeft, y1, 0);
       const nearR = project(boardRight, y1, 0);
-      const farL = project(boardLeft, y1, LOOKAHEAD_SECONDS);
-      const farR = project(boardRight, y1, LOOKAHEAD_SECONDS);
+      const farL = project(boardLeft, y1, lookahead);
+      const farR = project(boardRight, y1, lookahead);
       const floor = ctx.createLinearGradient(0, farL.y, 0, nearL.y);
       floor.addColorStop(0, '#05070d');
       floor.addColorStop(1, '#14223a');
@@ -215,7 +229,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       for (let i = visibleFrom; i < chart.notes.length; i++) {
         const note = chart.notes[i];
         const z = zOf(note.t);
-        if (z > LOOKAHEAD_SECONDS) break;
+        if (z > lookahead) break;
         if (z >= -0.1) soonFrets.add(note.fret);
       }
       for (const fret of soonFrets) {
@@ -226,8 +240,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         const xb = open ? openXs[1] : lineXs[col + 1];
         const p1 = project(xa, y1, 0);
         const p2 = project(xb, y1, 0);
-        const p3 = project(xb, y1, LOOKAHEAD_SECONDS);
-        const p4 = project(xa, y1, LOOKAHEAD_SECONDS);
+        const p3 = project(xb, y1, lookahead);
+        const p4 = project(xa, y1, lookahead);
         ctx.fillStyle = 'rgba(148, 197, 255, 0.10)';
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
@@ -242,7 +256,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       ctx.lineWidth = 1;
       for (const x of edgeXs) {
         const p0 = project(x, y1, 0);
-        const p1 = project(x, y1, LOOKAHEAD_SECONDS);
+        const p1 = project(x, y1, lookahead);
         ctx.strokeStyle = 'rgba(203, 213, 225, 0.28)';
         ctx.beginPath();
         ctx.moveTo(p0.x, p0.y);
@@ -253,7 +267,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // Líneas de pulso y de compás.
       for (const beat of chart.beats) {
         const z = zOf(beat.t);
-        if (z < 0 || z > LOOKAHEAD_SECONDS) continue;
+        if (z < 0 || z > lookahead) continue;
         const l = project(boardLeft, y1, z);
         const r = project(boardRight, y1, z);
         ctx.strokeStyle = beat.isBarStart ? 'rgba(255, 255, 255, 0.45)' : 'rgba(255, 255, 255, 0.12)';
@@ -281,7 +295,8 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       }
 
       // Cuerdas libres: la COLUMNA entera del traste objetivo se ilumina con su color, con las mismas
-      // curvas que las cuerdas (sube el segundo anterior a la nota, baja 0,5 s después).
+      // curvas que las cuerdas, salvo la subida: dura el doble de lo que tarda en irse tras llegar la
+      // nota (`mirroredFadeInSeconds`), así se ve antes dónde cae la siguiente.
       if (session && freeStrings) {
         for (let fret = minFret; fret <= maxFret; fret++) {
           const col = columnRect(fret);
@@ -290,7 +305,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
           ctx.globalAlpha = FREE_FRET_TINT_ALPHA;
           ctx.fillStyle = color;
           ctx.fillRect(col.x, col.y, col.w, col.h);
-          const level = usageLevel(notesOnFret(chart.notes, fret), songPos, speed);
+          const level = usageLevel(notesOnFret(chart.notes, fret), songPos, speed, 0, mirroredFadeInSeconds);
           if (level <= 0.01) continue;
           ctx.globalAlpha = level * 0.4;
           ctx.fillStyle = color;
@@ -331,7 +346,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       const toDraw: ChartNote[] = [];
       for (let i = visibleFrom; i < chart.notes.length; i++) {
         const note = chart.notes[i];
-        if (zOf(note.t) > LOOKAHEAD_SECONDS) break;
+        if (zOf(note.t) > lookahead) break;
         toDraw.push(note);
       }
       toDraw.reverse();
@@ -423,10 +438,27 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         const w = gemW * p.s;
         const h = gemH * p.s;
 
+        // Aviso del fantasma: la misma gema gris, quieta en su sitio del mástil, cada vez más visible.
+        if (session && !locked && z > 0 && z < GHOST_AHEAD_SECONDS) {
+          ctx.globalAlpha = GHOST_ALPHA * (1 - z / GHOST_AHEAD_SECONDS);
+          ctx.fillStyle = GHOST_COLOR;
+          ctx.beginPath();
+          if (note.fret === 0) ctx.arc(base.x, base.y, Math.max(gemH * 0.95, 9), 0, Math.PI * 2);
+          else roundRect(ctx, base.x - gemW / 2, base.y - gemH / 2, gemW, gemH, 6);
+          ctx.fill();
+          const ghostFont = Math.max(9, gemH * 0.78);
+          ctx.font = `900 ${ghostFont}px system-ui, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(String(note.fret), base.x, base.y + 1);
+          ctx.globalAlpha = 1;
+        }
+
         // Cola de las notas largas.
         const durReal = note.dur / speed;
         if (!missed && durReal > 0.25) {
-          const zEnd = Math.min(Math.max(z, 0) + durReal, LOOKAHEAD_SECONDS);
+          const zEnd = Math.min(Math.max(z, 0) + durReal, lookahead);
           const e = project(base.x, base.y, zEnd);
           ctx.strokeStyle = color;
           ctx.globalAlpha = 0.45;
@@ -460,10 +492,10 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
           ctx.globalAlpha = 1;
         }
 
-        ctx.globalAlpha = missed ? Math.max(0, 1 + z / MISS_FADE_SECONDS) * 0.8 : 1;
+        ctx.globalAlpha = missed ? Math.max(0, 1 + z / MISS_FADE_SECONDS) * GHOST_ALPHA : 1;
         ctx.shadowColor = missed || locked ? 'transparent' : color;
         ctx.shadowBlur = missed || locked ? 0 : 14 * p.s;
-        ctx.fillStyle = missed ? '#6b7280' : color;
+        ctx.fillStyle = missed ? GHOST_COLOR : color;
         // Cuerda al aire (traste 0): un CÍRCULO grande en vez de la barra del resto (petición del
         // usuario), para distinguirla de un vistazo.
         const open = note.fret === 0;
@@ -593,7 +625,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [chart, colorBy, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stringsKey]);
+  }, [chart, colorBy, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
 
   return <canvas aria-hidden="true" className="riff-highway" data-testid="riff-highway" ref={canvasRef} />;
 }

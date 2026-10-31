@@ -92,13 +92,16 @@ export default function TemarioPage() {
         /* Padding lateral de 64px como mínimo: arriba a la izquierda vive el botón fijo de la mesa
            de mezclas y arriba a la derecha el de claro/oscuro (44px + 12px de margen cada uno). */
         /* Pantalla ancha: rejilla de 3 columnas — MÚSICA | botón del árbol + buscador | INSTRUMENTOS.
-           El <nav> es display: contents aquí, así que sus botones son celdas de esta rejilla. */
+           El <nav> es display: contents aquí, así que sus botones son celdas de esta rejilla. Las
+           columnas de los lados nunca bajan de su contenido (max-content): mientras sobra sitio son
+           iguales y el buscador queda centrado; cuando falta, INSTRUMENTOS (más ancho que MÚSICA)
+           conserva su ancho y el buscador se descentra hacia el hueco que deja MÚSICA. */
         .portada2-header {
           align-items: center;
           display: grid;
-          gap: 12px 24px;
-          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-          padding: 14px clamp(64px, 6vw, 96px);
+          gap: 12px clamp(12px, 2vw, 24px);
+          grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+          padding: 14px clamp(56px, 6vw, 96px);
           position: relative;
           z-index: 20;
         }
@@ -120,6 +123,12 @@ export default function TemarioPage() {
 
         .portada2-nav {
           display: contents;
+        }
+
+        /* En pantalla ancha el buscador se estrecha con la ventana, pero nunca por debajo del ancho
+           en el que "Buscar lección…" se lee entero. */
+        .portada2-tools .site-search {
+          width: clamp(200px, 30vw, 320px);
         }
 
         .portada2-menu {
@@ -225,13 +234,17 @@ export default function TemarioPage() {
           cursor: pointer;
           display: inline-flex;
           font-family: var(--portada2-mono), monospace;
-          font-size: 15px;
+          font-size: clamp(13px, 1.25vw, 15px);
           font-weight: 700;
-          gap: 8px;
+          gap: clamp(6px, 0.7vw, 8px);
           letter-spacing: 0.08em;
           min-height: 44px;
-          padding: 8px 12px;
+          padding: 8px clamp(8px, 1vw, 12px);
           text-transform: uppercase;
+        }
+
+        .portada2-nav-button svg {
+          flex-shrink: 0;
         }
 
         .portada2-nav-button:hover,
@@ -630,8 +643,12 @@ export default function TemarioPage() {
 
         /* Estrecha: buscador arriba y, debajo, LECCIONES · MÚSICA · INSTRUMENTOS (orden del DOM del
            <nav>); las lecciones van en el desplegable y la fila se oculta. Los menús se anclan a toda
-           la fila (position: static) para que sus desplegables salgan centrados. */
-        @media (max-width: 980px) {
+           la fila (position: static) para que sus desplegables salgan centrados.
+           649px = donde la fila ancha (MÚSICA | logo + buscador | INSTRUMENTOS, ya con letra 13px,
+           buscador en su mínimo de 200px y descentrado hacia MÚSICA) deja de caber en una línea:
+           medido en Chrome, a 650px los dos huecos están en su mínimo (13px) y por debajo el buscador
+           tendría que estrecharse y cortaría "Buscar lección…". */
+        @media (max-width: 649px) {
           .portada2-header {
             display: flex;
             flex-direction: column;

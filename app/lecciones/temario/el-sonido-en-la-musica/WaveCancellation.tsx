@@ -166,7 +166,7 @@ export default function WaveCancellation({ isDark }: { isDark: boolean }) {
 
   return (
     <div className="wc">
-      <canvas ref={canvasRef} className="wc-cv" />
+      <canvas ref={canvasRef} className="wc-cv" data-tour="dibujo" />
 
       {/* 4 columnas, una por par */}
       <div className="wc-grid">
@@ -177,6 +177,7 @@ export default function WaveCancellation({ isDark }: { isDark: boolean }) {
             {/* Botón onda en fase (pastel, trazo continuo) */}
             <button
               className="wc-btn"
+              data-tour={i === 0 ? 'onda' : undefined}
               onClick={() => toggle(i * 2)}
               style={{
                 background: PASTEL_C[i],
@@ -191,6 +192,7 @@ export default function WaveCancellation({ isDark }: { isDark: boolean }) {
             {/* Botón contrafase (sólido, trazo discontinuo) */}
             <button
               className="wc-btn"
+              data-tour={i === 0 ? 'contraonda' : undefined}
               onClick={() => toggle(i * 2 + 1)}
               style={{
                 background: SOLID_C[i],

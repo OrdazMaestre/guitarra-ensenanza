@@ -47,7 +47,7 @@ function nodeList(mode: number) {
 
 export default function StringHarmonics() {
   return (
-    <div className="sh">
+    <div className="sh" data-tour="filas">
       {ROWS.map(({ label, tag, mode, color }) => (
         <div key={mode} className="sh-row">
           <div className="sh-label">

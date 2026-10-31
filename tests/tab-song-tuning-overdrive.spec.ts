@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import fs from 'node:fs';
 import { pickTestRoomTabSong } from './sala-song';
 
 // Tablatura de la Sala de pruebas (SongTabPlayer): se queda en E con las cuerdas de siempre
@@ -52,4 +53,21 @@ test('OVERDRIVE en la tablatura: las guitarras pasan por la cadena de ampli', as
   await expect.poll(() => page.evaluate(() => (window as unknown as { __convolvers: number }).__convolvers), { timeout: 15000 }).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
   expect(errors).toEqual([]);
+});
+
+test('tablatura: "Tus canciones" del dispositivo, en la misma lista que el juego', async ({ page }) => {
+  await page.goto(URL);
+  const tab = page.locator('.test-room-tab');
+  await tab.scrollIntoViewIfNeeded();
+  await page.waitForSelector('.test-room-tab .at-surface-svg', { timeout: 60000 });
+  const disc = tab.getByRole('button', { name: /^Canción:/ });
+  await disc.click();
+  await tab.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await tab.getByTestId('local-song-files').setInputFiles([
+    { name: 'la-mia.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/iron-rain.gp') },
+  ]);
+  await expect(tab.locator('.local-song-card')).toContainText('He encontrado 1 canción nueva.');
+  await page.getByRole('menuitemradio', { name: 'la-mia' }).click();
+  await expect(disc).toHaveAttribute('aria-label', 'Canción: la-mia');
+  await expect(page.locator('.test-room-tab .at-surface-svg').first()).toBeVisible({ timeout: 30000 });
 });

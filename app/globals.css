@@ -143,19 +143,26 @@ a:not(.temario-pager-link):not(.site-tree-button):not(.site-search-option):not(.
   color: #ffffff;
   display: flex;
   flex: 0 0 auto;
-  height: 44px;
+  height: 48px;
   justify-content: center;
   overflow: hidden;
   position: relative;
   text-decoration: none;
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
-  width: 44px;
+  width: 48px;
   z-index: 2;
 }
 
+/* El dibujo del PNG no está centrado (queda ~10/192 a la izquierda) y las baquetas llegan a las
+   esquinas: se reduce al 87,5 % y se desplaza con el padding asimétrico para que quede centrado y
+   entero dentro del círculo. El fondo negro rellena el borde (con el tema oscuro, como img, se
+   vuelve a invertir y sigue negro). */
 .site-tree-logo {
+  background: #000000;
+  box-sizing: border-box;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  padding: 0 1.5% 0 11%;
   transition: opacity 160ms ease;
   width: 100%;
 }
@@ -304,8 +311,8 @@ a:not(.temario-pager-link):not(.site-tree-button):not(.site-search-option):not(.
   }
 
   .site-tree-button {
-    height: 40px;
-    width: 40px;
+    height: 44px;
+    width: 44px;
   }
 
   .site-tree-label {
@@ -479,7 +486,8 @@ html[data-theme='dark'] .site-shell {
 }
 
 html[data-theme='dark'] .site-shell img,
-html[data-theme='dark'] .site-shell iframe {
+html[data-theme='dark'] .site-shell iframe,
+html[data-theme='dark'] .site-shell .riff-level-face {
   filter: invert(1) hue-rotate(180deg);
 }
 

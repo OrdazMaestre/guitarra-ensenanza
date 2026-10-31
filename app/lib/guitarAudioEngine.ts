@@ -91,9 +91,11 @@ async function loadAllSamples(context: AudioContext): Promise<LoadedSample[]> {
   return loaded;
 }
 
+// Espera a que estén TODOS los samples (también si la carga ya estaba en marcha: antes volvía en
+// seguida y el juego podía empezar con las primeras notas de fondo aún sin sonido).
 export async function preloadSamples(): Promise<void> {
-  if (samples || samplesPromise) return;
-  samplesPromise = loadAllSamples(getCtx());
+  if (samples) return;
+  if (!samplesPromise) samplesPromise = loadAllSamples(getCtx());
   await samplesPromise;
 }
 
@@ -400,7 +402,20 @@ export interface GuideNoteHandle {
   // empezará ya con ese volumen; si está sonando, sube suavemente. Es lo que hace un acierto en
   // los niveles traducidos del juego ("la pista se abre", como en Rock Band).
   setVolume(volume: number): void;
+  // Corta la nota en el instante `at` (AudioContext) con un fundido corto: lo que pasa en una guitarra
+  // de verdad cuando la misma cuerda toca otra nota. Si ya iba a acabar antes, no hace nada.
+  stopAt(at: number): void;
 }
+
+// Cola de una nota de fondo tras su final: setTargetAtTime(τ = 0,05) ya es inaudible a 5τ. Antes se
+// dejaban 0,4 s, y con notas muy cortas y rápidas cada una vivía varias veces lo que dura.
+const GUIDE_TAIL_SECONDS = 0.25;
+const GUIDE_CUT_SECONDS = 0.015;
+// Tope de notas de fondo sonando a la vez (canción + banda; nunca las voces del alumno): en canciones
+// con 4 instrumentos y notas muy rápidas se juntaban decenas y el audio se entrecortaba. Al pasarse,
+// la más antigua se corta con fundido (como enforceBassPolyphony).
+const MAX_GUIDE_VOICES = 24;
+const guideVoices: Array<{ start: number; stopAt(at: number): void }> = [];
 
 export async function scheduleGuideNote(midi: number, at: number, duration: number, volume = 0.35): Promise<GuideNoteHandle | null> {
   const context = getCtx();
@@ -408,7 +423,11 @@ export async function scheduleGuideNote(midi: number, at: number, duration: numb
   const sample = chooseSample(midi);
   if (!sample) return null;
   const start = Math.max(at, context.currentTime);
-  const end = start + Math.max(0.08, duration);
+  let end = start + Math.max(0.08, duration);
+  if (guideVoices.length >= MAX_GUIDE_VOICES) {
+    const oldest = guideVoices.reduce((a, b) => (b.start < a.start ? b : a));
+    oldest.stopAt(context.currentTime);
+  }
   const source = context.createBufferSource();
   source.buffer = sample.buffer;
   source.playbackRate.value = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
@@ -424,8 +443,27 @@ export async function scheduleGuideNote(midi: number, at: number, duration: numb
   source.connect(gain);
   gain.connect(getMaster(context));
   source.start(start);
-  source.stop(end + 0.4);
+  source.stop(end + GUIDE_TAIL_SECONDS);
+  const voice = {
+    start,
+    stopAt(cut: number) {
+      const at = Math.max(cut, context.currentTime, start);
+      if (at >= end) return;
+      end = at;
+      gain.gain.cancelScheduledValues(at);
+      gain.gain.setTargetAtTime(0.0001, at, GUIDE_CUT_SECONDS);
+      try { source.stop(at + GUIDE_CUT_SECONDS * 6); } catch { /* ya parada */ }
+      const index = guideVoices.indexOf(voice);
+      if (index !== -1) guideVoices.splice(index, 1);
+    },
+  };
+  guideVoices.push(voice);
+  source.addEventListener('ended', () => {
+    const index = guideVoices.indexOf(voice);
+    if (index !== -1) guideVoices.splice(index, 1);
+  });
   return {
+    stopAt: voice.stopAt,
     setVolume(next: number) {
       const now = context.currentTime;
       if (now >= end) return;
@@ -717,18 +755,39 @@ export function getAudioCurrentTime(): number {
   return ctx ? ctx.currentTime : 0;
 }
 
+// Ráfagas de ruido de la batería/metrónomo, creadas UNA vez y reutilizadas (antes cada golpe creaba
+// y rellenaba sus buffers: con un blast beat eran decenas por segundo de basura para el recolector, y
+// el audio se entrecortaba). 4 variantes por sonido, en rueda, para que no suene siempre idéntico.
+const NOISE_VARIANTS = 4;
+const noiseCache = new WeakMap<BaseAudioContext, Map<string, { buffers: AudioBuffer[]; next: number }>>();
+function noiseBurst(context: BaseAudioContext, seconds: number, curve: number): AudioBuffer {
+  let byKey = noiseCache.get(context);
+  if (!byKey) noiseCache.set(context, (byKey = new Map()));
+  const key = `${seconds}:${curve}`;
+  let entry = byKey.get(key);
+  if (!entry) {
+    const sr = context.sampleRate;
+    const length = Math.floor(sr * seconds);
+    const buffers = Array.from({ length: NOISE_VARIANTS }, () => {
+      const buffer = context.createBuffer(1, length, sr);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** curve;
+      return buffer;
+    });
+    byKey.set(key, (entry = { buffers, next: 0 }));
+  }
+  const buffer = entry.buffers[entry.next];
+  entry.next = (entry.next + 1) % NOISE_VARIANTS;
+  return buffer;
+}
+
 export function playMetronomeClick(scheduledAt: number, volume: number, type: 'snare' | 'kick' | 'cymbal' = 'snare'): void {
   const context = getCtx();
-  const sr = context.sampleRate;
   const limiter = getMetronomeLimiter(context);
 
   if (type === 'snare') {
-    const noiseLen = Math.floor(sr * 0.045);
-    const noiseBuf = context.createBuffer(1, noiseLen, sr);
-    const nd = noiseBuf.getChannelData(0);
-    for (let i = 0; i < noiseLen; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / noiseLen) ** 2.4;
     const ns = context.createBufferSource();
-    ns.buffer = noiseBuf;
+    ns.buffer = noiseBurst(context, 0.045, 2.4);
     const bp = context.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1850; bp.Q.value = 0.75;
     const hp = context.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420; hp.Q.value = 0.7;
     const ng = context.createGain();
@@ -738,12 +797,8 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
     ns.connect(bp); bp.connect(hp); hp.connect(ng); ng.connect(limiter);
     ns.start(scheduledAt);
 
-    const bodyLen = Math.floor(sr * 0.055);
-    const bodyBuf = context.createBuffer(1, bodyLen, sr);
-    const bd = bodyBuf.getChannelData(0);
-    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.8;
     const bs = context.createBufferSource();
-    bs.buffer = bodyBuf;
+    bs.buffer = noiseBurst(context, 0.055, 2.8);
     const lp = context.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480; lp.Q.value = 0.6;
     const bg = context.createGain();
     bg.gain.setValueAtTime(0.0001, scheduledAt);
@@ -754,11 +809,7 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
 
   } else if (type === 'kick') {
     // 1. Click transient — 1200 Hz, 8 ms: audible on all speakers including phone/laptop
-    const clkLen = Math.floor(sr * 0.008);
-    const clkBuf = context.createBuffer(1, clkLen, sr);
-    const clkd = clkBuf.getChannelData(0);
-    for (let i = 0; i < clkLen; i++) clkd[i] = (Math.random() * 2 - 1) * (1 - i / clkLen) ** 1.5;
-    const clkSrc = context.createBufferSource(); clkSrc.buffer = clkBuf;
+    const clkSrc = context.createBufferSource(); clkSrc.buffer = noiseBurst(context, 0.008, 1.5);
     const clkBp = context.createBiquadFilter(); clkBp.type = 'bandpass'; clkBp.frequency.value = 1200; clkBp.Q.value = 1.5;
     const clkG = context.createGain();
     clkG.gain.setValueAtTime(volume * 0.28, scheduledAt);
@@ -780,11 +831,7 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
     osc.start(scheduledAt); osc.stop(scheduledAt + 0.09);
 
     // 3. Upper-bass noise — 280 Hz punch bridging click and sine
-    const bodyLen = Math.floor(sr * 0.035);
-    const bodyBuf = context.createBuffer(1, bodyLen, sr);
-    const bd = bodyBuf.getChannelData(0);
-    for (let i = 0; i < bodyLen; i++) bd[i] = (Math.random() * 2 - 1) * (1 - i / bodyLen) ** 2.5;
-    const bs = context.createBufferSource(); bs.buffer = bodyBuf;
+    const bs = context.createBufferSource(); bs.buffer = noiseBurst(context, 0.035, 2.5);
     const bbp = context.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 280; bbp.Q.value = 0.9;
     const bg = context.createGain();
     bg.gain.setValueAtTime(0.0001, scheduledAt);
@@ -795,12 +842,8 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
 
   } else {
     // Light cymbal: short high-frequency noise burst
-    const cymLen = Math.floor(sr * 0.03);
-    const cymBuf = context.createBuffer(1, cymLen, sr);
-    const cd = cymBuf.getChannelData(0);
-    for (let i = 0; i < cymLen; i++) cd[i] = (Math.random() * 2 - 1) * (1 - i / cymLen) ** 2.0;
     const cs = context.createBufferSource();
-    cs.buffer = cymBuf;
+    cs.buffer = noiseBurst(context, 0.03, 2.0);
     const chp = context.createBiquadFilter(); chp.type = 'highpass'; chp.frequency.value = 5000; chp.Q.value = 0.5;
     const cg = context.createGain();
     cg.gain.setValueAtTime(0.0001, scheduledAt);

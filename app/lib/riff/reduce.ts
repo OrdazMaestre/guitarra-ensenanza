@@ -137,17 +137,54 @@ function pickByGrid(onsets: Onset[], slots: number[], profile: LevelProfile): On
       const gapSeconds = onset.t - prev.t;
       if (gapSeconds < profile.minGapSeconds - 1e-3) continue;
       if (onset.lead.midi === prev.lead.midi && gapSeconds < profile.repeatGapSeconds - 1e-3) continue;
-      // Tope de densidad (notas por segundo real, la medida de Guitar Hero): en 1 s nunca más de
-      // `maxNotesPerSecond`. Solo frena los pasajes más densos; el resto queda igual.
-      if (profile.maxNotesPerSecond) {
-        let inWindow = 0;
-        for (let k = kept.length - 1; k >= 0 && onset.t - kept[k].t < 1 - 1e-3; k--) inWindow++;
-        if (inWindow >= profile.maxNotesPerSecond) continue;
-      }
     }
     kept.push(onset);
   }
   return kept;
+}
+
+// Tope de densidad por ventana del compás (`profile.fastWindow`, la reducción del "Hard" de Guitar
+// Hero): en cada tramo de `quarters` negras contado desde el inicio del compás, como mucho `max`
+// notas, pero solo si el tramo va rápido (algún hueco de menos de `belowSeconds`). Depende solo de la
+// posición en el compás y de las notas, así que un riff repetido pierde siempre las mismas (un tope de
+// notas por segundo deslizante quitaba notas distintas en cada repetición). Se quitan primero las que
+// REPITEN la nota anterior (siguen sonando con la canción, su dueña es la anterior), luego las de
+// posición más débil (contratiempos de semicorchea, luego de corchea) y, si empatan, las más tardías.
+// La primera nota del tramo no se quita nunca.
+function capFastWindows(kept: Onset[], chart: Chart, profile: LevelProfile): Onset[] {
+  const window = profile.fastWindow;
+  if (!window) return kept;
+  const barStarts = chart.beats.filter((b) => b.isBarStart).map((b) => b.q);
+  const barStartOf = (pos: number) => {
+    let start = barStarts[0] ?? 0;
+    for (const q of barStarts) {
+      if (q <= pos + 1e-6) start = q;
+      else break;
+    }
+    return start;
+  };
+  const groups = new Map<number, number[]>();
+  kept.forEach((onset, i) => {
+    const barStart = barStartOf(onset.pos);
+    const key = barStart + Math.floor((onset.pos - barStart) / window.quarters + 1e-6) * window.quarters;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(i);
+  });
+  const weakness = (onset: Onset) => {
+    const frac = (onset.pos - barStartOf(onset.pos)) % 1;
+    if (Math.min(frac, 1 - frac) < 0.05) return 0;
+    return Math.abs(frac - 0.5) < 0.05 ? 1 : 2;
+  };
+  const drop = new Set<number>();
+  for (const group of groups.values()) {
+    if (group.length <= window.max) continue;
+    const fast = group.slice(1).some((i, k) => kept[i].t - kept[group[k]].t < window.belowSeconds - 1e-3);
+    if (!fast) continue;
+    const candidates = group.slice(1).map((i, k) => ({ i, repeats: kept[i].lead.midi === kept[group[k]].lead.midi, weak: weakness(kept[i]) }));
+    candidates.sort((a, b) => Number(b.repeats) - Number(a.repeats) || b.weak - a.weak || b.i - a.i);
+    for (const c of candidates.slice(0, group.length - window.max)) drop.add(c.i);
+  }
+  return kept.filter((_, i) => !drop.has(i));
 }
 
 // Frase nueva tras un silencio claramente más largo que el hueco normal del nivel, o cada 2 compases.
@@ -800,7 +837,7 @@ export interface ReduceOptions {
 export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions = {}): Chart {
   const { pos, beatSeconds } = makeBeatPosition(chart);
   const onsets = groupOnsets(chart, pos);
-  const kept = pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile);
+  const kept = capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile);
   // Niveles de varias cuerdas: compás de cada golpe y cuántas cuerdas distintas usa la tab en cada
   // compás (notas guía), para el límite de cuerdas por compás (ver placePhraseMulti).
   let barInfo: { barOf: number[]; stringsUsed: Map<number, Set<number>> } | null = null;

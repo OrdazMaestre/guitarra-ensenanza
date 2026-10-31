@@ -205,10 +205,10 @@ export default function TimbreHarmonics({ isDark }: { isDark: boolean }) {
 
   return (
     <div className="th">
-      <canvas ref={canvasRef} className="th-cv" />
+      <canvas ref={canvasRef} className="th-cv" data-tour="dibujo" />
 
       {/* 10 casillas de armónicos */}
-      <div className="th-hgrid">
+      <div className="th-hgrid" data-tour="casillas">
         {amps.map((a, i) => (
           <button
             key={i}
@@ -228,7 +228,7 @@ export default function TimbreHarmonics({ isDark }: { isDark: boolean }) {
       </div>
 
       {/* Botones de instrumento */}
-      <div className="th-irow">
+      <div className="th-irow" data-tour="instrumentos">
         {INSTRUMENTS.map((inst, i) => (
           <button
             key={i}
