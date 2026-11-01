@@ -11,8 +11,13 @@ import { chartDifficultyScore, songDifficulty, type SongDifficulty } from './rif
 import type { SongEntry } from './songs';
 
 export interface MeasuredDifficulty {
-  score: number;
-  difficulty: SongDifficulty;
+  // Sin guitarra de 6 cuerdas no hay dificultad (no se puede jugar).
+  score?: number;
+  difficulty?: SongDifficulty;
+  // Lo que trae el archivo (petición del usuario, 2026-11-01: batería / guitarra tachadas en las
+  // canciones del dispositivo que no las tienen).
+  hasGuitar: boolean;
+  hasDrums: boolean;
 }
 
 // id de la canción -> su dificultad, o null si no se pudo medir (sin guitarra, archivo roto...).
@@ -72,9 +77,11 @@ async function measure(song: SongEntry): Promise<MeasuredDifficulty | null> {
     const { at, score } = await loadScore(url);
     const guitars = listGuitarTracks(score);
     const track = guitars.find((g) => g.name === song.initialTrack) ?? guitars[0];
-    if (!track) return null;
+    // La misma regla que buildChart para la batería: una pista de percusión.
+    const hasDrums = score.tracks.some((candidate) => candidate.staves[0]?.isPercussion);
+    if (!track) return { hasGuitar: false, hasDrums };
     const value = chartDifficultyScore(buildChart(at, score, track.index, 24));
-    return { score: value, difficulty: songDifficulty(value) };
+    return { score: value, difficulty: songDifficulty(value), hasGuitar: true, hasDrums };
   } catch {
     return null;
   } finally {

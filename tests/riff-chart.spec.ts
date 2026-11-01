@@ -7,6 +7,7 @@ import { fretColor, RIFF_STRING_COLORS } from '../app/lib/riff/colors';
 import { laneAt, laneRows } from '../app/lib/riff/lanes';
 import { RIFF_LEVELS, RIFF_LEVEL_GROUPS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
+import { thinRepeatedBass } from '../app/lib/riff/band';
 
 // Fases 1.1 y 1.2 del juego tipo Rocksmith: chart sacado del .gp y motor con reloj simulado.
 
@@ -47,11 +48,11 @@ test('chart de Master of Puppets: pistas de guitarra, tempo 212 y notas fuera de
   expect(james.drums.length).toBeGreaterThan(100);
   expect(new Set(james.drums.map((d) => d.sound))).toEqual(new Set(['kick', 'snare', 'cymbal']));
 
-  // Kirk llega al traste 22: esas 142 notas se recolocan (cuerda más aguda u octava abajo) y
-  // ninguna se pierde.
+  // Kirk llega al traste 22: sus pasajes altos se recolocan ENTEROS (relocate.ts: cuerda más aguda u
+  // octava abajo; se mueven también las notas de 12 o menos de esos pasajes) y ninguna se pierde.
   const full = buildChart(at, score, 2, 24);
   const kirk = buildChart(at, score, 2, 12);
-  expect(kirk.movedAboveMaxFret).toBe(142);
+  expect(kirk.movedAboveMaxFret).toBeGreaterThanOrEqual(142);
   expect(kirk.skippedAboveMaxFret).toBe(0);
   expect(kirk.notes.length).toBe(full.notes.length);
   expect(kirk.notes.every((n) => n.fret >= 0 && n.fret <= 12)).toBe(true);
@@ -62,7 +63,7 @@ test('chart de Master of Puppets: pistas de guitarra, tempo 212 y notas fuera de
   const pending = [...full.notes];
   for (const n of kirk.notes) {
     const index = pending.findIndex((o) => o.t === n.t && (n.moved
-      ? o.fret > 12 && pitch(o) === pitch(n) + (n.moved === 'octave' ? 12 : 0) && (n.moved === 'octave' || n.string < o.string)
+      ? pitch(o) === pitch(n) + (n.moved === 'octave' ? 12 : 0) && (n.moved === 'octave' || n.string < o.string)
       : o.string === n.string && o.fret === n.fret));
     expect(index, `nota ${n.string}/${n.fret} en t=${n.t}`).toBeGreaterThanOrEqual(0);
     pending.splice(index, 1);
@@ -756,4 +757,35 @@ test('afinación bajada: el chart va en posiciones estándar y suena en el tono 
   const step = new RiffSession(chart, { ...ritmo, mode: 'paso' }, 0, 'nada');
   const hit = chart.notes[0];
   expect(step.playNowFor(hit)[0].midi).toBe(hit.midi - 3);
+});
+
+test('bajo de la banda: la misma nota repetida en semicorcheas rápidas se queda en corcheas', () => {
+  // 200 bpm: una negra = 0,3 s, una semicorchea = 75 ms. Ocho Mi (40) en semicorcheas, luego una melodía en semicorcheas.
+  const quarter = 0.3;
+  const beats = Array.from({ length: 8 }, (_, q) => ({ t: q * quarter, q, isBarStart: q % 4 === 0 }));
+  const chart = { beats, bpm: 200 };
+  const sixteenth = quarter / 4;
+  const bass = (i: number, midi: number, palmMute = false) => ({ t: i * sixteenth, dur: sixteenth * 0.9, midi, kind: 'bass' as const, palmMute, voice: '3/4' });
+  const notes = [...Array.from({ length: 8 }, (_, i) => bass(i, 40)), bass(8, 40), bass(9, 43), bass(10, 45), bass(11, 47)];
+  const thinned = thinRepeatedBass(notes, chart, 1);
+  // Los Mi repetidos: solo los de la rejilla de corcheas (0, 2, 4, 6, 8); la melodía, entera.
+  expect(thinned.map((note) => Math.round(note.t / sixteenth))).toEqual([0, 2, 4, 6, 8, 9, 10, 11]);
+  // La que se queda llega hasta la siguiente que se queda.
+  expect(thinned[0].dur).toBeCloseTo(sixteenth + sixteenth * 0.9);
+  // Sin tocar el original.
+  expect(notes[0].dur).toBeCloseTo(sixteenth * 0.9);
+  // Al 50 % cada semicorchea dura 0,15 s reales: sigue por debajo de 0,2 s y se aclara igual. Al 25 %
+  // (0,3 s) o con un tempo lento (60 bpm: 0,25 s) no se quita nada.
+  const k = 200 / 60;
+  const slow = { beats: beats.map((beat) => ({ ...beat, t: beat.t * k })), bpm: 60 };
+  const slowNotes = notes.map((note) => ({ ...note, t: note.t * k, dur: note.dur * k }));
+  expect(thinRepeatedBass(slowNotes, slow, 1)).toHaveLength(notes.length);
+  expect(thinRepeatedBass(notes, chart, 0.5)).toHaveLength(notes.length - 4);
+  expect(thinRepeatedBass(notes, chart, 0.25)).toHaveLength(notes.length);
+  // Palm mute: se aclara igual, pero la nota que queda sigue corta.
+  const muted = thinRepeatedBass(notes.map((note) => ({ ...note, palmMute: true })), chart, 1);
+  expect(muted[0].dur).toBeCloseTo(sixteenth * 0.9);
+  // Las guitarras de la banda no se tocan.
+  const guitars = notes.map((note) => ({ ...note, kind: 'guitar' as const }));
+  expect(thinRepeatedBass(guitars, chart, 1)).toHaveLength(notes.length);
 });

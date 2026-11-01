@@ -7,6 +7,9 @@
 // En "Con ritmo" cada nota también da PUNTOS (ver `points`); "Paso a paso" no puntúa nada.
 
 import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
+import { thinRepeatedBass } from './band';
+import { bendAutomation, type BendCurve } from '../bendCurve';
+import type { ScheduledBend } from '../guitarAudioEngine';
 import { isAdjacentSlide, type PracticeNoteEvent } from '../useFretboardPractice';
 
 // Puntuación por nota (decisión del usuario), con márgenes en segundos REALES (también al 50 %):
@@ -85,6 +88,8 @@ export interface ScheduledBandNote {
   palmMute: boolean;
   // Pista + cuerda (ChartBandNote.voice): una nota nueva en la misma corta la anterior.
   voice?: string;
+  // Curva de bend ya en segundos reales (solo si la nota dobla).
+  bend?: ScheduledBend;
 }
 
 export interface ScheduledGuideNote {
@@ -98,6 +103,8 @@ export interface ScheduledGuideNote {
   open: boolean;
   // Cuerda de la nota real: una nota nueva en la misma cuerda corta la anterior (ver useRiffGame).
   voice: string;
+  // Curva de bend ya en segundos reales (solo si la nota dobla).
+  bend?: ScheduledBend;
 }
 
 export interface JudgeResult {
@@ -141,6 +148,17 @@ export class RiffSession {
   readonly hitAt = new Map<number, number>();
   // id de nota -> puntos (solo en "Con ritmo"). Las exactas también están en `hitAt`.
   readonly scoreOf = new Map<number, NoteScore>();
+  // Las últimas puntuaciones, en orden (para las etiquetas de la autopista: así no recorre todo
+  // `scoreOf` en cada frame, que crecía con cada acierto). Se recorta sola.
+  readonly recentScores: Array<{ id: number; score: NoteScore }> = [];
+  private setScore(id: number, score: NoteScore) {
+    this.scoreOf.set(id, score);
+    this.recentScores.push({ id, score });
+    if (this.recentScores.length > 32) this.recentScores.splice(0, this.recentScores.length - 32);
+  }
+  // Posición de cada nota en `notes` (por id) y fin de la última, calculados una vez.
+  private readonly indexOfId = new Map<number, number>();
+  private readonly lastNoteEnd: number;
   // Pulsación mantenida: clave de posición -> id de la última nota acertada con ella (ver `autoHold`).
   private readonly holdChains = new Map<string, number>();
   // Notas que ya puntuaron antes de una PAUSA y vuelven a pasar al continuar (los compases de margen):
@@ -215,9 +233,14 @@ export class RiffSession {
     this.startT = first?.t ?? 0;
     this.endT = last?.end ?? chart.duration;
     this.notes = chart.notes.filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
+    this.notes.forEach((note, index) => this.indexOfId.set(note.id, index));
+    this.lastNoteEnd = this.notes.reduce((max, note) => Math.max(max, note.t + note.dur), this.startT);
     this.translated = !!chart.sourceNotes;
     this.guideNotes = (chart.sourceNotes ?? chart.notes).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
-    this.bandNotes = backing === 'bateria' ? (chart.band ?? []).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6) : [];
+    // El bajo, sin la misma nota repetida en semicorcheas (ver thinRepeatedBass).
+    this.bandNotes = backing === 'bateria'
+      ? thinRepeatedBass((chart.band ?? []).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6), chart, options.speed)
+      : [];
     // Experto: cada nota es "dueña" de sí misma (acertarla sube su propio sonido de fondo).
     for (const note of this.notes) {
       for (const sourceId of note.sourceIds ?? [note.id]) this.ownerOf.set(sourceId, note.id);
@@ -365,8 +388,7 @@ export class RiffSession {
     this.songPos = next;
     this.status = this.songPos >= this.countInTarget ? 'playing' : 'countin';
 
-    const lastNoteEnd = this.notes.reduce((max, note) => Math.max(max, note.t + note.dur), this.startT);
-    const finishAt = Math.max(this.endT, lastNoteEnd) + END_TAIL_SECONDS;
+    const finishAt = Math.max(this.endT, this.lastNoteEnd) + END_TAIL_SECONDS;
     if (this.songPos >= finishAt) {
       if (this.options.loop) {
         this.restart(now);
@@ -384,6 +406,7 @@ export class RiffSession {
     this.stoppedAtBreak = null;
     this.hitAt.clear();
     this.scoreOf.clear();
+    this.recentScores.length = 0;
     this.locked.clear();
     this.holdChains.clear();
     this.songPos = this.startT - COUNT_IN_BEATS * (60 / this.chart.bpm);
@@ -435,6 +458,7 @@ export class RiffSession {
           midi: note.midi + (this.chart.soundOffset ?? 0),
           open: owner !== undefined && this.hitAt.has(owner),
           voice: `own/${note.string}`,
+          ...this.scheduledBend(note.bend, note.t),
         });
       }
       this.nextGuide++;
@@ -465,6 +489,7 @@ export class RiffSession {
           kind: note.kind,
           palmMute: note.palmMute,
           voice: note.voice,
+          ...this.scheduledBend(note.bend, note.t),
         });
       }
       this.nextBand++;
@@ -487,7 +512,16 @@ export class RiffSession {
   // La nota sin acertar más cercana en el tiempo (dentro de la ventana) que cumple `accept`.
   private closest(window: number, accept: (note: ChartNote) => boolean): ChartNote | null {
     let best: ChartNote | null = null;
-    for (const note of this.notes) {
+    // Desde la primera nota dentro de la ventana (búsqueda binaria), no desde el principio.
+    let lo = 0;
+    let hi = this.notes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.notes[mid].t < this.songPos - window) lo = mid + 1;
+      else hi = mid;
+    }
+    for (let i = lo; i < this.notes.length; i++) {
+      const note = this.notes[i];
       if (note.t > this.songPos + window) break;
       if (this.hitAt.has(note.id) || this.locked.has(note.id) || Math.abs(note.t - this.songPos) > window || !accept(note)) continue;
       if (!best || Math.abs(note.t - this.songPos) < Math.abs(best.t - this.songPos)) best = note;
@@ -497,7 +531,8 @@ export class RiffSession {
 
   // ids de las notas reales que "abre" acertar la nota traducida `chartNoteId`.
   openedBy(chartNoteId: number): number[] {
-    const note = this.notes.find((n) => n.id === chartNoteId);
+    const index = this.indexOfId.get(chartNoteId);
+    const note = index === undefined ? undefined : this.notes[index];
     return note ? note.sourceIds ?? [note.id] : [];
   }
 
@@ -523,7 +558,7 @@ export class RiffSession {
       const near = this.closest(window, (note) => !this.scoreOf.has(note.id) && this.isNear(note, event));
       if (near) {
         const sameString = !this.options.freeStrings && near.string === event.string;
-        this.scoreOf.set(near.id, { points: points(false, deviation(near), sameString), exact: false, at: this.songPos });
+        this.setScore(near.id, { points: points(false, deviation(near), sameString), exact: false, at: this.songPos });
       }
       return miss;
     }
@@ -536,18 +571,33 @@ export class RiffSession {
       if (best) this.songPos = Math.max(this.songPos, best.t);
     }
     if (!best) return miss;
-    if (this.rated) this.scoreOf.set(best.id, { points: points(true, deviation(best)), exact: true, at: this.songPos });
+    if (this.rated) this.setScore(best.id, { points: points(true, deviation(best)), exact: true, at: this.songPos });
     this.hitAt.set(best.id, this.songPos);
     this.holdChains.set(this.holdKey(best), best.id);
     return { gain: 0, hit: best, playNow: this.playNowFor(best) };
   }
 
   // Sin fondo ('paso'), un acierto hace sonar ya las notas reales de su golpe.
-  playNowFor(hit: ChartNote): { midi: number; duration: number }[] {
+  playNowFor(hit: ChartNote): { midi: number; duration: number; bend?: ScheduledBend }[] {
     if (this.options.mode !== 'paso') return [];
     return this.guideNotes
       .filter((note) => Math.abs(note.t - hit.t) < 0.005)
-      .map((note) => ({ midi: note.midi + (this.chart.soundOffset ?? 0), duration: Math.max(0.15, note.dur / this.options.speed) }));
+      .map((note) => ({
+        midi: note.midi + (this.chart.soundOffset ?? 0),
+        duration: Math.max(0.15, note.dur / this.options.speed),
+        ...this.scheduledBend(note.bend, note.t, 0),
+      }));
+  }
+
+  // Curva de bend de una nota de fondo en segundos REALES (a la velocidad de la partida). Si la nota se
+  // programa tarde (la canción ya pasó su `t`), la curva arranca igual de adelantada. Objeto vacío si
+  // no dobla, para que las notas sin bend no cambien de forma (ver "Bends y ligaduras" en NOTES).
+  private scheduledBend(curve: BendCurve | undefined, t: number, lateSeconds?: number): { bend?: ScheduledBend } {
+    if (!curve) return {};
+    const automation = bendAutomation(curve, 1 / this.options.speed, this.options.speed);
+    if (automation.length === 0) return {};
+    const offset = lateSeconds ?? Math.max(0, this.songPos - t) / this.options.speed;
+    return { bend: { automation, offset } };
   }
 
   // Posición de una nota para las pulsaciones mantenidas (con cuerdas libres, solo el traste).
@@ -583,7 +633,7 @@ export class RiffSession {
         this.holdChains.delete(key);
         continue;
       }
-      let index = this.notes.findIndex((note) => note.id === lastId);
+      let index = this.indexOfId.get(lastId) ?? -1;
       while (index >= 0) {
         const prev = this.notes[index];
         let nextIndex = -1;
@@ -598,7 +648,7 @@ export class RiffSession {
         if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id) || this.locked.has(next.id)) break;
         this.hitAt.set(next.id, this.songPos);
         const points = holdPoints((next.t - prev.t) / this.quarterSecondsAt(prev.t));
-        if (this.rated) this.scoreOf.set(next.id, { points, exact: true, at: this.songPos });
+        if (this.rated) this.setScore(next.id, { points, exact: true, at: this.songPos });
         this.holdChains.set(key, next.id);
         out.push(next);
         index = nextIndex;

@@ -58,7 +58,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
   const applyHit = useCallback((session: RiffSession, hit: ChartNote, now: number) => {
     for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(OPEN_GAIN);
-    for (const note of session.playNowFor(hit)) void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN);
+    for (const note of session.playNowFor(hit)) void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN, note.bend);
   }, []);
 
   const clearTimer = useCallback(() => {
@@ -119,7 +119,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
         playMetronomeClick(click.at, click.volume, click.sound);
       }
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
-        void scheduleGuideNote(note.midi, note.at, note.duration, note.open ? OPEN_GAIN : GUIDE_GAIN).then((handle) => {
+        void scheduleGuideNote(note.midi, note.at, note.duration, note.open ? OPEN_GAIN : GUIDE_GAIN, note.bend).then((handle) => {
           if (!handle) return;
           // Llegó tarde (ya se paró o se salió de la página): se calla en vez de quedarse sonando.
           if (sessionRef.current !== session) handle.setVolume(0);
@@ -131,9 +131,9 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       }
       for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
         if (note.kind === 'bass') {
-          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute);
+          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute, note.bend);
         } else {
-          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN).then((handle) => {
+          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN, note.bend).then((handle) => {
             if (!handle) return;
             if (sessionRef.current !== session) handle.setVolume(0);
             else {

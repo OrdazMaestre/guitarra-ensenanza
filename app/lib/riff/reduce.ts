@@ -52,7 +52,7 @@ function leadOf(notes: ChartNote[]): ChartNote {
 }
 
 // Posición en negras (con decimales) de un instante, según las líneas de pulso del chart (`q`).
-function makeBeatPosition(chart: Chart) {
+export function makeBeatPosition(chart: Chart) {
   const beats = chart.beats;
   const quarterFallback = 60 / chart.bpm;
   const indexAt = (t: number) => {

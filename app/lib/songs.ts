@@ -18,6 +18,9 @@ export interface SongEntry {
   local?: boolean;
   // Dificultad medida (songDifficulty.ts) para la carita del disco; sin ella, aún no se ha medido.
   difficulty?: SongDifficulty;
+  // Canciones del dispositivo ya leídas que no traen batería / guitarra de 6 cuerdas (iconos tachados).
+  noDrums?: boolean;
+  noGuitar?: boolean;
 }
 
 export function findSong(songs: SongEntry[], id: string | undefined): SongEntry {

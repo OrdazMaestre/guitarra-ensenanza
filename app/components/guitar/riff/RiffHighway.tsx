@@ -553,7 +553,9 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
       // columna; "PERFECTO" va en una línea pequeña encima del "+4". Las de notas bloqueadas tras una
       // pausa no vuelven a salir al pasar otra vez por ellas (parecería que puntúan de nuevo).
       if (session?.rated) {
-        const labels = [...session.scoreOf.entries()]
+        const labels = session.recentScores
+          .filter(({ id, score }) => session.scoreOf.get(id) === score)
+          .map(({ id, score }) => [id, score] as const)
           .filter(([id, score]) => score.points > 0 && !session.locked.has(id) && (songPos - score.at) / speed >= 0 && (songPos - score.at) / speed < SCORE_LABEL_SECONDS)
           .sort((a, b) => b[1].at - a[1].at);
         const usedFrets = new Set<number>();

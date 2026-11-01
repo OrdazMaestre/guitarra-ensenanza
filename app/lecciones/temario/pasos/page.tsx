@@ -16,6 +16,45 @@ import ConceptLinks from './ConceptLinks';
 // Geometría compartida entre CSS y ConceptLinks: el "gancho" de cada tarjeta
 // (--cn-hook, 43px desde arriba) es la altura del centro del número; ahí se
 // alinean el punto del tronco, el conector y la primera rama.
+// Ejemplo pequeño hecho con los mismos elementos que el mapa (punto del tronco, tarjeta con
+// insignia y sombra verde, vía con codo hacia el apartado y flecha naranja de ConceptLinks).
+function MapExample() {
+  return (
+    <figure className="cn-example">
+      <svg viewBox="2 0 336 142" role="img" aria-label="Ejemplo: un tema principal con un apartado y una flecha a algo relacionado">
+        <defs>
+          <marker id="cn-example-arrow" markerHeight="12" markerUnits="userSpaceOnUse" markerWidth="12" orient="auto" refX="9" refY="6">
+            <path d="M 2 1.5 L 9.5 6 L 2 10.5" fill="none" stroke="#f59e0b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
+          </marker>
+        </defs>
+
+        {/* Tronco: punto con doble anillo y conector hasta la tarjeta. */}
+        <line x1="14" y1="34" x2="40" y2="34" stroke="#27272a" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="14" cy="34" r="10.5" fill="#27272a" />
+        <circle cx="14" cy="34" r="8.5" fill="#ffffff" />
+        <circle cx="14" cy="34" r="6" fill="#10b981" />
+
+        {/* Apartado: la vía baja de la tarjeta y gira hacia su caja. */}
+        <path d="M 64 56 V 107 Q 64 121 78 121 H 96" fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" />
+        <rect x="96" y="105" width="112" height="32" rx="10" fill="#eaf9f4" stroke="#94e0c6" strokeWidth="1.5" />
+        <text x="152" y="126" textAnchor="middle" fontSize="14" fontWeight="900" fill="#080808">Apartado</text>
+
+        {/* Tema principal. */}
+        <rect x="40" y="17" width="184" height="44" rx="12" fill="#10b981" />
+        <rect x="40" y="12" width="184" height="44" rx="12" fill="#ffffff" stroke="#27272a" strokeWidth="2" />
+        <rect x="50" y="21" width="26" height="26" rx="8" fill="#d4f2e8" stroke="#10b981" strokeWidth="1.5" />
+        <text x="63" y="39" textAnchor="middle" fontSize="14" fontWeight="950" fill="#080808">1</text>
+        <text x="86" y="39" fontSize="15" fontWeight="950" fill="#080808">Tema principal</text>
+
+        {/* Relacionado: flecha naranja que sale del tema. */}
+        <path d="M 224 34 H 266 Q 292 34 292 60 V 100" fill="none" stroke="#f59e0b" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" markerEnd="url(#cn-example-arrow)" />
+        <circle cx="224" cy="34" r="4.5" fill="#f59e0b" />
+        <text x="292" y="126" textAnchor="middle" fontSize="14" fontWeight="900" fill="#b45309">Relacionado</text>
+      </svg>
+    </figure>
+  );
+}
+
 export default function PasosPage() {
   return (
     <main className="cn-page">
@@ -39,18 +78,13 @@ export default function PasosPage() {
             <h2>Niveles</h2>
             <p className="cn-guide-sub">A nuestro ritmo.</p>
             <ul className="cn-levels">
-              <li><span>1</span>Superar el tema 5.</li>
-              <li><span>2</span>Entender el tema 10.</li>
-              <li><span>3</span>Completar TODOS los apartados (listo para clases avanzadas)</li>
+              <li><span>1</span><strong>Superar el tema 5</strong></li>
+              <li><span>2</span><strong>Entender el tema 9</strong></li>
+              <li><span>3</span><span><strong>Completar TODOS los apartados</strong> (listo para clases avanzadas)</span></li>
             </ul>
+            <MapExample />
           </section>
         </div>
-
-        <ul className="cn-legend" aria-label="Leyenda del mapa">
-          <li><i className="cn-legend-main" aria-hidden="true" />Tema principal</li>
-          <li><i className="cn-legend-branch" aria-hidden="true" />Apartado</li>
-          <li><i className="cn-legend-link" aria-hidden="true" />Relacionado</li>
-        </ul>
       </header>
 
       <section className="cn-map" aria-label="Orden real de las lecciones" data-pasos-map>
@@ -170,6 +204,8 @@ export default function PasosPage() {
           background: #fafafa;
           border: 1.5px solid #e4e4e7;
           border-radius: 20px;
+          display: flex;
+          flex-direction: column;
           min-width: 0;
           padding: clamp(18px, 2.6vw, 26px);
         }
@@ -235,7 +271,7 @@ export default function PasosPage() {
           display: none;
         }
 
-        .cn-levels span {
+        .cn-levels li > span:first-child {
           align-items: center;
           background: #047857;
           border-radius: 999px;
@@ -249,63 +285,20 @@ export default function PasosPage() {
           width: 30px;
         }
 
-        .cn-legend {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px 22px;
-          list-style: none;
-          margin: clamp(20px, 3vw, 28px) 0 0;
-          padding: 0;
+        /* Ejemplo en miniatura del mapa (tema, apartado y relacionado): ocupa y centra el hueco
+           que deja la caja de Niveles bajo el nivel 3 (Método Ordaz es más alta). */
+        .cn-example {
+          display: grid;
+          flex: 1 1 auto;
+          margin: 18px 0 0;
+          place-items: center;
         }
 
-        .cn-legend li {
-          align-items: center;
-          color: #52525b;
-          display: flex;
-          font-size: 14px;
-          font-weight: 800;
-          gap: 8px;
-        }
-
-        .cn-legend i {
-          display: inline-block;
-          flex: 0 0 auto;
-        }
-
-        .cn-legend-main {
-          background: #10b981;
-          border-radius: 999px;
-          box-shadow: 0 0 0 3px #ffffff, 0 0 0 5px var(--cn-ink);
-          height: 14px;
-          margin: 0 4px;
-          width: 14px;
-        }
-
-        .cn-legend-branch {
-          border-radius: 999px;
-          border-top: 3px solid #10b981;
-          height: 0;
-          width: 28px;
-        }
-
-        .cn-legend-link {
-          border-top: 3px solid #f59e0b;
-          border-radius: 999px;
-          height: 0;
-          position: relative;
-          width: 28px;
-        }
-
-        .cn-legend-link::after {
-          border-right: 3px solid #f59e0b;
-          border-top: 3px solid #f59e0b;
-          content: "";
-          height: 8px;
-          position: absolute;
-          right: 0;
-          top: -5.5px;
-          transform: rotate(45deg);
-          width: 8px;
+        .cn-example svg {
+          display: block;
+          height: auto;
+          max-width: 380px;
+          width: 100%;
         }
 
         /* ---------- Mapa ---------- */

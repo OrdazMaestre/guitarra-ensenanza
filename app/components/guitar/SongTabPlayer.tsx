@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from './AlphaTabPlayer';
-import { DiscIcon, SongDifficultyIcon, SongDifficultyLegend } from './riff/RiffIcons';
+import { DiscIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons } from './riff/RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import { LocalSongSearch, useSongChoice } from './LocalSongSearch';
 import type { SongEntry } from '@/app/lib/songs';
@@ -94,7 +94,8 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
           {songs.map((entry) => {
             const current = entry.id === song.id;
             // Delante del título, la carita de su dificultad (difficulty.ts); el disco mientras se mide.
-            const name = entry.difficulty ? `${entry.title} (canción ${DIFFICULTY_LABEL[entry.difficulty]})` : entry.title;
+            const lacks = [entry.noGuitar ? 'sin guitarra' : '', entry.noDrums ? 'sin batería' : ''].filter(Boolean).join(', ');
+            const name = [entry.title, entry.difficulty ? `(canción ${DIFFICULTY_LABEL[entry.difficulty]})` : '', lacks ? `(${lacks})` : ''].filter(Boolean).join(' ');
             return (
               <button
                 aria-checked={current}
@@ -123,6 +124,7 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
               >
                 <SongDifficultyIcon difficulty={entry.difficulty} pending={<DiscIcon className="song-disc-icon" size={20} />} />
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.title}</span>
+                <SongLacksIcons noDrums={entry.noDrums} noGuitar={entry.noGuitar} />
               </button>
             );
           })}

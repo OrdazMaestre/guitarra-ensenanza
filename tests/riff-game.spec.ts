@@ -745,6 +745,36 @@ test.describe('canciones del dispositivo', () => {
     await expect(rows.nth(6)).toHaveAttribute('title', 'alfa (canción difícil)');
   });
 
+  // Petición del usuario (2026-11-01): las canciones del dispositivo sin batería llevan el tambor
+  // tachado, y las que no tienen guitarra, el clavijero tachado (se ve antes de elegirlas).
+  test('canciones del dispositivo sin batería o sin guitarra: iconos tachados', async ({ page }) => {
+    test.setTimeout(90000);
+    const piano = '<?xml version="1.0"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>'
+      + '<part id="P1"><measure number="1"><attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>'
+      + '<note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type></note></measure></part></score-partwise>';
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'con-todo.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/black-gilmur.gp') },
+      { name: 'sin-bateria.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/feliz-navidad.gp') },
+      { name: 'piano.musicxml', mimeType: 'application/xml', buffer: Buffer.from(piano) },
+    ]);
+    const row = (name: string) => page.locator('.riff-song-list .riff-chip', { has: page.locator('.riff-song-title', { hasText: new RegExp(`^${name}$`) }) });
+    await expect(row('sin-bateria').getByTestId('song-lacks')).toHaveAttribute('data-lacks', 'sin batería', { timeout: 30000 });
+    await expect(row('piano').getByTestId('song-lacks')).toHaveAttribute('data-lacks', 'sin guitarra, sin batería');
+    await expect(row('piano').locator('.song-lacks-guitar')).toHaveCount(1);
+    await expect(row('sin-bateria').locator('.song-lacks-drums')).toHaveCount(1);
+    await expect(row('con-todo')).toHaveAttribute('data-difficulty', 'facil');
+    await expect(row('con-todo').getByTestId('song-lacks')).toHaveCount(0);
+    // Las de la web nunca llevan iconos tachados, y el nombre del botón sigue siendo solo el título.
+    await expect(row('Black Gilmur').getByTestId('song-lacks')).toHaveCount(0);
+    await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'sin-bateria', exact: true })).toBeVisible();
+    await expect(row('sin-bateria')).toHaveAttribute('title', 'sin-bateria (canción fácil) (sin batería)');
+  });
+
   test('carpeta recordada: tras recargar (el navegador pide permiso otra vez) hay un botón "Buscar en «carpeta»" a la vista', async ({ page }) => {
     // Bug real: se recordaba la carpeta pero, al recargar, la lista (solo en memoria) estaba vacía y el
     // botón para volver a buscar quedaba escondido. Carpeta REAL del navegador (OPFS) con un .gp.
@@ -869,4 +899,64 @@ test('canción muy densa: notas de fondo con tope y batería sin buffers nuevos 
   expect(m.buffers - buffersAtStart).toBeLessThan(30);
   expect(m.maxSounding).toBeGreaterThan(3);
   expect(m.maxSounding).toBeLessThanOrEqual(24);
+});
+
+test('canción muy densa: el bajo es monofónico y el temporizador no se retrasa', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.addInitScript(() => {
+    const m = { bass: [] as Array<{ start: number; stop: number }>, maxTickGap: 0 };
+    (window as unknown as { __bass: typeof m }).__bass = m;
+    // Cada nota de bajo = un oscilador de sierra: su inicio y su ÚLTIMO stop (el corte de la siguiente).
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = createOscillator.call(this);
+      const start = osc.start.bind(osc);
+      const stop = osc.stop.bind(osc);
+      let entry: { start: number; stop: number } | null = null;
+      osc.start = (when = 0) => {
+        if (osc.type === 'sawtooth') m.bass.push((entry = { start: when, stop: Infinity }));
+        return start(when);
+      };
+      osc.stop = (when = 0) => {
+        if (entry) entry.stop = Math.min(entry.stop, when);
+        return stop(when);
+      };
+      return osc;
+    };
+    // El temporizador de 25 ms del juego: cuánto llega a tardar entre dos vueltas.
+    const setIntervalOrig = window.setInterval;
+    window.setInterval = ((fn: () => void, ms?: number) => {
+      if (ms !== 25) return setIntervalOrig(fn, ms);
+      let last = performance.now();
+      return setIntervalOrig(() => {
+        const now = performance.now();
+        m.maxTickGap = Math.max(m.maxTickGap, now - last);
+        last = now;
+        fn();
+      }, ms);
+    }) as typeof window.setInterval;
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await page.getByTestId('local-song-files').setInputFiles([
+    { name: 'estres.musicxml', mimeType: 'application/xml', buffer: fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml') },
+  ]);
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'estres', exact: true }).click();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–110▾$/, { timeout: 20000 });
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 20000 });
+  await page.evaluate(() => { (window as unknown as { __bass: { maxTickGap: number } }).__bass.maxTickGap = 0; });
+  await page.waitForTimeout(15000);
+  const m = await page.evaluate(() => (window as unknown as { __bass: { bass: Array<{ start: number; stop: number }>; maxTickGap: number } }).__bass);
+  const notes = m.bass.filter((note) => note.stop > note.start).sort((a, b) => a.start - b.start);
+  expect(notes.length).toBeGreaterThan(20);
+  // Cada nota se apaga (con su fundido de ~30 ms) cuando empieza la siguiente: nunca dos a la vez.
+  for (let i = 1; i < notes.length; i++) {
+    if (notes[i].start - notes[i - 1].start < 1e-4) continue; // doble cuerda
+    expect(notes[i - 1].stop - notes[i].start).toBeLessThan(0.04);
+  }
+  expect(m.maxTickGap).toBeLessThan(250);
 });

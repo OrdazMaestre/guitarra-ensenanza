@@ -5,7 +5,7 @@ import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BackingIcon, DiscIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BackingIcon, DiscIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
 import { LocalSongSearch } from '../LocalSongSearch';
@@ -103,11 +103,13 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
               <div className="riff-song-list">
                 {/* Delante del título, la carita de su dificultad (difficulty.ts); el disco mientras se mide. */}
                 {songs.map((entry) => {
-                  const name = entry.difficulty ? `${entry.title} (canción ${DIFFICULTY_LABEL[entry.difficulty]})` : entry.title;
+                  const lacks = [entry.noGuitar ? 'sin guitarra' : '', entry.noDrums ? 'sin batería' : ''].filter(Boolean).join(', ');
+                  const name = [entry.title, entry.difficulty ? `(canción ${DIFFICULTY_LABEL[entry.difficulty]})` : '', lacks ? `(${lacks})` : ''].filter(Boolean).join(' ');
                   return (
                     <button aria-pressed={song?.id === entry.id} className="riff-chip" data-difficulty={entry.difficulty} key={entry.id} onClick={() => pick(() => onSong?.(entry.id))} title={name} type="button">
                       <SongDifficultyIcon difficulty={entry.difficulty} pending={<DiscIcon />} />
                       <span className="riff-song-title">{entry.title}</span>
+                      <SongLacksIcons noDrums={entry.noDrums} noGuitar={entry.noGuitar} />
                     </button>
                   );
                 })}

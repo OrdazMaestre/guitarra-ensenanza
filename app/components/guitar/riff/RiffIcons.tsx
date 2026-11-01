@@ -282,3 +282,33 @@ export function SongDifficultyLegend({ className, style }: { className?: string;
     </p>
   );
 }
+
+// Canción del dispositivo sin batería / sin guitarra: el tambor tachado del acompañamiento "Sin nada"
+// y el logo de las pistas (clavijero), tachado. Lo que falta va en `title` y `data-lacks`, nunca en el
+// nombre accesible del botón (los tests y los lectores de pantalla siguen viendo solo el título).
+export function SongLacksIcons({ noDrums, noGuitar }: { noDrums?: boolean; noGuitar?: boolean }) {
+  if (!noDrums && !noGuitar) return null;
+  const label = [noGuitar ? 'sin guitarra' : '', noDrums ? 'sin batería' : ''].filter(Boolean).join(', ');
+  return (
+    <span aria-hidden="true" className="song-lacks" data-lacks={label} data-testid="song-lacks" style={{ alignItems: 'center', display: 'inline-flex', flexShrink: 0, gap: 2, marginLeft: 'auto' }} title={label}>
+      {noGuitar && (
+        <Icon className="riff-icon song-lacks-guitar" size={18}>
+          {[7, 11, 15].map((y) => (
+            <g fill="currentColor" key={y} stroke="none">
+              <rect height="2.8" rx="1.3" width="4.4" x="3" y={y} />
+              <rect height="2.8" rx="1.3" width="4.4" x="16.6" y={y} />
+            </g>
+          ))}
+          <path d="M7 5.2C8.5 2.6 15.5 2.6 17 5.2L16.6 18.5C15.2 19.3 14.6 20.6 14.6 22.5H9.4C9.4 20.6 8.8 19.3 7.4 18.5Z" fill="currentColor" stroke="none" />
+          <Strike />
+        </Icon>
+      )}
+      {noDrums && (
+        <Icon className="riff-icon song-lacks-drums" size={18}>
+          <path d="M4 9c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v7c0 1.7 3.6 3 8 3s8-1.3 8-3V9M8 2l3 5M16 2l-3 5" />
+          <Strike />
+        </Icon>
+      )}
+    </span>
+  );
+}

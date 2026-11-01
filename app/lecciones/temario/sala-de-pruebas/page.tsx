@@ -19,12 +19,6 @@ export default function SalaDePruebasPage() {
         <p>El mástil puede sonar limpio o con overdrive.</p>
       </header>
 
-      <section className="test-room-tuning">
-        <h2>APRENDIENDO A AFINAR CON EL OIDO</h2>
-        <p className="test-room-kicker">Minijuego</p>
-        <TuningBoard />
-      </section>
-
       <section className="test-room-instruments">
         <div className="test-room-fretboard">
           {/* JUGAR (en la barra del mástil) abre el juego tipo Rocksmith; el disco del panel elige
@@ -44,6 +38,12 @@ export default function SalaDePruebasPage() {
         </div>
 
         <MiniKeyboard className="test-room-keyboard" tutorial />
+      </section>
+
+      <section className="test-room-tuning">
+        <h2>APRENDIENDO A AFINAR CON EL OIDO</h2>
+        <p className="test-room-kicker">Minijuego</p>
+        <TuningBoard />
       </section>
 
       <section className="test-room-tab">

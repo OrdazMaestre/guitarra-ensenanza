@@ -9,6 +9,8 @@
 // navegador usa `loadChart`, que hace el import dinámico y el fetch.
 
 import type * as AlphaTab from '@coderline/alphatab';
+import { relocatePassages } from './relocate';
+import { buildBendCurve, type BendCurve, type BendNoteLike } from '../bendCurve';
 
 type AlphaTabModule = typeof AlphaTab;
 type Score = AlphaTab.model.Score;
@@ -30,6 +32,9 @@ export interface ChartNote {
   midi: number;
   palmMute: boolean;
   tech: ChartTech[];
+  // Curva de bend de la nota que SUENA (cadena ligada incluida), en segundos de canción a velocidad
+  // 1 desde `t` (ver app/lib/bendCurve.ts). Solo se oye: la puntuación va por traste pisado.
+  bend?: BendCurve;
   // Si la nota original no cabía en el mástil (traste > maxFret) y se recolocó: 'string' = misma
   // altura en una cuerda más aguda; 'octave' = una octava más grave.
   moved?: 'string' | 'octave';
@@ -75,6 +80,8 @@ export interface ChartBandNote {
   // Pista + cuerda ("2/5"): en una guitarra de verdad, una nota nueva en la misma cuerda corta la
   // anterior. El juego hace lo mismo con el sonido de fondo (ver useRiffGame) para no amontonar notas.
   voice?: string;
+  // Igual que ChartNote.bend.
+  bend?: BendCurve;
 }
 
 export interface Chart {
@@ -116,6 +123,14 @@ export function listGuitarTracks(score: Score): GuitarTrackInfo[] {
 
 // Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
 const STANDARD_TUNING = [64, 59, 55, 50, 45, 40];
+
+// Curva de bend de una nota y su cadena ligada, en segundos. Cada nota de la cadena dura su parte
+// proporcional en ticks del total (`durTicks` -> `durSeconds`).
+function chainBend(note: Note, durTicks: number, durSeconds: number): BendCurve | null {
+  if (durTicks <= 0) return null;
+  const secondsPerTick = durSeconds / durTicks;
+  return buildBendCurve(note as unknown as BendNoteLike, (chainNote) => ((chainNote as unknown as Note).beat?.playbackDuration ?? 0) * secondsPerTick);
+}
 
 export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number, maxFret = 24): Chart {
   const track = score.tracks[trackIndex];
@@ -169,8 +184,6 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
       const bass = tuning.length > 0 && (tuning.length < 6 || Math.min(...tuning) < 34);
       return { track: candidate, kind: (bass ? 'bass' : 'guitar') as ChartBandNote['kind'] };
     });
-  let skippedAboveMaxFret = 0;
-  let movedAboveMaxFret = 0;
   // Afinación uniformemente bajada/subida (Do#, Mi♭...): las notas se leen como en la estándar y la
   // diferencia se guarda en `soundOffset` (ver Chart). Afinaciones mixtas (Drop D...): alturas reales.
   const offsets = staff.tuning.map((open, k) => open - STANDARD_TUNING[k]);
@@ -215,7 +228,9 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
             if (note.isDead || note.isTieDestination) continue;
             let durTicks = beat.playbackDuration;
             for (let tied: Note | null = note.tieDestination; tied; tied = tied.tieDestination) durTicks += tied.beat.playbackDuration;
-            band.push({ t, dur: tickToSec(startTick + durTicks) - t, midi: note.realValue, kind, palmMute: beat.isPalmMute, voice: `${bandTrack.index}/${note.string}` });
+            const dur = tickToSec(startTick + durTicks) - t;
+            const bend = chainBend(note, durTicks, dur);
+            band.push({ t, dur, midi: note.realValue, kind, palmMute: beat.isPalmMute, voice: `${bandTrack.index}/${note.string}`, ...(bend ? { bend } : {}) });
           }
         }
       }
@@ -228,23 +243,11 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
         if (beat.isRest || beat.notes.length === 0) continue;
         const startTick = lookup.start + beat.playbackStart;
         const playable = beat.notes.filter((note) => !note.isDead && !note.isTieDestination && 7 - note.string >= 1 && 7 - note.string <= 6);
-        // Cuerdas ya ocupadas en este golpe: un acorde recolocado nunca puede acabar con dos notas
-        // en la misma cuerda. Primero se reservan las notas que ya caben tal cual.
-        const usedStrings = new Set(playable.filter((note) => note.fret <= maxFret).map((note) => 7 - note.string));
+        // Las notas que se salen del mástil (traste > maxFret) se recolocan después, por PASAJES
+        // enteros (relocatePassages, relocate.ts).
         for (const note of playable) {
-          let string = 7 - note.string;
-          let fret = note.fret;
-          let moved: ChartNote['moved'];
-          if (fret > maxFret) {
-            const place = relocate(openMidi(string) + fret, string, usedStrings, openMidi, maxFret);
-            if (!place) {
-              skippedAboveMaxFret++;
-              continue;
-            }
-            ({ string, fret, moved } = place);
-            usedStrings.add(string);
-            movedAboveMaxFret++;
-          }
+          const string = 7 - note.string;
+          const fret = note.fret;
           let durTicks = beat.playbackDuration;
           let tied: Note | null = note.tieDestination;
           while (tied) {
@@ -258,16 +261,18 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
           if (note.slideOutType !== at.model.SlideOutType.None) tech.push('slide');
           if (note.hasBend) tech.push('bend');
           const t = tickToSec(startTick);
+          const dur = tickToSec(startTick + durTicks) - t;
+          const bend = chainBend(note, durTicks, dur);
           notes.push({
             id: nextId++,
             t,
-            dur: tickToSec(startTick + durTicks) - t,
+            dur,
             string,
             fret,
             midi: openMidi(string) + fret,
             palmMute: beat.isPalmMute,
             tech,
-            ...(moved ? { moved } : {}),
+            ...(bend ? { bend } : {}),
           });
         }
       }
@@ -275,6 +280,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   }
 
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
+  const placed = placeAboveMaxFret(notes, bars, beats, maxFret, openMidi);
+  notes.splice(0, notes.length, ...placed.notes);
   drums.sort((a, b) => a.t - b.t);
   band.sort((a, b) => a.t - b.t);
   notes.forEach((note, index) => { note.id = index; });
@@ -289,9 +296,41 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     drums,
     band,
     ...(soundOffset ? { soundOffset } : {}),
-    movedAboveMaxFret,
-    skippedAboveMaxFret,
+    movedAboveMaxFret: placed.moved,
+    skippedAboveMaxFret: placed.skipped,
   };
+}
+
+// Notas por encima de `maxFret` (Experto: el mástil del juego llega al 12): primero los PASAJES
+// enteros (relocate.ts: subir de cuerda u octava abajo con la misma digitación); lo poco que quede,
+// nota a nota con `relocate()`, como último recurso (en las canciones de la web, nada).
+function placeAboveMaxFret(notes: ChartNote[], bars: ChartBar[], beats: ChartBeat[], maxFret: number, openMidi: (string: number) => number) {
+  const out = relocatePassages(notes, bars, beats, maxFret, openMidi).notes;
+  const kept: ChartNote[] = [];
+  let skipped = 0;
+  for (let start = 0; start < out.length;) {
+    let end = start;
+    while (end < out.length && Math.abs(out[end].t - out[start].t) < 0.005) end++;
+    const onset = out.slice(start, end);
+    // Cuerdas ya ocupadas en este golpe: un acorde recolocado nunca acaba con dos notas en la misma.
+    const used = new Set(onset.filter((note) => note.fret <= maxFret).map((note) => note.string));
+    for (const note of onset) {
+      if (note.fret <= maxFret) {
+        kept.push(note);
+        continue;
+      }
+      const place = relocate(note.midi, note.string, used, openMidi, maxFret);
+      if (!place) {
+        skipped++;
+        continue;
+      }
+      used.add(place.string);
+      kept.push({ ...note, string: place.string, fret: place.fret, midi: openMidi(place.string) + place.fret, moved: place.moved });
+    }
+    start = end;
+  }
+  kept.sort((a, b) => a.t - b.t || a.string - b.string);
+  return { notes: kept, moved: kept.filter((note) => note.moved).length, skipped };
 }
 
 // Nueva posición para una nota que no cabe en el mástil (traste > maxFret), en este orden:

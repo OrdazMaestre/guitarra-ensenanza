@@ -239,6 +239,8 @@ Esta versión de AlphaTab no sabe renderizar en solitario (`renderTracks` con un
 
 ### Bajo sintetizado (2026-09-23)
 
+**2026-11-01 (afecta también a la tablatura):** el bajo es MONOFÓNICO. Cada nota nueva corta la anterior justo en su propio inicio (`cutBassVoicesBefore`, 15 ms; si dos empiezan a la vez, como una doble cuerda, se respetan las dos). El tope de 4 voces solo roba voces que ya suenan. Antes, en pasajes rápidos, robaba notas aún no empezadas y su ganancia volvía al 1,0 por defecto: un chasquido o una nota perdida. El TONO (filtro, saturación, sub) no ha cambiado: suavizarlo quedó aplazado por el usuario. Ver AGENTS.md, "VOICE STEALING".
+
 El bajo de 4 cuerdas de `prueba-master-of-puppets.gp` ahora suena, con un sintetizador propio en `app/lib/guitarAudioEngine.ts` (`playBassNote`) — no es una muestra, es síntesis pura por Web Audio API, junto a `playMetronomeClick` en el mismo fichero.
 
 **Afinación real verificada** (no asumida): volcado en vivo con Playwright del `staff.tuning` real de la pista "Bass" del fichero → `[43, 38, 33, 28]` = G2, D2, A1, E1 (afinación estándar de bajo de 4 cuerdas, orden agudo→grave, mismo convenio que el array de afinación de guitarra ya existente). `OPEN_STRING_MIDI_BY_STRING_BASS` (`AlphaTabPlayer.tsx`) y `normalizeBassStringNumber(s) = 5 - s` generalizan exactamente el mismo patrón que `OPEN_STRING_MIDI_BY_STRING`/`normalizeAlphaTabStringNumber` (`7 - s`) ya usaban para 6 cuerdas. Confirmado además por lógica musical: la primera frase del riff da bajo MIDI 30 (F#1) contra guitarra MIDI 42 (F#2) — exactamente una octava, que es el arreglo real y conocido de esa canción (bajo doblando a la guitarra rítmica una octava abajo).

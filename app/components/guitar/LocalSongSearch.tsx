@@ -49,7 +49,16 @@ export function useSongChoice(webSongs: SongEntry[], initialSong?: string) {
   );
   useEffect(() => requestDifficulties(unsorted), [unsorted]);
   const songs = useMemo<SongEntry[]>(() => {
-    const withDifficulty = unsorted.map((song) => ({ ...song, difficulty: difficulties[song.id]?.difficulty }));
+    const withDifficulty = unsorted.map((song) => {
+      const info = difficulties[song.id];
+      return {
+        ...song,
+        difficulty: info?.difficulty,
+        // Solo en las del dispositivo (las de la web las tienen todas).
+        ...(song.local && info && !info.hasDrums ? { noDrums: true } : {}),
+        ...(song.local && info && !info.hasGuitar ? { noGuitar: true } : {}),
+      };
+    });
     const scoreOf = (song: SongEntry) => difficulties[song.id]?.score ?? Number.POSITIVE_INFINITY;
     const local = withDifficulty.filter((song) => song.local)
       .sort((a, b) => scoreOf(a) - scoreOf(b) || a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));

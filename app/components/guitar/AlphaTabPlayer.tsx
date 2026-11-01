@@ -5,6 +5,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, PointerEvent, ReactNode, UIEvent } from 'react';
 import * as alphaTab from '@coderline/alphatab';
 import {
+  applyBend,
+  bendAutomation,
+  buildBendCurve,
+  isBent,
+  tieChain,
+  type BendAutomationPoint,
+  type BendCurve,
+  type BendNoteLike,
+} from '@/app/lib/bendCurve';
+import {
   createOverdriveChain,
   getAudioCurrentTime,
   OVERDRIVE_VOICE_LEVEL,
@@ -199,6 +209,28 @@ interface TabNote {
   fret: number;
   palmMuted?: boolean;
   stringNumber: number;
+  // Bends & ties (see decorateTabNote and "Bends y ligaduras" in NOTES). A
+  // note with neither keeps exactly the historical object shape.
+  // Pitch curve of the sounding note, in QUARTER-note units from its start.
+  bend?: BendCurve | null;
+  // Tie-chain head: quarter notes the note sustains (own beat + every tied
+  // continuation), since continuations are not re-plucked.
+  sustainQuarters?: number;
+  // Tie continuation: never plucked when its head sounded in this same
+  // continuous run; plucked with what's left of the chain otherwise
+  // (playback started on it, loop wrap...).
+  tie?: {
+    headBend: BendCurve | null;
+    offsetQuarters: number;
+    totalQuarters: number;
+  };
+}
+
+// A note's pitch curve already converted to seconds, plus how far into it
+// the sound starts (a tie continuation plucked mid-chain).
+interface NoteBendPlan {
+  automation: BendAutomationPoint[];
+  offset: number;
 }
 
 interface TabEvent {
@@ -390,6 +422,16 @@ interface AlphaTabNoteLike {
   isDead?: boolean;
   percussionArticulation?: number;
   string: number;
+  // Bend / tie fields (alphaTab Note), read by decorateTabNote.
+  beat?: AlphaTabBeatLike;
+  bendPoints?: Array<{ offset: number; value: number }> | null;
+  bendStyle?: number;
+  bendType?: number;
+  isTieDestination?: boolean;
+  isTieOrigin?: boolean;
+  tieDestination?: AlphaTabNoteLike | null;
+  tieOrigin?: AlphaTabNoteLike | null;
+  vibrato?: number;
 }
 
 interface AlphaTabBeatLike {
@@ -710,15 +752,46 @@ function normalizeBassStringNumber(stringNumber: number) {
   return 5 - stringNumber;
 }
 
+function tabNoteQuarters(note: BendNoteLike) {
+  const beat = (note as AlphaTabNoteLike).beat;
+  return beat ? beatQuarterNotes(beat) : 0;
+}
+
+// Adds bend / tie data to a freshly extracted note (see TabNote). Notes with
+// neither are returned untouched, so every lesson tab without bends or ties
+// produces exactly the same objects as before.
+function decorateTabNote(note: AlphaTabNoteLike, tabNote: TabNote): TabNote {
+  if (note.isTieDestination && note.tieOrigin) {
+    let head: AlphaTabNoteLike = note;
+    let offsetQuarters = 0;
+    for (let guard = 0; head.isTieDestination && head.tieOrigin && guard < 64; guard++) {
+      head = head.tieOrigin;
+      offsetQuarters += tabNoteQuarters(head);
+    }
+    const totalQuarters = tieChain(head).reduce((sum, chainNote) => sum + tabNoteQuarters(chainNote), 0);
+    return { ...tabNote, tie: { headBend: buildBendCurve(head, tabNoteQuarters), offsetQuarters, totalQuarters } };
+  }
+  if (note.isTieOrigin && note.tieDestination) {
+    const sustainQuarters = tieChain(note).reduce((sum, chainNote) => sum + tabNoteQuarters(chainNote), 0);
+    return { ...tabNote, bend: buildBendCurve(note, tabNoteQuarters), sustainQuarters };
+  }
+  if (isBent(note)) {
+    return { ...tabNote, bend: buildBendCurve(note, tabNoteQuarters) };
+  }
+  return tabNote;
+}
+
 function extractGuitarNotesFromBeat(beat: AlphaTabBeatLike): TabNote[] {
   if (beat.isRest) {
     return [];
   }
 
   return beat.notes
-    .map((note) => ({ ...note, normalizedString: normalizeAlphaTabStringNumber(note.string) }))
-    .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[note.normalizedString] !== undefined)
-    .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString }));
+    .map((note) => ({ note, normalizedString: normalizeAlphaTabStringNumber(note.string) }))
+    .filter(({ note, normalizedString }) => !note.isDead && OPEN_STRING_MIDI_BY_STRING[normalizedString] !== undefined)
+    .map(({ note, normalizedString }) =>
+      decorateTabNote(note, { fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: normalizedString })
+    );
 }
 
 function extractBassNotesFromBeat(beat: AlphaTabBeatLike): TabNote[] {
@@ -727,9 +800,11 @@ function extractBassNotesFromBeat(beat: AlphaTabBeatLike): TabNote[] {
   }
 
   return beat.notes
-    .map((note) => ({ ...note, normalizedString: normalizeBassStringNumber(note.string) }))
-    .filter((note) => !note.isDead && OPEN_STRING_MIDI_BY_STRING_BASS[note.normalizedString] !== undefined)
-    .map((note) => ({ fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: note.normalizedString }));
+    .map((note) => ({ note, normalizedString: normalizeBassStringNumber(note.string) }))
+    .filter(({ note, normalizedString }) => !note.isDead && OPEN_STRING_MIDI_BY_STRING_BASS[normalizedString] !== undefined)
+    .map(({ note, normalizedString }) =>
+      decorateTabNote(note, { fret: note.fret, palmMuted: beat.isPalmMute, stringNumber: normalizedString })
+    );
 }
 
 // trackIndex defaults to 0 so every existing call site (there was only one)
@@ -1297,6 +1372,11 @@ export default function AlphaTabPlayer({
   const nextScheduledTimeRef = useRef(0);
   const schedulerLatestRef = useRef<{ drawCursor: () => void; tick: () => void } | null>(null);
   const tabScrollBindCacheTimeRef = useRef(0);
+  // Tie continuity (planNoteSound): where the current CONTINUOUS run of
+  // scheduled events began, and where the last scheduled event ended, both
+  // in quarter notes. Any jump (start, loop wrap, seek) starts a new run.
+  const runStartQuarterRef = useRef(0);
+  const lastScheduledEndQuarterRef = useRef(Number.NaN);
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const programmaticPageScrollRef = useRef(false);
   const programmaticPageScrollTimerRef = useRef<number | null>(null);
@@ -2537,6 +2617,8 @@ export default function AlphaTabPlayer({
   function stopLocalPlayback() {
     clearPlaybackTimers();
     stopActiveSources();
+    // Next playback starts a fresh tie run (see planNoteSound).
+    lastScheduledEndQuarterRef.current = Number.NaN;
     isPlayingRef.current = false;
     setIsPlaying(false);
     clearGlobalPlaybackIfCurrent();
@@ -3137,7 +3219,10 @@ export default function AlphaTabPlayer({
     // site omits this argument, so it defaults to 1 and this is a pure
     // no-op for the rest of the site. See "Volumen por pista..." in
     // AlphaTabPlayer.NOTES.md.
-    trackVolumeMultiplier: number = 1
+    trackVolumeMultiplier: number = 1,
+    // Bend pitch curve (planNoteSound). Omitted = no detune automation at
+    // all, i.e. the historical sound bit for bit.
+    bend?: NoteBendPlan | null
   ) {
     const midi = noteMidi(note);
     const isPalmMuted = note.palmMuted ?? false;
@@ -3172,6 +3257,12 @@ export default function AlphaTabPlayer({
 
     source.buffer = sample.buffer;
     source.playbackRate.setValueAtTime(playbackRate, startTime);
+    // Bends ride on `detune` (cents), never on playbackRate: notes without a
+    // bend stay identical, and pitch shifting adds no gain (no saturation).
+    // The lowpass deliberately stays fixed per string (tuned timbre).
+    if (bend) {
+      applyBend(source.detune, startTime, bend.automation, bend.offset);
+    }
     if (sample.loopEnd > sample.loopStart + 8) {
       source.loop = !isPalmMuted;
       source.loopStart = sample.loopStart / sample.sampleRate;
@@ -3365,6 +3456,50 @@ export default function AlphaTabPlayer({
   // — see "Multipista" in AlphaTabPlayer.NOTES.md for why. `auxLeadSeconds`
   // is how far ahead of "now" `startTime` sits: always the fixed 0.045 on the
   // legacy path; the real lookahead offset under experimentalScheduler.
+  // Ties & bends (see "Bends y ligaduras" in NOTES). Decides how a note that
+  // starts at `noteStartQuarter` sounds: null = not at all (a tie
+  // continuation whose head already sounded in this continuous run — real
+  // guitar: the string keeps ringing, no new attack); otherwise its length
+  // (a tie head sustains its whole chain) and its bend plan. A note with no
+  // tie and no bend gets exactly `baseDuration` and no bend.
+  function planNoteSound(
+    note: TabNote,
+    noteStartQuarter: number,
+    secondsPerQuarter: number,
+    baseDuration: number
+  ): { bend: NoteBendPlan | null; duration: number } | null {
+    let duration = baseDuration;
+    let bend: NoteBendPlan | null = null;
+    if (note.tie) {
+      const headStartQuarter = noteStartQuarter - note.tie.offsetQuarters;
+      if (headStartQuarter >= runStartQuarterRef.current - TIMING_EPSILON) {
+        return null;
+      }
+      duration = Math.max(0, note.tie.totalQuarters - note.tie.offsetQuarters) * secondsPerQuarter;
+      const automation = bendAutomation(note.tie.headBend, secondsPerQuarter, speedRef.current);
+      if (automation.length > 0) {
+        bend = { automation, offset: note.tie.offsetQuarters * secondsPerQuarter };
+      }
+    } else {
+      if (note.sustainQuarters !== undefined) {
+        duration = note.sustainQuarters * secondsPerQuarter;
+      }
+      const automation = bendAutomation(note.bend, secondsPerQuarter, speedRef.current);
+      if (automation.length > 0) {
+        bend = { automation, offset: 0 };
+      }
+    }
+    // With a loop, a sustained tie never rings past the loop's end (it
+    // would overlap the next pass).
+    if (loopStartIndex !== null && loopEndIndex !== null && (note.tie || note.sustainQuarters !== undefined)) {
+      const loopEndQuarter = (eventStartQuarters[loopEndIndex] ?? 0) + (events[loopEndIndex]?.quarterNotes ?? 0);
+      if (noteStartQuarter < loopEndQuarter) {
+        duration = Math.min(duration, (loopEndQuarter - noteStartQuarter) * secondsPerQuarter);
+      }
+    }
+    return { bend, duration };
+  }
+
   function scheduleAuxiliaryTracks(context: AudioContext, eventStartQuarter: number, startTime: number, eventQuarterNotes: number, auxLeadSeconds = 0.045) {
     const schedules = auxiliaryTrackScheduleRef.current;
     if (!schedules.length) return;
@@ -3386,22 +3521,27 @@ export default function AlphaTabPlayer({
         const auxDurationSeconds = secondsPerQuarter * auxEvent.quarterNotes;
 
         if (track.kind === 'guitar' && auxEvent.guitarNotes) {
-          const notes = auxEvent.guitarNotes;
           const trackVolume = getTrackVolume(track.index);
-          for (const note of notes) {
-            const chordDelay = notes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
-            playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, auxDurationSeconds, notes.length, trackVolume);
+          const planned = auxEvent.guitarNotes
+            .map((note) => ({ note, plan: planNoteSound(note, auxEvent.quarterStart, secondsPerQuarter, auxDurationSeconds) }))
+            .filter((entry): entry is { note: TabNote; plan: NonNullable<ReturnType<typeof planNoteSound>> } => entry.plan !== null);
+          for (const { note, plan } of planned) {
+            const chordDelay = planned.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
+            playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, plan.duration, planned.length, trackVolume, plan.bend);
           }
         } else if (track.kind === 'bass' && auxEvent.bassNotes) {
           const bassStartTime = auxEngineNow + auxLeadSeconds + offsetSeconds;
           const trackVolume = getTrackVolume(track.index);
           for (const note of auxEvent.bassNotes) {
+            const plan = planNoteSound(note, auxEvent.quarterStart, secondsPerQuarter, auxDurationSeconds);
+            if (!plan) continue;
             playBassNote(
               bassStartTime,
               bassNoteMidi(note),
-              auxDurationSeconds,
+              plan.duration,
               volumeRef.current * BASS_TRACK_VOLUME_MULTIPLIER * trackVolume,
-              note.palmMuted
+              note.palmMuted,
+              plan.bend
             );
           }
         } else if (track.kind === 'percussion' && auxEvent.percussionHits) {
@@ -3622,8 +3762,20 @@ export default function AlphaTabPlayer({
   ) {
     scheduleMetronomeClicks(context, eventStartQuarter, startTime, eventDuration, event.quarterNotes);
 
+    // Tie continuity: a gap between the last scheduled event and this one
+    // (playback start, loop wrap) starts a new continuous run, so tie
+    // continuations whose head sounded before it get plucked again.
+    // (Written as !(≤) so NaN — nothing scheduled yet — also counts as a gap.)
+    if (!(Math.abs(lastScheduledEndQuarterRef.current - eventStartQuarter) <= TIMING_EPSILON)) {
+      runStartQuarterRef.current = eventStartQuarter;
+    }
+    lastScheduledEndQuarterRef.current = eventStartQuarter + event.quarterNotes;
+    const secondsPerQuarter = event.quarterNotes > 0 ? eventDuration / event.quarterNotes : 0;
+
     const primaryTrackAudible = !multiTrack || isTrackAudible(primaryTrackIndexRef.current);
-    const audibleNotes = primaryTrackAudible ? event.notes : [];
+    const audibleNotes = (primaryTrackAudible ? event.notes : [])
+      .map((note) => ({ note, plan: planNoteSound(note, eventStartQuarter, secondsPerQuarter, eventDuration) }))
+      .filter((entry): entry is { note: TabNote; plan: NonNullable<ReturnType<typeof planNoteSound>> } => entry.plan !== null);
 
     // Primary track's own notes: 'bass' (only reachable when multiTrack picks
     // a bass track as primary via selectVisibleTrack) plays through
@@ -3637,20 +3789,21 @@ export default function AlphaTabPlayer({
     if (multiTrack && primaryTrackKindRef.current === 'bass') {
       const bassEngineNow = getAudioCurrentTime();
       const trackVolume = getTrackVolume(primaryTrackIndexRef.current);
-      for (const note of audibleNotes) {
+      for (const { note, plan } of audibleNotes) {
         playBassNote(
           bassEngineNow + leadSeconds,
           bassNoteMidi(note),
-          eventDuration,
+          plan.duration,
           volumeRef.current * BASS_TRACK_VOLUME_MULTIPLIER * trackVolume,
-          note.palmMuted
+          note.palmMuted,
+          plan.bend
         );
       }
     } else {
       const trackVolume = multiTrack ? getTrackVolume(primaryTrackIndexRef.current) : 1;
-      for (const note of audibleNotes) {
+      for (const { note, plan } of audibleNotes) {
         const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
-        playPluckedNote(context, note, startTime + chordDelay, eventDuration, audibleNotes.length, trackVolume);
+        playPluckedNote(context, note, startTime + chordDelay, plan.duration, audibleNotes.length, trackVolume, plan.bend);
       }
     }
 

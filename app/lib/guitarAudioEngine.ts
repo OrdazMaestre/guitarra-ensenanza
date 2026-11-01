@@ -1,3 +1,5 @@
+import { applyBend, type BendAutomationPoint } from './bendCurve';
+
 const SAMPLE_BASE = '/samples/seagull-acoustic/';
 const MAX_VOICES = 3;
 const RELEASE_TIME = 0.18;
@@ -417,20 +419,41 @@ const GUIDE_CUT_SECONDS = 0.015;
 const MAX_GUIDE_VOICES = 24;
 const guideVoices: Array<{ start: number; stopAt(at: number): void }> = [];
 
-export async function scheduleGuideNote(midi: number, at: number, duration: number, volume = 0.35): Promise<GuideNoteHandle | null> {
+// Curva de bend ya en segundos (app/lib/bendCurve.ts): `offset` = cuánto de la curva ha pasado
+// cuando arranca el sonido (nota programada a mitad de una ligadura, reanudar...).
+export interface ScheduledBend {
+  automation: BendAutomationPoint[];
+  offset?: number;
+}
+
+export async function scheduleGuideNote(
+  midi: number,
+  at: number,
+  duration: number,
+  volume = 0.35,
+  bend?: ScheduledBend | null
+): Promise<GuideNoteHandle | null> {
   const context = getCtx();
   await ensureSamples();
   const sample = chooseSample(midi);
   if (!sample) return null;
   const start = Math.max(at, context.currentTime);
   let end = start + Math.max(0.08, duration);
+  // Solo se roba una voz que YA suena: robar una que aún no ha empezado borraba su envolvente y la
+  // ganancia volvía a 1,0 (un chasquido muy fuerte, o una nota que no salía). Si todas son futuras,
+  // la nueva pasa igual (el tope vuelve a cumplirse en cuanto empiecen).
   if (guideVoices.length >= MAX_GUIDE_VOICES) {
-    const oldest = guideVoices.reduce((a, b) => (b.start < a.start ? b : a));
-    oldest.stopAt(context.currentTime);
+    const started = guideVoices.filter((voice) => voice.start <= context.currentTime);
+    if (started.length > 0) started.reduce((a, b) => (b.start < a.start ? b : a)).stopAt(context.currentTime);
   }
   const source = context.createBufferSource();
   source.buffer = sample.buffer;
   source.playbackRate.value = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
+  // Bend en `detune` (cents), nunca en playbackRate: sin curva, la nota es la de siempre. Si la nota
+  // arranca tarde (start > at), la curva arranca igual de adelantada, sin "volver a subir desde 0".
+  if (bend && bend.automation.length > 0) {
+    applyBend(source.detune, start, bend.automation, (bend.offset ?? 0) + (start - at));
+  }
   if (sample.loopEnd > sample.loopStart + 8) {
     source.loop = true;
     source.loopStart = sample.loopStart / sample.sampleRate;
@@ -448,19 +471,29 @@ export async function scheduleGuideNote(midi: number, at: number, duration: numb
     start,
     stopAt(cut: number) {
       const at = Math.max(cut, context.currentTime, start);
+      // Ya en su cola (o cortada): se va apagando sola, pero deja de contar para el tope.
+      const index = guideVoices.indexOf(voice);
+      if (index !== -1) guideVoices.splice(index, 1);
       if (at >= end) return;
       end = at;
+      if (at <= start) {
+        // Cortada antes de empezar: no llega a sonar (ni un instante a ganancia 1,0).
+        gain.gain.cancelScheduledValues(0);
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        try { source.stop(start); } catch { /* ya parada */ }
+        return;
+      }
       gain.gain.cancelScheduledValues(at);
       gain.gain.setTargetAtTime(0.0001, at, GUIDE_CUT_SECONDS);
       try { source.stop(at + GUIDE_CUT_SECONDS * 6); } catch { /* ya parada */ }
-      const index = guideVoices.indexOf(voice);
-      if (index !== -1) guideVoices.splice(index, 1);
     },
   };
   guideVoices.push(voice);
   source.addEventListener('ended', () => {
     const index = guideVoices.indexOf(voice);
     if (index !== -1) guideVoices.splice(index, 1);
+    source.disconnect();
+    gain.disconnect();
   });
   return {
     stopAt: voice.stopAt,
@@ -543,6 +576,8 @@ type ActiveBassVoice = {
   sub: OscillatorNode;
   gain: GainNode;
   startedAt: number;
+  // Cuándo deja de sonar (fin de su release, o el corte de la nota siguiente).
+  endsAt: number;
 };
 
 let bassBus: WaveShaperNode | null = null;
@@ -599,6 +634,19 @@ function killBassVoice(voice: ActiveBassVoice, context: AudioContext, fadeTime: 
 
   const now = context.currentTime;
   const g = voice.gain.gain;
+  if (voice.startedAt > now) {
+    // Aún no ha empezado: se para sin sonar. (Antes se leía `g.value`, que en una voz futura es el
+    // 1,0 por defecto, y la nota salía como un chasquido el doble de fuerte que su pico.)
+    g.cancelScheduledValues(0);
+    g.setValueAtTime(0.0001, now);
+    try {
+      voice.osc.stop(voice.startedAt);
+      voice.sub.stop(voice.startedAt);
+    } catch {
+      // already stopped
+    }
+    return;
+  }
   g.cancelScheduledValues(now);
   g.setValueAtTime(Math.max(0.0001, g.value), now);
   g.exponentialRampToValueAtTime(0.0001, now + fadeTime);
@@ -610,10 +658,39 @@ function killBassVoice(voice: ActiveBassVoice, context: AudioContext, fadeTime: 
   }
 }
 
+// Solo se roba una voz que YA suena (ver killBassVoice); con el bajo monofónico de abajo casi nunca
+// hace falta.
 function enforceBassPolyphony(context: AudioContext): void {
   if (bassVoices.length < BASS_MAX_VOICES) return;
-  const oldest = bassVoices.toSorted((a, b) => a.startedAt - b.startedAt)[0];
-  if (oldest) killBassVoice(oldest, context, BASS_VOICE_STEAL_FADE);
+  const started = bassVoices.filter((voice) => voice.startedAt <= context.currentTime);
+  if (started.length === 0) return;
+  const oldest = started.reduce((a, b) => (b.startedAt < a.startedAt ? b : a));
+  killBassVoice(oldest, context, BASS_VOICE_STEAL_FADE);
+}
+
+// Bajo MONOFÓNICO, como uno de verdad: una nota nueva apaga la anterior JUSTO cuando empieza ella
+// (`at`, en el futuro: con la anticipación de 0,3 s del juego hay varias programadas a la vez). Las
+// que empiezan a la vez (una doble cuerda) se respetan. Antes se solapaban y, en pasajes rápidos, el
+// tope de 4 voces robaba notas que aún no habían sonado.
+const BASS_LEGATO_CUT = 0.015;
+function cutBassVoicesBefore(at: number, context: AudioContext): void {
+  for (const voice of [...bassVoices]) {
+    if (voice.startedAt >= at - 1e-4 || voice.endsAt <= at) continue;
+    const idx = bassVoices.indexOf(voice);
+    if (idx !== -1) bassVoices.splice(idx, 1);
+    voice.endsAt = at;
+    const g = voice.gain.gain;
+    const cut = Math.max(at, context.currentTime);
+    if (typeof g.cancelAndHoldAtTime === 'function') g.cancelAndHoldAtTime(cut);
+    else g.cancelScheduledValues(cut);
+    g.setTargetAtTime(0.0001, cut, BASS_LEGATO_CUT / 3);
+    try {
+      voice.osc.stop(cut + BASS_LEGATO_CUT * 2);
+      voice.sub.stop(cut + BASS_LEGATO_CUT * 2);
+    } catch {
+      // already stopped
+    }
+  }
 }
 
 function clampValue(value: number, min: number, max: number): number {
@@ -632,10 +709,14 @@ export function playBassNote(
   midiNote: number,
   durationSeconds: number,
   volume: number,
-  palmMuted = false
+  palmMuted = false,
+  // Optional bend (app/lib/bendCurve.ts), applied to both oscillators'
+  // `detune` so the sub follows the main voice. Omitted = unchanged.
+  bend?: ScheduledBend | null
 ): void {
   const context = getCtx();
   if (volume <= 0) return;
+  cutBassVoicesBefore(scheduledAt, context);
   enforceBassPolyphony(context);
 
   const freq = 440 * 2 ** ((midiNote - 69) / 12);
@@ -649,6 +730,10 @@ export function playBassNote(
   const sub = context.createOscillator();
   sub.type = 'sine';
   sub.frequency.setValueAtTime(freq / 2, scheduledAt);
+  if (bend && bend.automation.length > 0) {
+    applyBend(osc.detune, scheduledAt, bend.automation, bend.offset ?? 0);
+    applyBend(sub.detune, scheduledAt, bend.automation, bend.offset ?? 0);
+  }
 
   const oscGain = context.createGain();
   oscGain.gain.value = 1;
@@ -738,11 +823,13 @@ export function playBassNote(
   sub.stop(voiceStop + 0.03);
 
   const id = bassVoiceCounter++;
-  const voice: ActiveBassVoice = { id, osc, sub, gain: ampGain, startedAt: scheduledAt };
+  const voice: ActiveBassVoice = { id, osc, sub, gain: ampGain, startedAt: scheduledAt, endsAt: voiceStop };
   bassVoices.push(voice);
   osc.addEventListener('ended', () => {
     const idx = bassVoices.indexOf(voice);
     if (idx !== -1) bassVoices.splice(idx, 1);
+    // Fuera del grafo en cuanto acaba (no esperar al recolector con cientos de nodos por minuto).
+    for (const node of [osc, sub, oscGain, subGain, filter, preGain, shaper, postGain, ampGain]) node.disconnect();
   });
 }
 
