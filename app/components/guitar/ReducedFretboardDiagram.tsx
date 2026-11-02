@@ -773,23 +773,32 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // bajo el mástil, y encima, todo lo posible de la autopista por donde caen las notas. La barra MIDI
   // (con PAUSA) y los puntos solo entran si cabe TODO -- autopista entera, mástil, puntos y barra --;
   // en una pantalla baja (móvil) no se gasta autopista en ellos. Instantáneo a propósito: un scroll
-  // 'smooth' lanzado desde un clic real de ratón se cancelaba. Se repite tras dos frames porque al
-  // empezar el panel se pliega y la barra cambia.
-  function scrollIntoGame() {
-    const place = () => {
-      const stage = stageRef.current;
-      const svg = svgRef.current;
-      if (!stage || !svg) return;
-      const top = stage.getBoundingClientRect().top;
-      const neckBottom = svg.getBoundingClientRect().bottom;
-      const pill = hostRef.current?.querySelector('.midi-float-pill');
-      const pillBottom = pill ? pill.getBoundingClientRect().bottom : neckBottom;
-      const bottom = pillBottom - top <= window.innerHeight ? pillBottom : neckBottom;
-      window.scrollTo({ top: window.scrollY + bottom - window.innerHeight, behavior: 'instant' });
-    };
-    place();
-    requestAnimationFrame(() => requestAnimationFrame(place));
+  // 'smooth' lanzado desde un clic real de ratón se cancelaba. Se repite cuando la partida arranca DE
+  // VERDAD (dos frames después de plegarse el panel): "Empezar" espera a que estén cargados los sonidos,
+  // y colocarla solo al hacer clic la dejaba calculada con el panel todavía abierto.
+  function placeGame() {
+    const stage = stageRef.current;
+    const svg = svgRef.current;
+    if (!stage || !svg) return;
+    const top = stage.getBoundingClientRect().top;
+    const neckBottom = svg.getBoundingClientRect().bottom;
+    const pill = hostRef.current?.querySelector('.midi-float-pill');
+    const pillBottom = pill ? pill.getBoundingClientRect().bottom : neckBottom;
+    const bottom = pillBottom - top <= window.innerHeight ? pillBottom : neckBottom;
+    window.scrollTo({ top: window.scrollY + bottom - window.innerHeight, behavior: 'instant' });
   }
+  const placeOnStartRef = useRef(false);
+  function scrollIntoGame() {
+    placeOnStartRef.current = true;
+    placeGame();
+    requestAnimationFrame(() => requestAnimationFrame(placeGame));
+  }
+  useEffect(() => {
+    if (!riff.playing || !placeOnStartRef.current) return;
+    placeOnStartRef.current = false;
+    requestAnimationFrame(() => requestAnimationFrame(placeGame));
+  }, [riff.playing]);
+
 
   function interactionOverlay() {
     const posList = kbMode ? kbPositions : ptPositions;

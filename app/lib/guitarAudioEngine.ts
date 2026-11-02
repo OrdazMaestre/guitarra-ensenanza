@@ -192,60 +192,112 @@ function startOscillatorVoice(midi: number, context: AudioContext, volume = 1.0)
 }
 
 // ---------------------------------------------------------------------------
-// Overdrive (opt-in, `tone === 'overdrive'` en playNote/switchNote; hoy solo
-// el mástil de la sala de pruebas vía `allowOverdrive` en
-// ReducedFretboardDiagram). Misma fuente que el clean (samples acústicos
-// Seagull), pasada por una cadena de ampli completa en un ÚNICO bus
-// compartido por todas las voces:
-//   - Distorsionar la SUMA (no cada voz por separado) es lo que hace un ampli
-//     real: quintas/power chords se funden con intermodulación auténtica.
-//     Y una sola cadena es barata en CPU para móviles modestos.
-//   1. Pre-EQ estilo Tube Screamer: highpass 110Hz (aprieta graves ANTES de
-//      saturar — clave partiendo de una acústica con cuerpo resonante, o se
-//      vuelve barro), joroba de medios en 720Hz, lowpass 5.5kHz antes del
-//      clip (los chirridos de cuerda saturados se convierten en "fizz").
-//   2. Dos etapas de saturación (preamp de dos válvulas): la primera
-//      asimétrica (armónicos pares, carácter cálido) y fuerte, la segunda
-//      suave. oversample '4x' en ambas: sin él, los armónicos que crea el
-//      waveshaper por encima de Nyquist se reflejan como aliasing metálico.
-//   3. Simulador de pantalla 1x12" con biquads: highpass 85Hz, -3dB en 400Hz
-//      (des-embarrar), +3dB en 2.2kHz (presencia — es lo que sobrevive en
-//      altavoces de móvil/portátil, que no reproducen graves), y dos lowpass
-//      de 4.8kHz en cascada (24dB/oct, la caída de un cono real; elimina el
-//      fizz digital que delata a un overdrive "de juguete").
-//   4. Sala corta (ConvolverNode con IR sintética, ~10% húmedo): quita la
-//      sequedad de "línea directa" sin emborronar. Mono, sin trucos estéreo.
-//   5. Make-up gain calibrado offline para que el RMS overdrive ≈ clean en el
-//      ataque (medido: +0.9dB; sin salto de volumen al pulsar el botón). En
-//      sustain queda ~+5dB por diseño: un overdrive comprime y alarga la
-//      nota, eso es parte del sonido. Pico con acordes de 3 notas a volumen
-//      máximo: ~0.48, mucho margen. Volumen del slider aplicado
-//      DESPUÉS de saturar (`overdriveOutGain`): antes del clip, bajar el
-//      volumen solo limpiaría el sonido y apenas bajaría (el tanh comprime).
-//      Por eso las voces overdrive entran al bus a nivel fijo.
-//   6. Soft-clip tanh neutro a la salida (como getBassBus), sin
-//      DynamicsCompressorNode (ver el comentario del bajo: reacciona mal a
-//      ataques rápidos; la señal saturada ya llega comprimida).
-// tests/guitar-overdrive.spec.ts replica esta cadena exacta offline (pico
-// sin clipping con acordes a volumen máximo, paridad de RMS con el clean, y
-// que el slider de volumen baje de verdad). Si cambias cualquier valor
-// aquí, actualízalo allí también.
+// TONO DE GUITARRA: clean y overdrive (revisión 2026-11, con guitar-music-advisor,
+// alphatab-guardian y una investigación de sonoridad — ISO 226, BS.1770/LUFS,
+// WHO-ITU H.870). Diagnóstico medido que motivó estos valores:
+//   - Los samples Seagull NO son brillantes: son oscurísimos. Las cuerdas graves
+//     son casi senos (E2: -57 dB por encima de 1 kHz), así que en altavoces que
+//     no bajan de 180-400 Hz (portátil/móvil) desaparecen, mientras los agudos
+//     (1-2.5 kHz, donde oído y altavoz son más sensibles) dominan: +8.6 dB en
+//     portátil y +23 dB en móvil. De ahí el "suena muy agudo".
+//   - OJO, trampa de Web Audio: en `lowpass`/`highpass` el `Q` está en dB (no es
+//     el Q lineal de RBJ). Butterworth (plano) = Q -3.01 (`FLAT_Q`). El primer
+//     overdrive usaba Q 0.7/0.9 en dos lowpass de 4.8 kHz creyendo hacer una
+//     caída de 24 dB/oct, y en realidad hacía una MESETA de +5 dB en 2-4 kHz,
+//     la zona donde el oído es más sensible y más se daña.
+//   - Las sonoridades se comparan en LUFS (K-weighting BS.1770), nunca en pico
+//     ni en RMS plano: el overdrive "igualado" por RMS del ataque salía +5.5 LU
+//     más fuerte que el clean (hasta +9.8 en E4), porque sostiene y concentra
+//     energía en 2-5 kHz. tests/helpers/loudness.js tiene el medidor.
+//
+// CLEAN (createCleanToneChain): toda guitarra clean de este motor pasa por
+// aquí (mástiles y notas de fondo del juego); el reproductor de tablatura
+// construye la misma cadena en su propio AudioContext.
+//   1. Peaking 1.7 kHz -1 dB: doma un poco el "pito" del registro agudo.
+//   2. Ajuste fijo de nivel (CLEAN_TRIM), medido para que el pico no suba.
+// Los graves se dejan tal cual vienen en los samples, a propósito (decisión
+// del usuario, 2026-11-02): la primera versión les añadía cuerpo (+3 dB en
+// 220 Hz, low shelf -2 dB en 90 Hz) y un exciter (tanh del registro grave para
+// crear armónicos que se oyeran en el móvil), y al oído los graves del clean
+// sonaban saturados, casi a overdrive. Sin saturación en el clean: la cadena
+// es lineal. Coste conocido: en portátil/móvil los graves siguen oyéndose
+// menos que los agudos (los samples graves son casi senos).
+// Y antes de todo eso, cada nota se nivela por sample (guitarSampleTrim):
+// `si`/`hoge-mi` sonaban 5-6 dB por debajo de sus vecinos (+3/+3.5), y
+// `hoge-do` se estira hasta +16 semitonos ("ardilla" en 2.5-5 kHz): -0.15 dB
+// por semitono por encima de MIDI 76.
+//
+// OVERDRIVE (createOverdriveChain; opt-in `tone === 'overdrive'`; mástil y
+// tablatura de la sala de pruebas). Misma fuente que el clean, por una cadena
+// de ampli en un ÚNICO bus compartido (distorsionar la SUMA es lo que hace un
+// ampli real: las quintas se funden; y una sola cadena es barata en móviles):
+//   1. Pre-EQ estilo Tube Screamer: highpass 120 Hz (aprieta graves ANTES de
+//      saturar), joroba de medios 700 Hz +4 dB, high-shelf 1 kHz -8 dB y
+//      lowpass 4 kHz antes del clip. El shelf hace que el registro agudo
+//      sature menos: sin él, C6 salía +3.9 LU sobre el clean (la saturación
+//      lo sostenía 8.7 dB más que la nota clean, que muere enseguida); con él
+//      +1.0. Y menos agudos dentro del clip = menos "fizz".
+//   2. Dos etapas de saturación (drive 2.2, K 5; la 1ª asimétrica = armónicos
+//      pares, cálida). oversample '4x' en ambas (sin él, aliasing metálico).
+//      Plan B si sigue sonando duro/fuerte: drive 1.6 / K 4 (recalibrar make-up).
+//   3. Pantalla 1x12": highpass 80 Hz, cuerpo 180 Hz +2, barro 400 Hz -2,
+//      presencia 1.8 kHz +1.5, dos lowpass de 4 kHz Butterworth (ahora sí la
+//      caída real de 24 dB/oct) y notch anti-dureza 3.3 kHz -4 dB.
+//   4. Sala corta (ConvolverNode con IR sintética, 8 % húmedo).
+//   5. Make-up calibrado en LUFS (aprobado de oído por el usuario). Se
+//      calibró a ~1 LU por debajo del clean (la distorsión suena más fuerte
+//      de lo que mide K-weighting); al quitar luego el refuerzo de graves del
+//      clean, este quedó algo más bajo y hoy el overdrive mide ≈ igual que el
+//      clean: mediana -0.1 LU, notas sueltas -3.7..+0.7, acordes -3.1..-4.1
+//      (la distorsión aplana los acordes, normal), sostenido como mucho
+//      +5.6 dB, 2-5 kHz de graves/medios -22..-41 dB del total, pico 0.19. Volumen del slider
+//      DESPUÉS de saturar (`output`): antes del clip, bajar el volumen solo
+//      limpiaría el sonido. Por eso las voces entran a nivel fijo.
+//   6. Soft-clip tanh neutro de seguridad (como getBassBus); sin
+//      DynamicsCompressorNode (reacciona mal a ataques rápidos).
+// tests/guitar-overdrive.spec.ts y tests/guitar-clean-tone.spec.ts replican
+// estas cadenas exactas offline y las miden en LUFS (también con modelos de
+// altavoz de portátil y móvil). Si cambias cualquier valor aquí, cámbialo
+// allí también.
 export type GuitarTone = 'clean' | 'overdrive';
+
+const FLAT_Q = -3.01; // Q en dB de un lowpass/highpass Butterworth (ver arriba)
+
+// Nivelado por sample, en dB (medido en LUFS por guitar-music-advisor).
+const SAMPLE_TRIM_DB: Record<string, number> = {
+  '02-si.wav': 3,
+  '01-hoge-mi.wav': 3.5,
+  '08-sol.wav': 1,
+  '06-la.wav': 1,
+  '07-hoge-la.wav': -1,
+};
+const HIGH_STRETCH_FROM_MIDI = 76;
+const HIGH_STRETCH_DB_PER_SEMITONE = -0.15;
+
+// Factor de ganancia lineal para una nota `midi` tocada con el sample `file`
+// (nombre de fichero del manifest). Exportado para el reproductor de tablatura.
+export function guitarSampleTrim(file: string, midi: number): number {
+  const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE;
+  return 10 ** (db / 20);
+}
+
+const CLEAN_TRIM = 0.8;
 
 const OD_VOICE_LEVEL = 0.52;
 // Nivel fijo al que entra a la saturación una nota sola (el volumen va después, en `output`):
 // exportado para que el reproductor de tablatura (AlphaTabPlayer) alimente su propia cadena igual.
 export const OVERDRIVE_VOICE_LEVEL = OD_VOICE_LEVEL;
-const OD_DRIVE = 3;
-const OD_SHAPE_K = 6;
+const OD_DRIVE = 2.2;
+const OD_SHAPE_K = 5;
 const OD_SHAPE_BIAS = 0.12;
 const OD_STAGE2_GAIN = 0.8;
 const OD_STAGE2_K = 1.5;
-const OD_ROOM_WET = 0.1;
-const OD_MAKEUP = 0.18;
+const OD_ROOM_WET = 0.08;
+const OD_MAKEUP = 0.09;
 
 let overdriveIn: GainNode | null = null;
 let overdriveOutGain: GainNode | null = null;
+let cleanIn: GainNode | null = null;
 
 function makeCurve(fn: (x: number) => number, n = 4096): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(n);
@@ -279,12 +331,34 @@ function biquad(context: BaseAudioContext, type: BiquadFilterType, frequency: nu
   return f;
 }
 
+function connectChain(...nodes: AudioNode[]): void {
+  for (let i = 0; i < nodes.length - 1; i++) nodes[i].connect(nodes[i + 1]);
+}
+
 function getOverdriveBus(context: AudioContext): GainNode {
   if (overdriveIn) return overdriveIn;
-  const chain = createOverdriveChain(context, getMaster(context));
-  overdriveIn = chain.input;
-  overdriveOutGain = chain.output;
-  return chain.input;
+  const od = createOverdriveChain(context, getMaster(context));
+  overdriveIn = od.input;
+  overdriveOutGain = od.output;
+  return od.input;
+}
+
+function getCleanBus(context: AudioContext): GainNode {
+  if (cleanIn) return cleanIn;
+  cleanIn = createCleanToneChain(context, getMaster(context)).input;
+  return cleanIn;
+}
+
+// Tono clean (ver arriba), en `context`, saliendo a `destination`. Lineal (sin saturación). El mástil usa una sola (getCleanBus); el reproductor de
+// tablatura, que tiene su propio AudioContext, crea la suya.
+export function createCleanToneChain(context: BaseAudioContext, destination: AudioNode): { input: GainNode } {
+  const input = context.createGain();
+  const out = context.createGain();
+  out.gain.value = CLEAN_TRIM;
+
+  connectChain(input, biquad(context, 'peaking', 1700, 0.8, -1), out);
+  out.connect(destination);
+  return { input };
 }
 
 // La cadena de ampli entera (ver arriba), en `context`, saliendo a `destination`. `input` recibe
@@ -295,9 +369,10 @@ export function createOverdriveChain(context: BaseAudioContext, destination: Aud
   const input = context.createGain();
 
   // 1. Pre-EQ (Tube Screamer)
-  const preHp = biquad(context, 'highpass', 110, 0.7);
-  const midHump = biquad(context, 'peaking', 720, 0.8, 6);
-  const preLp = biquad(context, 'lowpass', 5500, 0.7);
+  const preHp = biquad(context, 'highpass', 120, FLAT_Q);
+  const midHump = biquad(context, 'peaking', 700, 0.8, 4);
+  const preDarken = biquad(context, 'highshelf', 1000, 0, -8);
+  const preLp = biquad(context, 'lowpass', 4000, FLAT_Q);
 
   // 2. Dos etapas de saturación
   const drive = context.createGain();
@@ -314,11 +389,13 @@ export function createOverdriveChain(context: BaseAudioContext, destination: Aud
   stage2.oversample = '4x';
 
   // 3. Pantalla 1x12"
-  const cabHp = biquad(context, 'highpass', 85, 0.7);
-  const cabMud = biquad(context, 'peaking', 400, 1, -3);
-  const cabPresence = biquad(context, 'peaking', 2200, 1, 3);
-  const cabLp1 = biquad(context, 'lowpass', 4800, 0.7);
-  const cabLp2 = biquad(context, 'lowpass', 4800, 0.9);
+  const cabHp = biquad(context, 'highpass', 80, FLAT_Q);
+  const cabBody = biquad(context, 'peaking', 180, 0.8, 2);
+  const cabMud = biquad(context, 'peaking', 400, 1, -2);
+  const cabPresence = biquad(context, 'peaking', 1800, 1, 1.5);
+  const cabLp1 = biquad(context, 'lowpass', 4000, FLAT_Q);
+  const cabLp2 = biquad(context, 'lowpass', 4000, FLAT_Q);
+  const deHarsh = biquad(context, 'peaking', 3300, 2.5, -4);
 
   // 4. Sala corta (en paralelo con la señal seca)
   const room = context.createConvolver();
@@ -337,25 +414,10 @@ export function createOverdriveChain(context: BaseAudioContext, destination: Aud
   safety.curve = getBassSoftClipCurve();
   safety.oversample = '2x';
 
-  input.connect(preHp);
-  preHp.connect(midHump);
-  midHump.connect(preLp);
-  preLp.connect(drive);
-  drive.connect(stage1);
-  stage1.connect(stage2Gain);
-  stage2Gain.connect(stage2);
-  stage2.connect(cabHp);
-  cabHp.connect(cabMud);
-  cabMud.connect(cabPresence);
-  cabPresence.connect(cabLp1);
-  cabLp1.connect(cabLp2);
-  cabLp2.connect(makeup);
-  cabLp2.connect(room);
-  room.connect(wet);
-  wet.connect(makeup);
-  makeup.connect(outVol);
-  outVol.connect(safety);
-  safety.connect(destination);
+  connectChain(input, preHp, midHump, preDarken, preLp, drive, stage1, stage2Gain, stage2,
+    cabHp, cabBody, cabMud, cabPresence, cabLp1, cabLp2, deHarsh, makeup);
+  connectChain(deHarsh, room, wet, makeup);
+  connectChain(makeup, outVol, safety, destination);
 
   return { input, output: outVol };
 }
@@ -379,14 +441,15 @@ function startSampleVoice(midi: number, context: AudioContext, sample: LoadedSam
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, now);
   source.connect(gain);
+  const trim = guitarSampleTrim(sample.file, midi);
   if (tone === 'overdrive') {
     // Nivel fijo hacia la saturación; el volumen va después (ver getOverdriveBus).
-    gain.gain.linearRampToValueAtTime(OD_VOICE_LEVEL, now + 0.005);
+    gain.gain.linearRampToValueAtTime(OD_VOICE_LEVEL * trim, now + 0.005);
     gain.connect(getOverdriveBus(context));
     overdriveOutGain?.gain.setTargetAtTime(volume, now, 0.02);
   } else {
-    gain.gain.linearRampToValueAtTime(0.52 * volume, now + 0.005);
-    gain.connect(getMaster(context));
+    gain.gain.linearRampToValueAtTime(0.52 * trim * volume, now + 0.005);
+    gain.connect(getCleanBus(context));
   }
   source.start(now);
 
@@ -459,12 +522,13 @@ export async function scheduleGuideNote(
     source.loopStart = sample.loopStart / sample.sampleRate;
     source.loopEnd = sample.loopEnd / sample.sampleRate;
   }
+  const level = 0.52 * guitarSampleTrim(sample.file, midi);
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.linearRampToValueAtTime(0.52 * volume, start + 0.005);
+  gain.gain.linearRampToValueAtTime(level * volume, start + 0.005);
   gain.gain.setTargetAtTime(0.0001, end, 0.05);
   source.connect(gain);
-  gain.connect(getMaster(context));
+  gain.connect(getCleanBus(context));
   source.start(start);
   source.stop(end + GUIDE_TAIL_SECONDS);
   const voice = {
@@ -504,10 +568,10 @@ export async function scheduleGuideNote(
       g.cancelScheduledValues(now);
       if (now < start) {
         g.setValueAtTime(0.0001, start);
-        g.linearRampToValueAtTime(0.52 * next, start + 0.005);
+        g.linearRampToValueAtTime(level * next, start + 0.005);
       } else {
         g.setValueAtTime(Math.max(0.0001, g.value), now);
-        g.linearRampToValueAtTime(0.52 * next, now + 0.03);
+        g.linearRampToValueAtTime(level * next, now + 0.03);
       }
       g.setTargetAtTime(0.0001, end, 0.05);
     },

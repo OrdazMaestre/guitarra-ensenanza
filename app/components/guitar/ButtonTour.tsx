@@ -44,6 +44,13 @@ export const KEYBOARD_TOUR: TourStep[] = [
   { title: 'Metrónomo', lines: ['Marca el pulso, como un reloj.', 'Ábrelo para cambiar la velocidad.'], find: metronome },
 ];
 
+export const TUNING_TOUR: TourStep[] = [
+  { title: 'Clavijas', lines: ['Gira una clavija para subir o bajar el tono de esa cuerda.'], find: (root) => root.querySelector('.tuning-peg') },
+  { title: 'Notas al aire', lines: ['Estas son las notas de las cuerdas sin pulsar ningún traste.', 'Esas son las notas que buscaremos en este juego.'], find: (root) => root.querySelector('.tuning-open-note') },
+  { title: 'Diestro o zurdo', lines: ['Dale la vuelta si tocas con la otra mano.'], find: anyOf(byLabel('Cambiar a modo zurdo'), byLabel('Cambiar a modo diestro')) },
+  { title: 'KEYBOARD', lines: ['Toca con un teclado de ordenador.'], find: keyboardToggle },
+];
+
 const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.riff-dd-toggle[aria-controls="riff-menu-${id}"]`);
 
 export const RIFF_PANEL_TOUR: TourStep[] = [

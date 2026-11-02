@@ -88,6 +88,7 @@ export default function AmpliacionArpegiosPage({ previous, next, quizHref }: Les
               startFret={0}
               endFret={12}
               notes={gTriadNotes}
+              tutorial={false}
             />
           </div>
           <p className="chord-caption">
@@ -110,6 +111,7 @@ export default function AmpliacionArpegiosPage({ previous, next, quizHref }: Les
               startFret={0}
               endFret={12}
               notes={gSeventhNotes}
+              tutorial={false}
             />
           </div>
           <p className="chord-caption">

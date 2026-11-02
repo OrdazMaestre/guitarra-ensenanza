@@ -238,6 +238,7 @@ export default function EjerciciosEscalasPage({ previous, next, quizHref }: Less
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}
                   notes={notesForFigure(figure.startFret, figure.endFret, figure.omittedDiagramNotes)}
                   startFret={figure.startFret}
+                  tutorial={false}
                 />
               </div>
 

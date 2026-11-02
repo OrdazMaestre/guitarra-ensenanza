@@ -13,6 +13,10 @@ import { test, expect } from '@playwright/test';
 // and drum engines were re-checked too and did NOT need a fix (their own
 // existing headroom/limiter already covers the new worst case).
 test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolumeMultiplier=2 worst case', async ({ page }) => {
+  // Clean tone chain + per-sample trim (createCleanToneChain/guitarSampleTrim,
+  // replicated in tests/helpers/guitarTone.js): every clean guitar voice of the
+  // tab player goes through it before getAudioOutput.
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
   await page.goto('/lecciones/temario/notacion-musical');
 
   const result = await page.evaluate(async () => {
@@ -121,7 +125,7 @@ test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolu
       const articulationLevel = 0.58;
       const currentVolume = volumeRefCurrent * trackVolumeMultiplier;
       const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
-      const level = clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, 0.62 * currentVolume);
+      const level = clamp(targetLevel, MIN_AUDIBLE_NOTE_LEVEL * currentVolume, 0.62 * currentVolume) * window.__guitarTone.guitarSampleTrim(sample.file, midi);
 
       const source = ctx.createBufferSource();
       const toneFilter = ctx.createBiquadFilter();
@@ -160,7 +164,7 @@ test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolu
       withLimiter: boolean
     ) {
       const ctx = new OfflineAudioContext(1, Math.floor(SR * DURATION), SR);
-      const output = makeOutput(ctx, withLimiter);
+      const output = window.__guitarTone.createCleanToneChain(ctx, makeOutput(ctx, withLimiter)).input;
       const notes = strings.map((s) => ({ s, midi: OPEN_STRING_MIDI_BY_STRING[s] }));
       for (const { s, midi } of notes) {
         const chordDelay = notes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(s)] ?? 0 : 0;
@@ -180,6 +184,9 @@ test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolu
       // the "must not change today's sound" requirement.
       baselineSingleNoLimiter: await renderChord([1], 1.0, 1, false),
       baselineSingleWithLimiter: await renderChord([1], 1.0, 1, true),
+      // Low string: the one the clean chain's body boost + exciter raise most.
+      baselineLowNoLimiter: await renderChord([6], 1.0, 1, false),
+      baselineLowWithLimiter: await renderChord([6], 1.0, 1, true),
       baselineChordNoLimiter: await renderChord(allStrings, 1.0, 1, false),
       baselineChordWithLimiter: await renderChord(allStrings, 1.0, 1, true),
       baselineTop3NoLimiter: await renderChord(top3Strings, 1.0, 1, false),
@@ -195,12 +202,14 @@ test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolu
   // Identity at trackVolumeMultiplier=1: the limiter must not audibly change
   // anything at today's levels. Floating-point/oversampling noise only.
   expect(Math.abs(result.baselineSingleWithLimiter - result.baselineSingleNoLimiter)).toBeLessThan(0.001);
+  expect(Math.abs(result.baselineLowWithLimiter - result.baselineLowNoLimiter)).toBeLessThan(0.001);
   expect(Math.abs(result.baselineChordWithLimiter - result.baselineChordNoLimiter)).toBeLessThan(0.001);
   expect(Math.abs(result.baselineTop3WithLimiter - result.baselineTop3NoLimiter)).toBeLessThan(0.001);
 
   // Confirms these scenarios actually exercise real, non-trivial levels
   // (not silently near-zero, which would make the identity check above
   // meaningless).
+  console.log('tab guitar peaks', JSON.stringify(result));
   expect(result.baselineSingleNoLimiter).toBeGreaterThan(0.3);
 
   // New worst case (trackVolumeMultiplier=2) no longer clips — measured

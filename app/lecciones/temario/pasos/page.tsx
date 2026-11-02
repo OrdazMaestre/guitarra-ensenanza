@@ -297,7 +297,7 @@ export default function PasosPage() {
         .cn-example svg {
           display: block;
           height: auto;
-          max-width: 380px;
+          max-width: 300px;
           width: 100%;
         }
 

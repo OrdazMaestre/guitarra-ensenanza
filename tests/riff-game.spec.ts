@@ -102,6 +102,8 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
 
   // El panel está DELANTE del juego y ENCIMA del mástil (centrado sobre sus cuerdas), compacto.
   const overlay = page.locator('.test-room-fretboard .riff-overlay');
+  // A la vista: elementFromPoint (abajo) no ve nada fuera de la pantalla.
+  await overlay.scrollIntoViewIfNeeded();
   const box = (await overlay.boundingBox())!;
   const neck = (await page.locator(SVG).boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(neck.y - 1);
@@ -288,7 +290,11 @@ for (const [name, width, height, pillVisible] of [['pantalla baja (móvil apaisa
     const svg = (await page.locator(SVG).boundingBox())!;
     const pill = (await page.locator('.test-room-fretboard .midi-float-pill').boundingBox())!;
     if (pillVisible) {
-      expect(Math.abs(pill.y + pill.height - height)).toBeLessThanOrEqual(3);
+      // Si todo el juego ya cabe con la página arriba del todo, no se puede subir más (scrollY = 0): la
+      // barra queda dentro de la pantalla, por encima del borde.
+      const scrollY = await page.evaluate(() => window.scrollY);
+      if (scrollY === 0) expect(pill.y + pill.height).toBeLessThanOrEqual(height);
+      else expect(Math.abs(pill.y + pill.height - height)).toBeLessThanOrEqual(3);
     } else {
       expect(Math.abs(svg.y + svg.height - height)).toBeLessThanOrEqual(3);
       expect(pill.y).toBeGreaterThanOrEqual(height - 1);

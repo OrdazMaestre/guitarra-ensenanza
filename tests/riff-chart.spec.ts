@@ -719,9 +719,13 @@ test('motor: la banda suena solo con "Batería" y en "Con ritmo"', () => {
 // cuerdas se reparten centradas entre las filas de La (5) y Si (2); los Mi quedan para Experto.
 test('carriles: 1 cuerda al centro, 2 sobre los puntos del traste 12 (filas 5 y 2), 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
   expect([...laneRows([6])]).toEqual([[6, 3.5]]);
-  // Usuario: más separadas -- Medio a la altura de los dos puntos del traste 12 (filas 5 y 2);
-  // Difícil, 1,2 filas.
-  expect([...laneRows([5, 6])]).toEqual([[6, 5], [5, 2]]);
+  // Usuario: más separadas -- Medio junto a los dos puntos del traste 12 (filas 5 y 2), por dentro, con
+  // el borde de la cuerda (3 px) a 1 px del punto (radio 7, filas de 31,6): ~4,70 y ~2,30 (2026-11-02);
+  // más juntas que antes, pero mucho menos que dos cuerdas normales (1 fila). Difícil, 1,2 filas.
+  const medio = laneRows([5, 6]);
+  expect(medio.get(6)!).toBeCloseTo(5 - 9.5 / 31.6, 6);
+  expect(medio.get(5)!).toBeCloseTo(2 + 9.5 / 31.6, 6);
+  expect(medio.get(6)! - medio.get(5)!).toBeGreaterThan(2);
   expect([...laneRows([4, 5, 6])]).toEqual([[6, 5], [5, 3.5], [4, 2]]);
   expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5.3], [5, 4.1], [4, 2.9], [3, 1.7]]);
   for (const strings of [[6], [5, 6], [4, 5, 6], [3, 4, 5, 6]]) {

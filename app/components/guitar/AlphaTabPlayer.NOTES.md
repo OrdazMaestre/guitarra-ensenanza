@@ -123,6 +123,65 @@ Formato de cada entrada: qué es, por qué está así, qué se rompe si se toca 
 - Compatible con la advertencia de "Colores de notación y fondo": es un color **oscuro** sobre la misma hoja clara. En modo oscuro, el `invert(1) hue-rotate(180deg)` de `.site-shell` lo convierte en verde claro (mismo tono que el texto "Vol 80" del panel). No usar colores claros aquí.
 - Probado primero solo en la sala; el usuario lo aprobó y el mismo día (2026-10-05) pasó a ser **el valor por defecto en toda la web**: `notationColor = DEFAULT_NOTATION_COLOR` (`#064e3b`, el color de los labels de la píldora en `globals.css`). Pasar `notationColor=""` devuelve los colores originales de AlphaTab (negro/gris/rojo). Verificado en las 16 páginas con tablatura: ni un elemento negro/gris/rojo en los SVG, sin overflow horizontal.
 
+## Bends y ligaduras (2026-11-01)
+
+Antes los bends solo se dibujaban. En el audio, cada nota sonaba a altura fija, y las notas ligadas se volvían a pulsar. Diseño consultado con `alphatab-guardian` y `guitar-music-advisor`, más una exploración del motor de Riff-Hero.
+
+- **Módulo puro compartido `app/lib/bendCurve.ts`.** No usa React ni audio. Lo usan este reproductor y el fondo de Riff-Hero.
+  - Copia las reglas de alphaTab 1.8.2 (`MidiFileGenerator._generateBend`):
+    - `BendPoint.offset` va de 0 a 60 y `value` va en **cuartos de tono** (4 = full = 200 cents). Comprobado con el .gp real.
+    - Gradual = puntos inicial y final. Fast = el bend ocurre en los últimos 75 ms. Prebend = la nota ya suena doblada desde el ataque.
+    - La curva se estira por las notas ligadas que no tienen bend ni vibrato propios (`extendBendArrowsOnTiedNotes`).
+  - Dos diferencias deliberadas, por recomendación del experto musical:
+    - Cada subida o bajada dura **como mucho `BEND_RAMP_CAP_SECONDS` 0,18 s** (dividido por la velocidad) y luego se mantiene. Así una nota larga no suena a sintetizador.
+    - Los valores se recortan a ±2 tonos.
+  - Error de alphaTab que se corrige: en un BendRelease Gradual/Fast, alphaTab toma `bendPoints[2]` como valor de soltar. Pero el "bend & release" de Guitar Pro trae 4 puntos (sube, mantiene, baja), así que ese punto sigue arriba. Se usa el **último** punto.
+  - API:
+    - `buildBendCurve(head, durationOf)`: curva de la cadena ligada, en las unidades de quien llama.
+    - `bendAutomation(curve, unitSeconds, speed)`: la curva en segundos.
+    - `centsAt`: altura en un instante dado.
+    - `applyBend(param, start, automation, offset)`: `setValueAtTime` + `linearRampToValueAtTime`, dentro de un `try`.
+- **Siempre `detune` (cents), nunca `playbackRate`.**
+  - Una nota sin curva no programa ninguna automatización: suena exactamente igual que antes.
+  - Cambiar la altura no añade ganancia, así que el limitador, el overdrive y el clip suave ven los mismos niveles. Lo comprueba `tests/bend-audio.spec.ts`: render offline, full = +200 cents, el pico no sube.
+  - El lowpass por cuerda se queda **fijo**: seguir la altura cambiaría el timbre ya ajustado.
+  - Las voces robadas o paradas se desechan, así que no hace falta `cancelScheduledValues`.
+- **La whammy (palanca) se ignora a propósito.** Está oculta en la notación, una acústica no tiene palanca, y alphaTab solo la toca cuando la nota no tiene bend propio.
+- **Ligaduras: se sostienen sin volver a pulsar** (decisión del usuario; antes cada nota ligada se volvía a pulsar).
+  - Al extraer las notas, `decorateTabNote` añade dos datos:
+    - A la cabeza de la cadena: `sustainQuarters`, toda la cadena en negras, y su `bend`.
+    - A cada continuación: `tie {offsetQuarters, totalQuarters, headBend}`.
+  - Las notas sin bend ni ligadura devuelven el mismo objeto de siempre.
+  - `planNoteSound` (lo usan `scheduleEventAudio` y `scheduleAuxiliaryTracks`, así que vale para el camino nuevo y para `legacyPlayback`) decide cada nota:
+    - Una continuación **no se pulsa** si su cabeza empezó dentro del tramo continuo actual. El tramo lo marcan `runStartQuarterRef` y `lastScheduledEndQuarterRef`: cualquier hueco (inicio, vuelta del bucle) empieza uno nuevo. El test se escribe como `!(… <= ε)` para que el `NaN` inicial también cuente como hueco.
+    - Si no, se pulsa con lo que queda de la cadena y con la curva ya adelantada (`offset`). Así no se oye "subir otra vez desde 0".
+    - Con bucle, el sostenido se recorta al final del bucle.
+  - Como los eventos son los beats en orden escrito, una ligadura siempre va entre eventos consecutivos. `stopLocalPlayback` reinicia el tramo.
+  - **Excepciones: la continuación SÍ se repulsa** cuando la cabeza ya no puede estar sonando. Las encontró la revisión final de `alphatab-guardian`; antes, en estos casos, el resto de la cadena se quedaba mudo.
+    - La cadena va más allá de `GUITAR_SAMPLE_MAX_SUSTAIN_SECONDS` (2,4 s). Es el mismo tope que el sostenido de `playPluckedNote`, y se alcanza con ligaduras largas a tempo lento o a baja velocidad.
+    - El limitador de 12 voces (`enforceGuitarSamplePolyphony`) robó la voz de la cabeza, cosa habitual en pasajes densos o multipista. `playPluckedNote` devuelve su voz, y `tieVoicesRef` ("pista|cuerda", con `p|` para la principal) guarda la que sostiene cada ligadura. La continuación solo se salta si esa voz sigue en `activeVoicesRef`. El bajo no tiene esta comprobación porque usa otro motor.
+    - La cabeza es una nota muerta: la continuación es una nota normal.
+  - **Efectos aceptados:**
+    - Una ligadura con palm mute suena como un solo golpe corto, que es lo que hace una guitarra real (antes, cada beat ligado volvía a dar un golpe).
+    - La compensación de acorde (`chordCompensation`, `GUITAR_STRING_GAINS`, `STRUM_OFFSETS`) cuenta solo las notas que se pulsan de verdad en ese evento. Un acorde de 3 con una continuación sostenida suena como uno de 2 (unos 1,8 dB más por nota): es lo que se ataca realmente.
+- **Bajo:** `playBassNote(…, palmMuted, bend?)` aplica la curva al `detune` de los dos osciladores.
+- **Riff-Hero (solo sonido, decisión del usuario):**
+  - `ChartNote.bend` y `ChartBandNote.bend` van en segundos de canción (`chainBend` en chart.ts, sobre la cadena ligada que ya se fusionaba).
+  - `ScheduledGuideNote.bend`, `ScheduledBandNote.bend` y `playNowFor` llevan la curva ya a la velocidad de la partida (`RiffSession.scheduledBend`). Si una nota se programa tarde, la curva arranca igual de adelantada. `scheduleGuideNote` también compensa su propio `start > at`.
+  - Las notas sin bend no llevan la clave `bend`, para que los tests que comparan objetos enteros no cambien.
+  - La puntuación, `matches` y la traducción de niveles **no cambian**: se juega por traste. El mástil del alumno nunca se dobla. La autopista sigue igual (etiqueta "B").
+- **Datos reales:** en `public/tabs`, solo la Canción de prueba (Master of Puppets) tiene bends: 29, todos en estilo Default.
+  - 10 cruzan ligaduras. Todos están en la pista de Kirk: c.15 tiene un bend & release ligado y c.27–29 tienen varios bends.
+  - Hay 17 beats con whammy, que se ignoran.
+- **Tests:**
+  - `tests/bend-curve.spec.ts` (Node): tipos y estilos, tope de 180 ms, Fast, Prebend, ligaduras, recorte, `applyBend`, el chart real y las notas programadas de `RiffSession`.
+  - `tests/bend-audio.spec.ts`: render offline.
+  - `tests/bend-playback.spec.ts`: página real, solo Kirk en bucle en c.15.
+    - **7 ataques por vuelta** (antes 9: hay 2 continuaciones ligadas dentro del compás).
+    - Curvas de detune que llegan a +200 y nunca pasan de 400.
+    - Busca los números de compás en **todos** los `.at-surface-svg`, porque la tablatura horizontal se parte en varios trozos.
+  - El usuario lo comprobó de oído en la sala de pruebas.
+
 ## Cursor y geometría
 
 - `TAB_LINE_SPACING = 12.45`: separación vertical (px) entre líneas de tablatura, usada para colocar las etiquetas de cuerdas (`STRING_LABELS_TOP_TO_BOTTOM`, solo en modo no-compacto). **Hipótesis**: este valor está pixel-ajustado al tamaño de fuente/zoom actual de AlphaTab; si cambia `display.padding`, `rhythmHeight` o el tamaño de fuente global, probablemente haya que re-ajustar esto. *(pendiente confirmar con el usuario)*
@@ -233,7 +292,7 @@ Esta versión de AlphaTab no sabe renderizar en solitario (`renderTracks` con un
 
 ### Volumen de la pista de batería +30% (2026-09-23)
 
-`DRUM_TRACK_VOLUME_BOOST = 1.3`, aplicado solo en `scheduleAuxiliaryTracks` (`playDrumClick(drumStartTime, volumeRef.current * DRUM_TRACK_VOLUME_BOOST, clickType)`) — no toca `scheduleMetronomeClicks`/la función local `playMetronomeClick` (el metrónomo de verdad, con su propio `metroVolumeRef` y su propio `*2`), son dos rutas completamente separadas aunque comparten el mismo sintetizador de `guitarAudioEngine.ts` y el mismo limitador dedicado.
+`DRUM_TRACK_VOLUME_BOOST = 1.3`, aplicado solo en `scheduleAuxiliaryTracks` (`playDrumClick(drumStartTime, volumeRef.current * DRUM_TRACK_VOLUME_BOOST, clickType)`) — no toca `scheduleMetronomeClicks`/la función local `playMetronomeClick` (el metrónomo de verdad, con su propio `metroVolumeRef` y su propio `*2`), son dos rutas completamente separadas. (Corregido 2026-11-02: esta nota decía que ambas comparten el sintetizador y el limitador de `guitarAudioEngine.ts`. No es así: la batería sí va por `playDrumClick` → `getMetronomeLimiter` en el AudioContext del motor, pero el metrónomo del reproductor es su propio click local, que usa `volumeRef` y sale por el bus de guitarra de `getAudioOutput`.)
 
 **Verificado offline (mismo patrón que `tests/metronome-volume-safety.spec.ts`, `OfflineAudioContext` + el DSP real copiado de `playMetronomeClick`)**, con un hallazgo que corrige la cifra teórica que llevaba documentada en este fichero desde antes: el comentario de `getMetronomeLimiter` (y el propio test) describen el pico de `kick` como "~0.58" resultado de sumar aritméticamente las 3 capas (0.28+0.20+0.10) al `volume` de referencia — eso es una cota teórica de peor caso, NO lo que realmente sale del render. Medido de verdad: `kick` a `volume=1.0` da un pico real de **~0.032** (no 0.58) porque las 3 capas (transitorio de clic, cuerpo de seno, ruido de graves) tienen envolventes y tiempos de pico distintos y casi nunca coinciden en la misma muestra. Con el boost del 30% aplicado sobre el rango real de `volumeRef` (0.8 por defecto, hasta 1.0 máximo): `kick` da picos de ~0.034 (por defecto) y ~0.043 (máximo) — un margen de 15-20x por debajo del umbral del limitador (-3dB ≈ 0.708), nada que ver con el "peligro de recorte" que sugeriría la cifra teórica. No se ha corregido el comentario de `getMetronomeLimiter` ni el test existente (siguen siendo válidos como cota de seguridad conservadora, solo que mucho más holgada de lo que decían) — se deja esta nota aquí para quien mida esto en el futuro y le extrañe la diferencia.
 
@@ -506,7 +565,19 @@ Cambiar a `left: 0` (abrir hacia la derecha, como el resto de desplegables del t
 - Botón CLEAN/OVERDRIVE en el toolbar (antes de "Seguir la tablatura"), mismo aspecto que `IconButton` (`data-active`), ancho fijo mínimo 104px para que el cambio de texto no mueva la barra.
 - `playPluckedNote` (todas las guitarras: principal y auxiliares; bajo y batería no) conecta la voz a `createOverdriveChain(context, getAudioOutput(context).input)` (cadena idéntica a la del mástil, construida una vez en el AudioContext del reproductor) en vez de a la salida. La voz entra SIN el slider de volumen (`level / volumeRef`, escalado a `OVERDRIVE_VOICE_LEVEL` para una nota normal de articulación 0.58) y el slider se aplica en `output` tras saturar, como en el mástil. Sin `allowOverdrive`, o en CLEAN, el camino es exactamente el de siempre.
 - Se lee en `guitarToneRef` al programar: cambiarlo tocando afecta a las notas siguientes.
-- No medido todavía: la sonoridad relativa CLEAN vs OVERDRIVE en el reproductor (en el mástil está calibrada en tests/guitar-overdrive.spec.ts; aquí la salida pasa además por el bus del reproductor, 0.85×1.35 + limitador).
+- Medido desde 2026-11-02 (ver "Tono clean y sonoridad"): sin compensación, el overdrive salía ~3 LU por debajo del clean, porque aquí las notas se cortan tras su duración y el sostenido largo de la saturación no llega a ocurrir. `TAB_OVERDRIVE_OUTPUT_TRIM = 1.25` (+2 dB) en `output` lo deja ≈ igual que el clean (mediana +0.2 LU), como en el mástil. Test: "tab player" en `tests/guitar-overdrive.spec.ts`.
+
+## Tono clean y sonoridad (2026-11-02)
+
+Revisión del sonido de guitarra en todo el sitio, con guitar-music-advisor, alphatab-guardian y una investigación de sonoridad (ISO 226, BS.1770/LUFS, WHO-ITU H.870). Detalle y cifras en el bloque "TONO DE GUITARRA" de `guitarAudioEngine.ts`.
+
+- Los samples Seagull son muy oscuros: las cuerdas graves son casi senos y en portátil/móvil se oyen menos que el registro agudo. Primera versión: `createCleanToneChain` con cuerpo +3 dB en 220 Hz, low shelf y un exciter (tanh) del registro grave. Al oído, los graves del clean sonaban SATURADOS, casi a overdrive. Decisión del usuario (2026-11-02): graves como vienen en los samples. Hoy la cadena es lineal: solo -1 dB en 1.7 kHz y un ajuste de nivel (`CLEAN_TRIM` 0.8, pico ≤ 0.82), más `guitarSampleTrim` (nivelado por sample, -0.15 dB por semitono por encima de MIDI 76). No volver a meter saturación en el clean.
+- En este reproductor: rama clean de `playPluckedNote` → `cleanToneChainRef` (una cadena por reproductor, creada perezosamente en SU AudioContext) → `getAudioOutput().input`. Es un nodo de bus compartido: NUNCA va en `GuitarSampleVoice.nodes`, porque `destroy()` lo desconectaría para todas las voces. `guitarSampleTrim` se multiplica en `stringTrim`, después del clamp. El metrónomo del reproductor no pasa por la cadena.
+- Sin tocar: los cortes por cuerda (`GUITAR_SAMPLE_CUTOFFS`) y su Q 0.55, bends, scheduler, mute/solo y `BASS_TRACK_VOLUME_MULTIPLIER`.
+- Limitador: sigue sin actuar a trackVolume 1. Picos medidos con la cadena: nota sola 0.63 en el peor caso (cuerda 1 sin su recorte 0.595), cuerda 6 0.39, acorde de 6 cuerdas 0.46. A trackVolume 2 queda en ~0.93 (`tests/guitar-track-volume-range.spec.ts`).
+- Mezcla: el bajo queda algo más cerca de la guitarra que antes (muteado -11.5 → -9.5 dB; sostenido -7.5 → -6.6 dB, cerca del borde del rango de -6 a -18 del test). No se ha retocado el bajo: es una decisión del usuario.
+- Trampa de Web Audio: en `lowpass`/`highpass` el `Q` está en dB. El Q 0.55 de `toneFilter` da un realce de ~+1.6 dB justo bajo cada corte. Se deja tal cual porque es el timbre ya ajustado, pero cualquier filtro NUEVO que deba ser plano usa Q -3.01.
+- Las sonoridades se comparan en LUFS con `tests/helpers/guitarTone.js` (medidor BS.1770 + réplicas exactas de las cadenas), nunca en pico ni en RMS plano.
 
 ## Historial
 

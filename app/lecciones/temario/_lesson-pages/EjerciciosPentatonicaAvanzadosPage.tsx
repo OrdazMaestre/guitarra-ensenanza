@@ -81,6 +81,7 @@ function FigureThreeDiagram() {
       guideDots={[5, 7].map((fret) => ({ fret }))}
       notes={notesForFigure(figureThree.startFret, figureThree.endFret)}
       startFret={figureThree.startFret}
+      tutorial={false}
     />
   );
 }

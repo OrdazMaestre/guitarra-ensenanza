@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import Link from 'next/link';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+import { PracticeTargetMarker, FretboardPracticeStyles } from '@/app/components/guitar/FretboardPractice';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting, type FretKeyEntry } from '@/app/lib/fretboardKeymap';
 import MidiInstrumentChrome from '../guitar/MidiInstrumentChrome';
 import { HandednessToggleButton, KeyboardLeftyNote } from '../guitar/HandednessToggleButton';
@@ -14,7 +16,7 @@ import {
   type StringNumber,
 } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
-import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
+import { InstrumentTutorial, TUNING_TOUR } from '@/app/components/guitar/ButtonTour';
 
 // Cuerda 1 = Mi agudo (arriba), cuerda 6 = Mi grave (abajo) -- misma convención y mismo orden
 // visual que ReducedFretboardDiagram.tsx, para que las dos mástiles de la página se lean igual.
@@ -91,6 +93,31 @@ const SOLVED_HOLD_MS = 1000;
 // Diapasón (Experto y Profesional): una pulsación cada 2s mientras se mantiene pulsado -- a
 // petición explícita del usuario.
 const DIAPASON_PLUCK_INTERVAL_MS = 2000;
+
+// "Truco del traste 5" (afinación relativa a oído): un tutorial guiado nota a nota, no un simple
+// recorrido de botones (por eso vive aquí y no en TUNING_TOUR/ButtonTour.tsx) -- cada paso OBLIGA a
+// pulsar las dos notas de la pareja, en orden, para avanzar (petición explícita del usuario),
+// reutilizando el marcador verde de "practicar ejercicio" (PracticeTargetMarker) para señalar cuál
+// tocar. La relación real en afinación estándar es traste 5 de una cuerda = la cuerda siguiente al
+// aire, EXCEPTO entre la cuerda 3 (G) y la 2 (B), donde es el traste 4 -- la excepción que todo
+// guitarrista tiene que aprender tarde o temprano (marcada aquí con `ojo: true`).
+interface RelativeTuningPair {
+  a: { string: StringNumber; fret: number };
+  b: { string: StringNumber; fret: number };
+  lines: string[];
+  ojo?: boolean;
+}
+const RELATIVE_TUNING_PAIRS: RelativeTuningPair[] = [
+  { a: { string: 6, fret: 5 }, b: { string: 5, fret: 0 }, lines: ['Traste 5, cuerda 6.', 'Suena igual que la cuerda 5 al aire.'] },
+  { a: { string: 5, fret: 5 }, b: { string: 4, fret: 0 }, lines: ['Traste 5, cuerda 5.', 'Suena igual que la cuerda 4 al aire.'] },
+  { a: { string: 4, fret: 5 }, b: { string: 3, fret: 0 }, lines: ['Traste 5, cuerda 4.', 'Suena igual que la cuerda 3 al aire.'] },
+  { a: { string: 3, fret: 4 }, b: { string: 2, fret: 0 }, lines: ['Traste 4, cuerda 3.', 'Suena igual que la cuerda 2 al aire.'], ojo: true },
+  { a: { string: 2, fret: 5 }, b: { string: 1, fret: 0 }, lines: ['Traste 5, cuerda 2.', 'Suena igual que la cuerda 1 al aire.'] },
+];
+// Tras cada pareja, el mensaje de "¡son la misma nota!" se ve este tiempo antes de pasar a la
+// siguiente (o, en la última, antes de mostrar el consejo final) -- sin botón "Siguiente": avanza
+// solo, igual que el resto del tutorial pide pulsar y no hacer clic.
+const RELATIVE_TUNING_CONFIRM_MS = 2200;
 
 function pickRandomString(): StringNumber {
   return STRINGS[Math.floor(Math.random() * STRINGS.length)];
@@ -215,6 +242,16 @@ export default function TuningBoard() {
   const [baselineAngles, setBaselineAngles] = useState<Record<StringNumber, number>>(zeroedRecord());
   const [introRunning, setIntroRunning] = useState(false);
   const [profesionalNamesHidden, setProfesionalNamesHidden] = useState(false);
+  // "Truco del traste 5" (ver RELATIVE_TUNING_PAIRS más arriba): relTuningOn indica que el
+  // tutorial guiado está en marcha, relTuningPair/relTuningNoteIndex cuál de las dos notas de la
+  // pareja actual toca pulsar ahora, relTuningConfirm que ambas ya sonaron y se muestra el mensaje
+  // "suenan igual" antes de pasar a la siguiente, y relTuningDone el consejo final tras completar
+  // las 5 parejas.
+  const [relTuningOn, setRelTuningOn] = useState(false);
+  const [relTuningPair, setRelTuningPair] = useState(0);
+  const [relTuningNoteIndex, setRelTuningNoteIndex] = useState<0 | 1>(0);
+  const [relTuningConfirm, setRelTuningConfirm] = useState(false);
+  const [relTuningDone, setRelTuningDone] = useState(false);
   // Diestro/zurdo -- mismo mecanismo que ReducedFretboardDiagram.tsx (AGENTS.md): invierte el
   // mástil SOLO en el eje X (la cuerda/eje Y nunca cambia de orden). `drawX` es la única función
   // que conoce la inversión -- toda coordenada X que se DIBUJA pasa por aquí, y el resto del
@@ -270,6 +307,19 @@ export default function TuningBoard() {
   useEffect(() => {
     introRunningRef.current = introRunning;
   }, [introRunning]);
+  // Mismo motivo que introRunningRef: registerRelativeTuningPress se llama también desde el
+  // handler de teclado, que vive en un useEffect con deps [kbMode, kbRange, lefty] y cerraría
+  // sobre valores obsoletos si leyera el estado directamente.
+  const relTuningOnRef = useRef(relTuningOn);
+  useEffect(() => { relTuningOnRef.current = relTuningOn; }, [relTuningOn]);
+  const relTuningPairRef = useRef(relTuningPair);
+  useEffect(() => { relTuningPairRef.current = relTuningPair; }, [relTuningPair]);
+  const relTuningNoteIndexRef = useRef(relTuningNoteIndex);
+  useEffect(() => { relTuningNoteIndexRef.current = relTuningNoteIndex; }, [relTuningNoteIndex]);
+  const relTuningTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (relTuningTimerRef.current !== null) window.clearTimeout(relTuningTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (typeof requestIdleCallback !== 'undefined') {
@@ -352,6 +402,7 @@ export default function TuningBoard() {
   // ya no significa nada.
   function startDifficulty(next: 'facil' | 'dificil' | 'experto') {
     roundTokenRef.current += 1; // invalida cualquier startProfessionalRound todavía en curso
+    cancelRelativeTuningGuide();
     setDifficulty(next);
     setElapsedSeconds(0);
     setSolved(false);
@@ -368,11 +419,75 @@ export default function TuningBoard() {
     setCents(fresh);
   }
 
+  // Empieza el "Truco del traste 5": vuelve la afinación estándar (sin desafinar) y suelta
+  // cualquier ronda de dificultad en curso -- la lección razona sobre posiciones, no tiene sentido
+  // a la vez que una cuerda está deliberadamente desafinada para un reto.
+  function startRelativeTuningGuide() {
+    roundTokenRef.current += 1; // invalida cualquier startProfessionalRound todavía en curso
+    if (relTuningTimerRef.current !== null) {
+      window.clearTimeout(relTuningTimerRef.current);
+      relTuningTimerRef.current = null;
+    }
+    setDifficulty(null);
+    setIntroRunning(false);
+    setSolved(false);
+    setCents(zeroedRecord());
+    setBaselineAngles(zeroedRecord());
+    setRelTuningDone(false);
+    setRelTuningPair(0);
+    setRelTuningNoteIndex(0);
+    setRelTuningConfirm(false);
+    setRelTuningOn(true);
+  }
+
+  function cancelRelativeTuningGuide() {
+    if (relTuningTimerRef.current !== null) {
+      window.clearTimeout(relTuningTimerRef.current);
+      relTuningTimerRef.current = null;
+    }
+    setRelTuningOn(false);
+    setRelTuningPair(0);
+    setRelTuningNoteIndex(0);
+    setRelTuningConfirm(false);
+  }
+
+  // Llamada exactamente donde el mástil ya decide que una nota SUENA (pulsación, arrastre a otra
+  // celda, o tecla) -- mismo punto que usaría registerNote del modo "practicar ejercicio" (ver
+  // AGENTS.md). Una pulsación que no es la esperada simplemente no hace nada (sigue sonando como
+  // siempre): esto es una lección, no un reto con fallo.
+  function registerRelativeTuningPress(string: StringNumber, fret: number) {
+    if (!relTuningOnRef.current) return;
+    const pair = RELATIVE_TUNING_PAIRS[relTuningPairRef.current];
+    if (!pair) return;
+    const target = relTuningNoteIndexRef.current === 0 ? pair.a : pair.b;
+    if (target.string !== string || target.fret !== fret) return;
+    if (relTuningNoteIndexRef.current === 0) {
+      setRelTuningNoteIndex(1);
+      return;
+    }
+    // Las dos notas de la pareja ya sonaron: muestra "suenan igual" y, pasado el tiempo, avanza
+    // sola a la siguiente pareja (o al consejo final si era la última) -- sin botón "Siguiente".
+    setRelTuningConfirm(true);
+    relTuningTimerRef.current = window.setTimeout(() => {
+      relTuningTimerRef.current = null;
+      setRelTuningConfirm(false);
+      const nextPair = relTuningPairRef.current + 1;
+      if (nextPair >= RELATIVE_TUNING_PAIRS.length) {
+        setRelTuningOn(false);
+        setRelTuningDone(true);
+      } else {
+        setRelTuningPair(nextPair);
+        setRelTuningNoteIndex(0);
+      }
+    }, RELATIVE_TUNING_CONFIRM_MS);
+  }
+
   // Empezar/reiniciar una ronda de Profesional: la secuencia de 4 fases descrita junto a las
   // constantes PROFESIONAL_*/PHASE*_MS más arriba. `introRunning` se pone a false al terminar la
   // fase 4, momento en el que el efecto del cronómetro (más arriba) por fin arranca el conteo.
   async function startProfessionalRound() {
     const myToken = ++roundTokenRef.current; // invalida cualquier ronda anterior (incl. otra Profesional en curso)
+    cancelRelativeTuningGuide();
     setDifficulty('profesional');
     setElapsedSeconds(0);
     setSolved(false);
@@ -505,6 +620,7 @@ export default function TuningBoard() {
       }
       const entry = activeMap[e.code];
       if (!entry || entry.fret > END_FRET) return;
+      registerRelativeTuningPress(entry.string as StringNumber, entry.fret);
       e.preventDefault();
       if (introRunningRef.current) return; // la secuencia automática de Profesional está "tocando" el mástil
       if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
@@ -569,6 +685,7 @@ export default function TuningBoard() {
     if (introRunning) return; // la secuencia automática de Profesional está "tocando" el mástil
     const cell = getCellAt(e);
     if (!cell) return;
+    registerRelativeTuningPress(cell.string, cell.fret);
     if (ptVoicesRef.current.size >= MAX_VOICES) return;
     const svg = svgRef.current;
     if (!svg) return;
@@ -592,6 +709,7 @@ export default function TuningBoard() {
     const cell = getCellAt(e);
     if (!cell) return;
     if (cell.string === cur.string && cell.fret === cur.fret) return;
+    registerRelativeTuningPress(cell.string, cell.fret);
     ptVoicesRef.current.set(e.pointerId, { ...cell, voiceId: -1 });
     syncPointerPositions();
     const midi = effectiveMidi(cell.string, cell.fret, centsRef.current[cell.string]);
@@ -611,7 +729,7 @@ export default function TuningBoard() {
 
   return (
     <div className="midi-instrument-host">
-      <InstrumentTutorial steps={FRETBOARD_TOUR} />
+      <InstrumentTutorial steps={TUNING_TOUR} />
       <div className="tuning-game-controls" role="group" aria-label="Dificultad del juego de afinar a oído">
         {DIFFICULTIES.map(d => (
           <button
@@ -619,9 +737,9 @@ export default function TuningBoard() {
             type="button"
             className={`tuning-difficulty-button${difficulty === d ? ' is-active' : ''}`}
             aria-pressed={difficulty === d}
-            disabled={introRunning}
+            disabled={introRunning || relTuningOn}
             onClick={() => {
-              if (introRunning) return;
+              if (introRunning || relTuningOn) return;
               if (d === 'profesional') startProfessionalRound();
               else startDifficulty(d);
             }}
@@ -643,6 +761,51 @@ export default function TuningBoard() {
         <p className="tuning-difficulty-description">
           <strong>{DIFFICULTY_LABELS[difficulty]}:</strong> {DIFFICULTY_DESCRIPTIONS[difficulty]}
         </p>
+      )}
+
+      {!relTuningOn && (
+        <button type="button" className="tuning-rel-start-button" onClick={startRelativeTuningGuide}>
+          🪄 Truco del traste 5: ¡pulsa para aprenderlo!
+        </button>
+      )}
+
+      {relTuningOn && (() => {
+        const pair = RELATIVE_TUNING_PAIRS[relTuningPair];
+        return (
+          <div className="tuning-rel-guide" role="status" aria-live="polite">
+            <p className="tuning-rel-guide-step">Truco del traste 5 — Paso {relTuningPair + 1} de {RELATIVE_TUNING_PAIRS.length}</p>
+            {relTuningConfirm ? (
+              <>
+                {pair.ojo && <p className="tuning-rel-guide-ojo">¡Ojo! Aquí cambia.</p>}
+                <p className="tuning-rel-guide-line"><strong>¡Suenan igual!</strong></p>
+                {pair.lines.map(line => <p className="tuning-rel-guide-line" key={line}>{line}</p>)}
+              </>
+            ) : relTuningNoteIndex === 0 ? (
+              <>
+                {pair.ojo && <p className="tuning-rel-guide-ojo">¡Ojo! Aquí cambia.</p>}
+                <p className="tuning-rel-guide-line">Pulsa el traste {pair.a.fret} de la cuerda {pair.a.string}.</p>
+              </>
+            ) : (
+              <p className="tuning-rel-guide-line">Ahora pulsa la cuerda {pair.b.string} al aire.</p>
+            )}
+            <button type="button" className="tuning-rel-cancel-button" onClick={cancelRelativeTuningGuide}>
+              Cancelar
+            </button>
+          </div>
+        );
+      })()}
+
+      {relTuningDone && (
+        <div className="tuning-rel-tip" role="status">
+          <p className="tuning-rel-guide-line">Empieza a jugar en Fácil.</p>
+          <p className="tuning-rel-guide-line">Sube de dificultad poco a poco.</p>
+          <p className="tuning-rel-guide-line">
+            Repasa la <Link href="/lecciones/temario/afinacion">página de Afinación</Link> si tienes dudas.
+          </p>
+          <button type="button" className="tuning-rel-cancel-button" onClick={() => setRelTuningDone(false)}>
+            Entendido
+          </button>
+        </div>
       )}
 
       {showDiapason && (
@@ -759,6 +922,14 @@ export default function TuningBoard() {
           );
         })}
 
+        {relTuningOn && !relTuningConfirm && (
+          <PracticeTargetMarker
+            getX={fretX}
+            getY={(string) => stringY(STRINGS.indexOf(string as StringNumber))}
+            target={relTuningNoteIndex === 0 ? RELATIVE_TUNING_PAIRS[relTuningPair].a : RELATIVE_TUNING_PAIRS[relTuningPair].b}
+          />
+        )}
+
         {(kbMode ? kbPositions : pointerPositions).map(({ string, fret }) => {
           const markerX = fretX(fret);
           const y = stringY(STRINGS.indexOf(string));
@@ -779,6 +950,8 @@ export default function TuningBoard() {
           );
         })}
       </svg>
+
+      <FretboardPracticeStyles />
 
       <MidiInstrumentChrome
         belowNote={kbMode && lefty && <KeyboardLeftyNote />}
@@ -901,6 +1074,68 @@ export function TuningBoardStyles() {
       .tuning-diapason-button.is-sounding {
         background: #f59e0b;
         color: #ffffff;
+      }
+
+      .tuning-rel-start-button {
+        background: #ffffff;
+        border: 1.5px solid #047857;
+        border-radius: 999px;
+        color: #047857;
+        cursor: pointer;
+        display: inline-block;
+        font-size: 13px;
+        font-weight: 800;
+        margin-bottom: 14px;
+        padding: 8px 16px;
+      }
+
+      .tuning-rel-guide,
+      .tuning-rel-tip {
+        background: #ecfdf5;
+        border: 1.5px solid #047857;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        padding: 12px 16px;
+      }
+
+      .tuning-rel-guide-step {
+        color: #047857;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        margin: 0 0 8px;
+        text-transform: uppercase;
+      }
+
+      .tuning-rel-guide-line {
+        color: #080808;
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 4px;
+      }
+
+      .tuning-rel-guide-line a {
+        color: #047857;
+      }
+
+      .tuning-rel-guide-ojo {
+        color: #92400e;
+        font-size: 13px;
+        font-weight: 900;
+        margin: 0 0 6px;
+      }
+
+      .tuning-rel-cancel-button {
+        background: transparent;
+        border: 1.5px solid #047857;
+        border-radius: 999px;
+        color: #047857;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 800;
+        margin-top: 8px;
+        padding: 5px 12px;
       }
 
       .tuning-board-svg {

@@ -203,6 +203,7 @@ function FigureOneDiagram() {
       guideDots={[3].map((fret) => ({ fret }))}
       notes={notesForFigure(figureOne.startFret, figureOne.endFret, figureOne.omittedDiagramNotes)}
       startFret={figureOne.startFret}
+      tutorial={false}
     />
   );
 }

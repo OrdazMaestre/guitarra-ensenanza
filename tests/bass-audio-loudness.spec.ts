@@ -15,6 +15,7 @@ import { test, expect } from '@playwright/test';
 //  (c) nothing clips, including the worst case of the bass's whole 4-voice
 //      polyphony cap (BASS_MAX_VOICES) firing at once at maximum volume.
 test('synth bass voice is audible, clipping-free, and comparable in level to the guitar', async ({ page }) => {
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
   await page.goto('/lecciones/temario/notacion-musical');
 
   const result = await page.evaluate(async () => {
@@ -187,7 +188,7 @@ test('synth bass voice is audible, clipping-free, and comparable in level to the
       const currentVolume = 0.8; // DEFAULT_VOLUME in AlphaTabPlayer.tsx
       const articulationLevel = palmMuted ? 0.34 : 0.58;
       const targetLevel = currentVolume * articulationLevel; // stringBalance=1, chordCompensation=1 (single note)
-      const level = Math.min(0.62 * currentVolume, Math.max(0.028 * currentVolume, targetLevel));
+      const level = Math.min(0.62 * currentVolume, Math.max(0.028 * currentVolume, targetLevel)) * window.__guitarTone.guitarSampleTrim(sample.file, midi);
       const release = palmMuted ? 0.055 : 0.2;
       const sustainDuration = palmMuted ? Math.min(0.16, 0.3) : Math.min(2.4, Math.max(0.18, 0.3));
       // stringArrayIndex/GUITAR_SAMPLE_CUTOFFS aren't the point of this
@@ -212,7 +213,8 @@ test('synth bass voice is audible, clipping-free, and comparable in level to the
 
       source.connect(toneFilter);
       toneFilter.connect(voiceGain);
-      voiceGain.connect(ctx.destination);
+      // Clean tone chain (createCleanToneChain), as in the real tab player.
+      voiceGain.connect(window.__guitarTone.createCleanToneChain(ctx, ctx.destination).input);
       source.start(startTime);
 
       const buf = await ctx.startRendering();
@@ -291,6 +293,7 @@ test('synth bass voice is audible, clipping-free, and comparable in level to the
   // not buried into inaudibility (no more than -18dB), not "matched" like the
   // original 1:1 balance this replaced. See AlphaTabPlayer.NOTES.md "Bajo
   // sintetizado" for the measured before/after figures.
+  console.log('bass vs guitar', result.mutedDb, result.sustainedDb);
   expect(result.mutedDb).toBeLessThan(-6);
   expect(result.mutedDb).toBeGreaterThan(-18);
   expect(result.sustainedDb).toBeLessThan(-6);

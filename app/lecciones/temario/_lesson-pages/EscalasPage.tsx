@@ -26,7 +26,7 @@ export default function EscalasPage({ previous, next, quizHref }: LessonPageProp
           <header className="section-header">
             <p className="lesson-kicker">Do Mayor</p>
           </header>
-          <MiniKeyboard className="scale-pattern-image" showEnharmonics showScaleArrows />
+          <MiniKeyboard className="scale-pattern-image" showEnharmonics showScaleArrows tutorial={false} />
           <div className="pattern-box">
             <p><strong>Do Mayor: C, D, E, F, G, A, B.</strong></p>
             <p><strong>La Menor: A, B, C, D, E, F, G.</strong></p>

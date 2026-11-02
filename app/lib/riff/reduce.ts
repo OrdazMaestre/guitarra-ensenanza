@@ -278,6 +278,7 @@ export interface PlaceWeights {
   leap: number; // por (traste fuera de la caja)²: los saltos largos dentro de la frase, carísimos
   zone: number; // por traste de distancia a la zona de su altura (graves izquierda, agudas derecha)
   register: number; // por semitono de distancia a la altura que le toca en el mapa de registro
+  order?: number; // por dos notas seguidas en cuerdas distintas con la más aguda en la cuerda más grave
 }
 
 export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 0.2, tab: 1.5, high: 0.1, open: 1, pattern: 3, leap: 0, zone: 0, register: 0 };
@@ -293,7 +294,7 @@ export const PLACE_WEIGHTS: PlaceWeights = { fret: 1, string: 1, box: 3, hurry: 
 // `tab` 3 (2026-10-27): con la fidelidad bien aplicada (ver placePhraseMulti), 1,5 dejaba transportes
 // innecesarios; con 3, las notas cuya posición real cabe en el nivel salen idénticas a la tab en el
 // 98,8-99,7 % (James y Kirk, Medio y Avanzado cuerdas). Con 5 casi no cambia.
-export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box: 2, leap: 1, zone: 0.7, pattern: 8, tab: 3, register: 1.5 };
+export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box: 2, leap: 1, zone: 0.7, pattern: 8, tab: 3, register: 1.5, order: 6 };
 // Riffs compartidos con la guitarra que manda (ver `followPins`): ir a otro sitio cuesta esto por
 // nota, mucho más que cualquier otro término.
 const PIN_COST = 30;
@@ -323,7 +324,12 @@ function moveCost(prev: LanePosition, prevHand: number | null, place: LanePositi
   const hurry = Math.min(3, Math.max(0.5, weights.hurry / Math.max(dt, 1e-3)));
   const handJump = place.fret === 0 || prevHand === null ? 0 : Math.abs(place.fret - prevHand);
   const out = Math.max(0, handJump - weights.box);
-  return (weights.fret * out + weights.leap * out * out + weights.string * Math.abs(place.string - prev.string)) * hurry;
+  // ORDEN VERTICAL (kids-ux-advisor, 2026-11-02): la nota más aguda, en la cuerda más aguda (carril de
+  // arriba), para que lo que se ve siga lo que se oye. Las tabs reales lo cumplen al 100 %; el juego no
+  // siempre (James en Medio cuerdas, 84 %; Carol of the Bells en Difícil, 65 %).
+  const inverted = weights.order && place.string !== prev.string && place.pitch !== prev.pitch
+    && (place.pitch > prev.pitch) !== (place.string < prev.string) ? weights.order : 0;
+  return (weights.fret * out + weights.leap * out * out + weights.string * Math.abs(place.string - prev.string)) * hurry + inverted;
 }
 
 // Camino de menor coste (Viterbi). El estado es (posición, traste de la mano): una cuerda al aire
@@ -410,6 +416,65 @@ const OCTAVE_SHIFT_COST = 1;
 const STRING_TRANSFER_COST = 1.5;
 const SEMITONE_SHIFT_COST = 3;
 const CONTOUR_COST = 6;
+// Trastes que una nota puede pasarse del máximo de su cuerda y aun así quedarse en ella, bajada (ver
+// "posición de partida" en placePhraseMulti).
+const MAX_CLAMP_FRETS = 3;
+
+// PASAJES RÁPIDOS TOCABLES (petición del usuario, 2026-11-02, al quitar el límite de 0,1 s del modo
+// cuerdas): en cada tiempo de negra cuyas notas van a menos de 0,1 s, todas caben en una caja de 4
+// trastes (un dedo por traste; las cuerdas al aire, si la caja empieza en el 0 o el 1), salvo como mucho
+// UNA posición fuera (la típica cuerda al aire en un punteo, aunque se repita). La tab real lo cumple
+// casi siempre (Death 151/154 tiempos, Vektor 376/380); lo que no, se paga caro al elegir candidato.
+const FAST_NOTE_SECONDS = 0.1;
+const HAND_BOX_FRETS = 4;
+const UNPLAYABLE_COST = 40;
+export function outsideHandBox(positions: Array<{ string: number; fret: number }>): number {
+  const distinct = [...new Map(positions.map((p) => [`${p.string}/${p.fret}`, p])).values()];
+  let best = Infinity;
+  for (let from = 0; from <= 24; from++) {
+    const out = distinct.filter((p) => !(p.fret >= from && p.fret < from + HAND_BOX_FRETS) && !(p.fret === 0 && from <= 1)).length;
+    best = Math.min(best, out);
+  }
+  return best;
+}
+function unplayableBeats(phrase: Onset[], path: LanePosition[]): number {
+  let count = 0;
+  for (let i = 0; i < phrase.length;) {
+    const beat = Math.floor(phrase[i].pos + 1e-6);
+    let end = i + 1;
+    while (end < phrase.length && Math.floor(phrase[end].pos + 1e-6) === beat) end++;
+    let fast = end - i >= 3;
+    for (let k = i + 1; fast && k < end; k++) if (phrase[k].t - phrase[k - 1].t >= FAST_NOTE_SECONDS - 1e-6) fast = false;
+    if (fast && outsideHandBox(path.slice(i, end)) > 1) count++;
+    i = end;
+  }
+  return count;
+}
+
+// NO DAR LA VUELTA A LOS RIFFS (petición del usuario, 2026-11-02; regla revisada con guitar-music-advisor
+// y kids-ux-advisor): en el estribillo de Death - Crystal Mountain (4/10 5/7 5/0 5/7, la línea Do-Si sobre
+// el Mi y la La al aire), Medio y Avanzado cuerdas bajaban SOLO el Do de octava (6/8) y quedaba por
+// debajo del Mi: otro riff, y lo que el niño ve ya no sigue lo que oye. Cada intervalo de la frase cuyo
+// SENTIDO cambia respecto a la tab cuesta: invertir (sube <-> baja) 16 si alguno de los dos mide 3
+// semitonos o más (el agente proponía 8; con 16 el orden vertical de Kirk en Medio sube del 78 al 92 %
+// sin empeorar nada, y más no gana), 4 si los dos son pasos pequeños; aplanar (en la tab sube o baja y
+// aquí queda igual) 4. Igual en la tab y distinto aquí no cuenta (ya lo cubre SAME_PITCH_MOVE_COST). La tab, los
+// transportes y el contorno no invierten nada: solo pagan los candidatos que mueven unas notas sí y
+// otras no. Así gana el riff entero una cuerda más abajo (Medio: 5/10 6/7 6/0 6/7) o la tab exacta.
+const CONTOUR_FLIP_COST = 16;
+const CONTOUR_STEP_FLIP_COST = 4;
+const CONTOUR_FLATTEN_COST = 4;
+function contourFlipCost(real: number[], game: number[]): number {
+  let cost = 0;
+  for (let k = 1; k < real.length; k++) {
+    const r = real[k] - real[k - 1];
+    const g = game[k] - game[k - 1];
+    if (r === 0) continue;
+    if (g === 0) cost += CONTOUR_FLATTEN_COST;
+    else if (Math.sign(g) !== Math.sign(r)) cost += Math.abs(r) >= 3 || Math.abs(g) >= 3 ? CONTOUR_FLIP_COST : CONTOUR_STEP_FLIP_COST;
+  }
+  return cost;
+}
 
 function placePhraseMulti(
   phrase: Onset[],
@@ -423,7 +488,6 @@ function placePhraseMulti(
   // Ventana de trastes [de, a] de cada grupo (pasaje rápido aislado en una cuerda); si no, todos.
   groupFrets: Array<[number, number]> = [],
 ): LanePosition[] {
-  const pitches = phrase.map((onset) => onset.lead.midi);
   const maxFretOf = new Map<number, number>();
   for (const p of layout.positions) maxFretOf.set(p.string, Math.max(maxFretOf.get(p.string) ?? 0, p.fret));
   const minOf = (g: number) => groupFrets[g]?.[0] ?? 0;
@@ -432,6 +496,30 @@ function placePhraseMulti(
 
   // Cuerdas que cada grupo de compás puede llegar a usar (en alguna de sus opciones).
   const reachable = groupOptions.map((options) => new Set(options.flat()));
+
+  // POSICIÓN DE PARTIDA de cada nota: la de la tab, salvo las que se pasan POR POCO (1 a
+  // MAX_CLAMP_FRETS trastes) del máximo de su cuerda, que se quedan EN SU CUERDA y bajan (petición del
+  // usuario, 2026-11-02: Death - Lack Of Comprehension, riff principal, pedal 6/8 con 5/12 encima; la
+  // cuerda 5 llega al 11 y la 5/12 acababa en 5/0, por debajo del pedal). Por frase y por cuerda bajan
+  // JUNTAS (por compás, una misma nota repetida podía bajar distinto en dos compases seguidos), lo justo para que la más alta quede en el máximo, y conservan sus distancias (5/12 y 5/14
+  // -> 5/9 y 5/11). Cambia la altura un poco, pero no el dibujo. Todos los candidatos y la fidelidad a la
+  // tab parten de aquí, como si la tab dijera eso.
+  const clampShift = new Map<string, number>();
+  phrase.forEach((onset, k) => {
+    const { string, fret } = onset.lead;
+    const cap = maxFretOf.get(string);
+    if (cap === undefined || !reachable[groupOf[k]].has(string) || fret <= cap || fret > cap + MAX_CLAMP_FRETS) return;
+    const key = `${string}`;
+    clampShift.set(key, Math.max(clampShift.get(key) ?? 0, fret - cap));
+  });
+  const start = phrase.map((onset, k) => {
+    const { string, fret } = onset.lead;
+    const cap = maxFretOf.get(string);
+    const shift = clampShift.get(`${string}`);
+    const clamped = shift !== undefined && cap !== undefined && reachable[groupOf[k]].has(string) && fret > cap && fret <= cap + MAX_CLAMP_FRETS;
+    return { string, fret: clamped ? fret - shift : fret };
+  });
+  const pitches = start.map((p) => OPEN_MIDI[p.string] + p.fret);
   let best: { path: LanePosition[]; cost: number } | null = null;
   const tryCombo = (combo: number[][]) => {
     const stringsOf = phrase.map((_, k) => combo[groupOf[k]]);
@@ -442,8 +530,8 @@ function placePhraseMulti(
     // transporte la frase o la mueva a otras cuerdas sin necesidad paga `tab` por cada nota que se
     // aparta. (Antes solo pagaban los candidatos que conservaban la forma en la combinación probada,
     // y el resto se libraba entero: James salía 6/0 donde la tab dice 6/2, o el compás 33 en la Re.)
-    const fixedReal = phrase.map((onset, k) => (reachable[groupOf[k]].has(onset.lead.string) && onset.lead.fret <= maxFretOf.get(onset.lead.string)! && onset.lead.fret >= minOf(groupOf[k]) && onset.lead.fret <= maxOf(groupOf[k])
-      ? { string: onset.lead.string, fret: onset.lead.fret }
+    const fixedReal = start.map((p, k) => (reachable[groupOf[k]].has(p.string) && p.fret <= maxFretOf.get(p.string)! && p.fret >= minOf(groupOf[k]) && p.fret <= maxOf(groupOf[k])
+      ? { string: p.string, fret: p.fret }
       : undefined));
     const availableOf = combo.map((strings, g) => new Set(pitchesOn(strings, minOf(g), maxOf(g))));
     const fits = (k: number, pitch: number) => availableOf[groupOf[k]].has(pitch);
@@ -499,6 +587,34 @@ function placePhraseMulti(
       const octaveMoved = out.map((q, k) => q !== pitches[k]);
       if (ok && folded > 0) candidates.push({ pitches: out, extra: OCTAVE_SHIFT_COST * folded, shift: 0, octaveMoved });
       else if (ok && !shifts.has(0)) candidates.push({ pitches: out, extra: 0, shift: 0, octaveMoved });
+      // ...y la misma idea por CÉLULAS rápidas (pasajes tocables): en un tiempo de negra rápido donde
+      // una nota ha cambiado de octava, cambian con ella las demás notas pisadas de ese tiempo (si
+      // caben); las cuerdas al aire, como un pedal, se quedan. Vektor c43: 5/13 5/11 sobre 6/0 -> 6/6 6/4
+      // sobre 6/0, en vez de 6/6 junto a 5/11.
+      if (ok && folded > 0) {
+        const cell = [...out];
+        let moved = folded;
+        for (let i = 0; i < phrase.length;) {
+          const beat = Math.floor(phrase[i].pos + 1e-6);
+          let end = i + 1;
+          while (end < phrase.length && Math.floor(phrase[end].pos + 1e-6) === beat) end++;
+          let fast = end - i >= 3;
+          for (let k = i + 1; fast && k < end; k++) if (phrase[k].t - phrase[k - 1].t >= FAST_NOTE_SECONDS - 1e-6) fast = false;
+          const shifted = Array.from({ length: end - i }, (_, j) => i + j).find((k) => out[k] !== pitches[k]);
+          if (fast && shifted !== undefined) {
+            const delta = out[shifted] - pitches[shifted];
+            for (let k = i; k < end; k++) {
+              if (cell[k] !== pitches[k] || phrase[k].lead.fret === 0) continue;
+              if (fits(k, pitches[k] + delta)) {
+                cell[k] = pitches[k] + delta;
+                moved++;
+              }
+            }
+          }
+          i = end;
+        }
+        if (moved > folded) candidates.push({ pitches: cell, extra: OCTAVE_SHIFT_COST * moved, shift: 0, octaveMoved: cell.map((q, k) => q !== pitches[k]) });
+      }
     }
     if (candidates.length === 0) {
       // Contorno sobre las alturas de cada tramo de compases seguidos con las MISMAS cuerdas (si
@@ -525,12 +641,25 @@ function placePhraseMulti(
           if (seg[k] !== seg[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
             laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k] + Math.sign(seg[k] - seg[k - 1])));
           }
+          // La misma altura justo repetida, en el mismo sitio (para mantener pulsado): el ajuste de arriba
+          // es por aparición y podía mover solo una de las dos (Kirk, con la ventana de 5 trastes).
+          else if (seg[k] === seg[k - 1]) laneSeq[k] = laneSeq[k - 1];
         }
         const first = idx[0];
         if (first > 0 && pitches[first] === pitches[first - 1] && out[first - 1] !== undefined) {
           const anchor = lanePitches.indexOf(out[first - 1]);
           const offset = anchor - laneSeq[0];
           if (anchor >= 0 && laneSeq.every((lane) => lane + offset >= 0 && lane + offset < lanePitches.length)) laneSeq = laneSeq.map((lane) => lane + offset);
+          // Si el tramo entero no cabe desplazado, al menos esa altura se queda donde estaba; y si el tramo
+          // nuevo ni la tiene (un pasaje rápido traspuesto, con su ventana), es la nota repetida del tramo
+          // ANTERIOR la que se pone donde empieza el nuevo, si allí cabe (Kirk c18 -> c19 en Medio cuerdas).
+          else if (anchor >= 0) laneSeq = laneSeq.map((lane, j) => (seg[j] === seg[0] ? anchor : lane));
+          else {
+            const startPitch = lanePitches[laneSeq[0]];
+            for (let k = first - 1; k >= 0 && pitches[k] === pitches[first] && out[k] !== undefined; k--) {
+              if (pitchesOn(combo[groupOf[k]], minOf(groupOf[k]), maxOf(groupOf[k])).includes(startPitch)) out[k] = startPitch;
+            }
+          }
         }
         idx.forEach((k, j) => { out[k] = lanePitches[laneSeq[j]]; });
       }
@@ -539,19 +668,25 @@ function placePhraseMulti(
     for (const candidate of candidates) {
       // Si no, la posición real TRASLADADA: la cuerda permitida que, con este desplazamiento (y
       // alguna octava), conserva la forma de la tab (mismo traste, o ±12).
-      const realOf = (onset: Onset, k: number) => {
-        if (fixedReal[k]) return fixedReal[k];
+      const translated = (k: number) => {
         if (candidate.shift === null) return undefined;
         for (const string of stringsOf[k]) {
-          const rest = candidate.shift - (OPEN_MIDI[string] - OPEN_MIDI[onset.lead.string]);
-          const fret = onset.lead.fret + rest;
+          const rest = candidate.shift - (OPEN_MIDI[string] - OPEN_MIDI[start[k].string]);
+          const fret = start[k].fret + rest;
           if (rest % 12 === 0 && fret >= 0 && fret <= maxFretOf.get(string)!) return { string, fret };
         }
         return undefined;
       };
-      const items: PlaceItem[] = phrase.map((onset, k) => ({ pitch: candidate.pitches[k], t: onset.t, real: realOf(onset, k), zoneFret: zoneOf(onset.lead.midi), registerPitch: candidate.octaveMoved?.[k] ? undefined : registerOf?.(onset.lead.midi) }));
+      const realOf = (_onset: Onset, k: number) => fixedReal[k] ?? translated(k);
+      // La zona (graves a la izquierda, agudas a la derecha) solo orienta las notas que hay que MOVER: una
+      // que cabe tal cual en la tab ya tiene su sitio (si no, un pedal grave en el 8 -- Death, 6/8 -- pagaba
+      // zona en cada golpe y salía más barato transportar todo el compás).
+      const items: PlaceItem[] = phrase.map((onset, k) => ({ pitch: candidate.pitches[k], t: onset.t, real: realOf(onset, k), zoneFret: fixedReal[k] ? undefined : zoneOf(onset.lead.midi), registerPitch: candidate.octaveMoved?.[k] ? undefined : registerOf?.(onset.lead.midi) }));
       const placed = placeSequence(items, layout.positions, LEVEL_WEIGHTS, unary, (k, place) => sets[k].has(place.string) && place.fret >= minOf(groupOf[k]) && place.fret <= maxOf(groupOf[k]));
-      if (placed && (!best || placed.cost + candidate.extra < best.cost)) best = { path: placed.path, cost: placed.cost + candidate.extra };
+      const cost = placed
+        ? placed.cost + candidate.extra + UNPLAYABLE_COST * unplayableBeats(phrase, placed.path) + contourFlipCost(pitches, placed.path.map((p) => p.pitch))
+        : Infinity;
+      if (placed && (!best || cost < best.cost)) best = { path: placed.path, cost };
     }
   };
   // Todas las combinaciones de opciones de los grupos (≤ 2-3 compases por frase).
@@ -705,7 +840,8 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
     }
   }
   const repeated = [...occurrences.values()].filter((starts) => starts.length >= 2);
-  const fitsAsTabbed = kept.map((onset) => profile.strings.includes(onset.lead.string) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret));
+  // (También las que se pasan por poco del máximo de su cuerda: bajan en ella, ver MAX_CLAMP_FRETS.)
+  const fitsAsTabbed = kept.map((onset) => profile.strings.includes(onset.lead.string) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret) + MAX_CLAMP_FRETS);
   const placeKey = (place: LanePosition) => `${place.string}/${place.fret}`;
   let placed = pass();
 
@@ -749,8 +885,10 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
     // agudo, en la Sol; el barrido y el 21, en la Re).
     const windowOn = (string: number) => {
       const cap = capOf.get(string)!;
-      const lowest = Math.ceil(cap / 2);
-      const size = Math.min(cap - lowest + 1, Math.max(3, distinct));
+      const lowest = profile.rightHalfFrom?.[string] ?? Math.ceil(cap / 2);
+      // Como mucho media cuerda (la figura sigue compacta) y lo que cubre una mano en un pasaje rápido
+      // tocable: su caja de 4 trastes + 1 (ver unplayableBeats); `rightHalfFrom` solo deja empezar antes.
+      const size = Math.min(cap - Math.ceil(cap / 2) + 1, cap - lowest + 1, HAND_BOX_FRETS + 1, Math.max(3, distinct));
       const center = Number.isFinite(target) ? target - OPEN_MIDI[string] : cap;
       const half = (size - 1) / 2;
       const miss = Math.abs(center - Math.min(cap - half, Math.max(lowest + half, center)));
@@ -909,8 +1047,31 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   }
 
   let prevFret = profile.minFret;
-  const notes: ChartNote[] = kept.map((onset, k) => {
-    const next = kept[k + 1];
+  // Red de seguridad (pasajes rápidos tocables, ver unplayableBeats): si, ya colocado todo, algún
+  // tiempo rápido sigue sin caber en la mano (solo pasa con el CONTORNO, cuando ninguna transposición
+  // cabe), ese tiempo se aligera a corcheas -- como hacía el límite de 0,1 s, pero solo ahí. Sus notas
+  // siguen sonando con la canción (las anteriores son sus dueñas).
+  const dropped = new Set<number>();
+  if (multiPlaces) {
+    for (let i = 0; i < kept.length;) {
+      const beatIndex = Math.floor(kept[i].pos + 1e-6);
+      let end = i + 1;
+      while (end < kept.length && Math.floor(kept[end].pos + 1e-6) === beatIndex) end++;
+      let fast = end - i >= 3;
+      for (let k = i + 1; fast && k < end; k++) if (kept[k].t - kept[k - 1].t >= FAST_NOTE_SECONDS - 1e-6) fast = false;
+      if (fast && outsideHandBox(multiPlaces.slice(i, end)) > 1) {
+        for (let k = i; k < end; k++) {
+          const frac = kept[k].pos - beatIndex;
+          if (Math.min(Math.abs(frac), Math.abs(frac - 0.5)) > 0.05) dropped.add(k);
+        }
+      }
+      i = end;
+    }
+  }
+  const order = kept.map((_, k) => k).filter((k) => !dropped.has(k));
+  const notes: ChartNote[] = order.map((k, j) => {
+    const onset = kept[k];
+    const next = kept[order[j + 1]];
     let place: LanePosition;
     if (multiPlaces) {
       place = multiPlaces[k];
@@ -928,7 +1089,7 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     const dur = Math.min(onset.lead.dur, room);
     const until = next ? next.t : Number.POSITIVE_INFINITY;
     return {
-      id: k,
+      id: j,
       t: onset.t,
       dur: dur >= beat * 0.5 ? dur : 0,
       string: place.string,

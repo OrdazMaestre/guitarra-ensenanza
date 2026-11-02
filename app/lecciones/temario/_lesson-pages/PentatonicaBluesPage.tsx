@@ -15,7 +15,6 @@ import { NoteMarksOverlay, PaletteToggleButton } from '../../../components/guita
 import { HandednessToggleButton, KeyboardLeftyNote } from '../../../components/guitar/HandednessToggleButton';
 import { useNoteMarks } from '../../../lib/useNoteMarks';
 import { KeyboardToggleLabel } from '@/app/components/guitar/InstrumentIcons';
-import { FRETBOARD_TOUR, InstrumentTutorial } from '@/app/components/guitar/ButtonTour';
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const stringTunings = [
@@ -408,7 +407,6 @@ function FretboardMap({
 
   return (
     <div className="midi-instrument-host">
-      <InstrumentTutorial steps={FRETBOARD_TOUR} />
     <figure className="blues-map-wrap" ref={scrollRef}>
       <svg
         ref={svgRef}

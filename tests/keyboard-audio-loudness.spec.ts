@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test';
 // during sustain (most of a held keyboard note's duration). Also checks the
 // full extended grave+agudo pitch range (B3-A6) never clips.
 test('keyboard oscillator and guitar sample are perceptually similar in loudness', async ({ page }) => {
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
   await page.goto('/lecciones/temario/notacion-musical');
 
   const result = await page.evaluate(async () => {
@@ -38,27 +39,10 @@ test('keyboard oscillator and guitar sample are perceptually similar in loudness
       return buf.getChannelData(0);
     }
 
-    async function renderSample(midi: number) {
-      const resp = await fetch('/samples/seagull-acoustic/manifest.json');
-      const manifest = await resp.json();
-      const samples = manifest.samples as { file: string; rootKey: number; keyRange: { low: number; high: number }; pitchCorrection: number }[];
-      const sample = samples.find((s) => midi >= s.keyRange.low && midi <= s.keyRange.high)
-        ?? samples.slice().sort((a, b) => Math.abs(a.rootKey - midi) - Math.abs(b.rootKey - midi))[0];
-      const r = await fetch(`/samples/seagull-acoustic/${sample.file}`);
-      const audioBuffer = await new OfflineAudioContext(1, SR, SR).decodeAudioData(await r.arrayBuffer());
-
-      const ctx = new OfflineAudioContext(1, SR * DURATION, SR);
-      const rate = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.playbackRate.value = rate;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.0001, 0);
-      gain.gain.linearRampToValueAtTime(0.52, 0.005); // must match startSampleVoice
-      source.connect(gain); gain.connect(ctx.destination);
-      source.start(0);
-      const buf = await ctx.startRendering();
-      return buf.getChannelData(0);
+    // The fretboard's real clean voice: sample x 0.52 x guitarSampleTrim through
+    // createCleanToneChain (exact replica in tests/helpers/guitarTone.js).
+    function renderSample(midi: number) {
+      return window.__guitarTone.renderNotes([midi], 'clean', { duration: DURATION });
     }
 
     function rms(data: Float32Array, fromSec: number, toSec: number) {
@@ -93,6 +77,7 @@ test('keyboard oscillator and guitar sample are perceptually similar in loudness
     };
   });
 
+  console.log('keyboard vs guitar', JSON.stringify(result));
   expect(result.kbPeak).toBeLessThan(1.0); // no clipping anywhere in the extended range
   expect(Math.abs(result.earlyDb)).toBeLessThan(3); // attack loudness within ~3dB
   expect(Math.abs(result.sustainDb)).toBeLessThan(5); // sustained loudness within ~5dB

@@ -106,6 +106,7 @@ export default function EjerciciosPentatonicaBluesPage({ previous, next, quizHre
                   guideDots={[3, 5, 7, 9, 12].filter((fret) => fret >= figure.startFret && fret <= figure.endFret).map((fret) => ({ fret }))}
                   notes={notesForFigure(figure.startFret, figure.endFret)}
                   startFret={figure.startFret}
+                  tutorial={false}
                 />
               </div>
 

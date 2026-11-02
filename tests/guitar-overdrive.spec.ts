@@ -1,150 +1,115 @@
 import { test, expect } from '@playwright/test';
 
-// Guards the overdrive tone of the fretboard (getOverdriveBus in
-// app/lib/guitarAudioEngine.ts). Renders the exact same DSP graph offline
-// with the real Seagull samples and checks:
-//   - no clipping with 3-note chords at max volume (low and high register),
-//   - overdrive RMS stays close to clean RMS (no loudness jump on toggle),
+// Guards the OVERDRIVE tone (createOverdriveChain in app/lib/guitarAudioEngine.ts),
+// rendered offline with the real Seagull samples through the exact replicas in
+// tests/helpers/guitarTone.js and measured in LUFS (BS.1770 K-weighting), not
+// in plain RMS: the first version was "matched" on the attack's RMS and came
+// out +5.5 LU louder than clean (up to +9.8 on E4). Checks:
+//   - loudness vs the CLEAN tone: median about as loud (-2..+0.5 LU; it was
+//     -1.2 with the first clean chain, -0.1 since its low boost was removed,
+//     the overdrive itself unchanged), no case more than +2.5 LU over, held
+//     part at most +6 dB over (an overdrive sustains, that's the sound),
+//   - the 2-5 kHz band (ear's most sensitive/damaging region) stays modest on
+//     low/mid notes — the old chain's resonant lowpasses made a +5 dB plateau
+//     there (Web Audio's lowpass Q is in dB!),
+//   - no clipping with 3-note chords at max volume (peak <= -1.5 dBFS),
 //   - the volume slider really lowers overdrive (it's applied post-clip).
-// Every constant below must match guitarAudioEngine.ts.
-test('overdrive tone: no clipping, loudness parity with clean, working volume', async ({ page }) => {
+test('overdrive tone: LUFS parity with clean, tame 2-5 kHz, safe peak, working volume', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
   await page.goto('/lecciones/temario/sala-de-pruebas');
 
   const result = await page.evaluate(async () => {
-    const SR = 44100;
-    const DURATION = 1.0;
-    const OD_VOICE_LEVEL = 0.52;
-    const OD_DRIVE = 3;
-    const OD_SHAPE_K = 6;
-    const OD_SHAPE_BIAS = 0.12;
-    const OD_STAGE2_GAIN = 0.8;
-    const OD_STAGE2_K = 1.5;
-    const OD_ROOM_WET = 0.1;
-    const OD_MAKEUP = 0.18;
-
-    const resp = await fetch('/samples/seagull-acoustic/manifest.json');
-    const manifest = await resp.json();
-    type S = { file: string; rootKey: number; keyRange: { low: number; high: number }; pitchCorrection: number; loopStart: number; loopEnd: number; sampleRate: number };
-    const samples = manifest.samples as S[];
-    const buffers = new Map<string, AudioBuffer>();
-    async function bufferFor(s: S) {
-      if (!buffers.has(s.file)) {
-        const r = await fetch(`/samples/seagull-acoustic/${s.file}`);
-        buffers.set(s.file, await new OfflineAudioContext(1, SR, SR).decodeAudioData(await r.arrayBuffer()));
-      }
-      return buffers.get(s.file)!;
-    }
-    function choose(midi: number) {
-      return samples.find((s) => midi >= s.keyRange.low && midi <= s.keyRange.high)
-        ?? samples.slice().sort((a, b) => Math.abs(a.rootKey - midi) - Math.abs(b.rootKey - midi))[0];
-    }
-    function makeCurve(fn: (x: number) => number, n = 4096) {
-      const c = new Float32Array(n);
-      for (let i = 0; i < n; i++) c[i] = fn((i / (n - 1)) * 2 - 1);
-      return c;
-    }
-    function biquad(ctx: BaseAudioContext, type: BiquadFilterType, f: number, Q: number, gain = 0) {
-      const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = Q; b.gain.value = gain; return b;
-    }
-
-    function buildOverdrive(ctx: OfflineAudioContext, volume: number) {
-      const input = ctx.createGain();
-      const preHp = biquad(ctx, 'highpass', 110, 0.7);
-      const midHump = biquad(ctx, 'peaking', 720, 0.8, 6);
-      const preLp = biquad(ctx, 'lowpass', 5500, 0.7);
-      const drive = ctx.createGain(); drive.gain.value = OD_DRIVE;
-      const stage1 = ctx.createWaveShaper();
-      const dc = Math.tanh(OD_SHAPE_K * OD_SHAPE_BIAS);
-      const norm = Math.tanh(OD_SHAPE_K * (1 + OD_SHAPE_BIAS)) - dc;
-      stage1.curve = makeCurve((x) => (Math.tanh(OD_SHAPE_K * (x + OD_SHAPE_BIAS)) - dc) / norm);
-      stage1.oversample = '4x';
-      const stage2Gain = ctx.createGain(); stage2Gain.gain.value = OD_STAGE2_GAIN;
-      const stage2 = ctx.createWaveShaper();
-      stage2.curve = makeCurve((x) => Math.tanh(OD_STAGE2_K * x) / Math.tanh(OD_STAGE2_K));
-      stage2.oversample = '4x';
-      const cabHp = biquad(ctx, 'highpass', 85, 0.7);
-      const cabMud = biquad(ctx, 'peaking', 400, 1, -3);
-      const cabPresence = biquad(ctx, 'peaking', 2200, 1, 3);
-      const cabLp1 = biquad(ctx, 'lowpass', 4800, 0.7);
-      const cabLp2 = biquad(ctx, 'lowpass', 4800, 0.9);
-      const room = ctx.createConvolver();
-      const len = Math.floor(SR * 0.35);
-      const ir = ctx.createBuffer(1, len, SR);
-      const d = ir.getChannelData(0);
-      let lp = 0;
-      for (let i = 0; i < len; i++) { lp += 0.25 * ((Math.random() * 2 - 1) - lp); d[i] = lp * Math.exp((-i / SR) * 12); }
-      room.buffer = ir;
-      const wet = ctx.createGain(); wet.gain.value = OD_ROOM_WET;
-      const makeup = ctx.createGain(); makeup.gain.value = OD_MAKEUP;
-      const outVol = ctx.createGain(); outVol.gain.value = volume;
-      const safety = ctx.createWaveShaper();
-      safety.curve = makeCurve((x) => Math.tanh(x), 1024);
-      safety.oversample = '2x';
-      input.connect(preHp); preHp.connect(midHump); midHump.connect(preLp); preLp.connect(drive);
-      drive.connect(stage1); stage1.connect(stage2Gain); stage2Gain.connect(stage2); stage2.connect(cabHp);
-      cabHp.connect(cabMud); cabMud.connect(cabPresence); cabPresence.connect(cabLp1); cabLp1.connect(cabLp2);
-      cabLp2.connect(makeup); cabLp2.connect(room); room.connect(wet); wet.connect(makeup);
-      makeup.connect(outVol); outVol.connect(safety); safety.connect(ctx.destination);
-      return input;
-    }
-
-    async function render(midis: number[], tone: 'clean' | 'overdrive', volume = 1) {
-      const ctx = new OfflineAudioContext(1, SR * DURATION, SR);
-      const bus = tone === 'overdrive' ? buildOverdrive(ctx, volume) : null;
-      for (const midi of midis) {
-        const s = choose(midi);
-        const src = ctx.createBufferSource();
-        src.buffer = await bufferFor(s);
-        src.playbackRate.value = 2 ** ((midi - s.rootKey - s.pitchCorrection / 100) / 12);
-        if (s.loopEnd > s.loopStart + 8) { src.loop = true; src.loopStart = s.loopStart / s.sampleRate; src.loopEnd = s.loopEnd / s.sampleRate; }
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, 0);
-        src.connect(g);
-        if (bus) { g.gain.linearRampToValueAtTime(OD_VOICE_LEVEL, 0.005); g.connect(bus); }
-        else { g.gain.linearRampToValueAtTime(0.52 * volume, 0.005); g.connect(ctx.destination); }
-        src.start(0);
-      }
-      return (await ctx.startRendering()).getChannelData(0);
-    }
-
-    function rms(data: Float32Array, a: number, b: number) {
-      const from = Math.floor(a * SR), to = Math.min(data.length, Math.floor(b * SR));
-      let sum = 0;
-      for (let i = from; i < to; i++) sum += data[i] * data[i];
-      return Math.sqrt(sum / (to - from));
-    }
-    function peak(data: Float32Array) {
-      let p = 0;
-      for (let i = 0; i < data.length; i++) p = Math.max(p, Math.abs(data[i]));
-      return p;
-    }
-    const db = (a: number, b: number) => 20 * Math.log10(a / b);
-    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
-
-    const notes = [40, 45, 50, 55, 59, 64, 71];
-    const clean = await Promise.all(notes.map((m) => render([m], 'clean')));
-    const od = await Promise.all(notes.map((m) => render([m], 'overdrive')));
-    const earlyDb = db(avg(od.map((x) => rms(x, 0.02, 0.15))), avg(clean.map((x) => rms(x, 0.02, 0.15))));
-    const sustainDb = db(avg(od.map((x) => rms(x, 0.1, 0.6))), avg(clean.map((x) => rms(x, 0.1, 0.6))));
-
-    const chordLow = await render([40, 47, 52], 'overdrive');
-    const chordHigh = await render([64, 67, 71], 'overdrive');
-    const chordPeak = Math.max(peak(chordLow), peak(chordHigh));
-
-    const quiet = await render([45], 'overdrive', 0.3);
-    const volumeDropDb = db(rms(od[1], 0.02, 0.6), rms(quiet, 0.02, 0.6));
-
-    return { earlyDb, sustainDb, chordPeak, volumeDropDb };
+    const G = window.__guitarTone;
+    const cases = [[40], [45], [50], [55], [64], [76], [84], [40, 47, 52], [45, 52, 57], [52, 56, 59]];
+    const clean = await Promise.all(cases.map((c) => G.renderNotes(c, 'clean')));
+    const od = await Promise.all(cases.map((c) => G.renderNotes(c, 'overdrive')));
+    const lufsDiff = cases.map((_, i) => G.lufs(od[i], G.SR) - G.lufs(clean[i], G.SR));
+    const sustainDiff = cases.map((_, i) => G.rmsDb(od[i], G.SR, 0.3) - G.rmsDb(clean[i], G.SR, 0.3));
+    const sorted = lufsDiff.slice().sort((a, b) => a - b);
+    const median = (sorted[4] + sorted[5]) / 2;
+    // Low/mid single notes E2..E4.
+    const band = [0, 1, 2, 3, 4].map((i) => G.bandShareDb(od[i], G.SR));
+    const peak = Math.max(...od.slice(7).map(G.peak));
+    const quiet = await G.renderNotes([45], 'overdrive', { volume: 0.3 });
+    const volumeDropDb = G.rmsDb(od[1], G.SR, 0.02, 0.6) - G.rmsDb(quiet, G.SR, 0.02, 0.6);
+    return { lufsDiff, median, sustainDiff, band, peak, volumeDropDb };
   });
 
-  console.log('overdrive measurements', result);
-  expect(result.chordPeak).toBeLessThan(1.0);
-  expect(Math.abs(result.earlyDb)).toBeLessThan(2.5);
-  // Overdrive compresses and sustains longer by design, so sustain may sit a
-  // few dB above clean; the attack is what must match on toggle.
-  expect(result.sustainDb).toBeGreaterThan(0);
-  expect(result.sustainDb).toBeLessThan(6);
-  expect(result.volumeDropDb).toBeGreaterThan(9); // 0.3 → ~10.5dB
+  console.log('overdrive measurements', JSON.stringify(result));
+  expect(result.median).toBeGreaterThanOrEqual(-2);
+  expect(result.median).toBeLessThanOrEqual(0.5);
+  expect(Math.max(...result.lufsDiff)).toBeLessThanOrEqual(2.5);
+  expect(Math.max(...result.sustainDiff)).toBeLessThanOrEqual(6);
+  for (const share of result.band) expect(share).toBeLessThanOrEqual(-20);
+  expect(result.peak).toBeLessThanOrEqual(0.84);
+  expect(result.volumeDropDb).toBeGreaterThan(9); // 0.3 -> ~10.5 dB
+});
+
+// Same criterion in the TAB PLAYER (AlphaTabPlayer.tsx playPluckedNote): per-
+// string lowpass + envelope, clean voice -> createCleanToneChain, overdrive voice
+// at level / volume x (OVERDRIVE_VOICE_LEVEL / 0.58) -> createOverdriveChain with
+// the volume (x TAB_OVERDRIVE_OUTPUT_TRIM) after the drive; both into
+// getAudioOutput's 0.85 x 1.35 bus.
+test('tab player: overdrive about as loud as clean (LUFS)', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
+  await page.goto('/lecciones/temario/sala-de-pruebas');
+  const result = await page.evaluate(async () => {
+    const G = window.__guitarTone;
+    const SR = G.SR;
+    const CUTOFFS = [2600, 3200, 4200, 5600, 7200, 9000]; // GUITAR_SAMPLE_CUTOFFS
+    const VOLUME = 0.8; // DEFAULT_VOLUME
+    const manifest = await (await fetch('/samples/seagull-acoustic/manifest.json')).json();
+    const samples = manifest.samples as { file: string; rootKey: number; keyRange: { low: number; high: number }; pitchCorrection: number; loopStart: number; loopEnd: number }[];
+    async function render(stringNumber: number, midi: number, tone: 'clean' | 'overdrive') {
+      const sample = samples.find((x) => midi >= x.keyRange.low && midi <= x.keyRange.high)!;
+      const buffer = await new OfflineAudioContext(1, SR, SR).decodeAudioData(await (await fetch(`/samples/seagull-acoustic/${sample.file}`)).arrayBuffer());
+      const ctx = new OfflineAudioContext(1, Math.floor(SR * 1.5), SR);
+      const busIn = ctx.createGain(); busIn.gain.value = 0.85;
+      const master = ctx.createGain(); master.gain.value = 1.35;
+      busIn.connect(master); master.connect(ctx.destination);
+      const level = Math.min(0.62 * VOLUME, VOLUME * 0.58) * G.guitarSampleTrim(sample.file, midi);
+      let dest: AudioNode;
+      let voiceLevel = level;
+      if (tone === 'clean') dest = G.createCleanToneChain(ctx, busIn).input;
+      else {
+        const od = G.createOverdriveChain(ctx, busIn);
+        od.output.gain.value = VOLUME * 1.25; // TAB_OVERDRIVE_OUTPUT_TRIM
+        dest = od.input;
+        voiceLevel = (level / VOLUME) * (0.52 / 0.58);
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.playbackRate.value = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
+      src.loop = true; src.loopStart = sample.loopStart / SR; src.loopEnd = sample.loopEnd / SR;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = CUTOFFS[6 - stringNumber]; lp.Q.value = 0.55;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, 0);
+      g.gain.linearRampToValueAtTime(voiceLevel, 0.004);
+      g.gain.setValueAtTime(voiceLevel * 0.82, 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, 0.8);
+      src.connect(lp); lp.connect(g); g.connect(dest);
+      src.start(0);
+      return (await ctx.startRendering()).getChannelData(0);
+    }
+    const notes: [number, number][] = [[6, 40], [5, 45], [4, 50], [3, 55], [2, 59], [1, 64], [1, 76]];
+    const diffs: number[] = [];
+    let peak = 0;
+    for (const [string, midi] of notes) {
+      const c = await render(string, midi, 'clean');
+      const o = await render(string, midi, 'overdrive');
+      diffs.push(G.lufs(o, SR) - G.lufs(c, SR));
+      peak = Math.max(peak, G.peak(c), G.peak(o));
+    }
+    const sorted = diffs.slice().sort((a, b) => a - b);
+    return { diffs, median: sorted[3], peak };
+  });
+  console.log('tab overdrive vs clean', JSON.stringify(result));
+  expect(result.median).toBeGreaterThanOrEqual(-2);
+  expect(result.median).toBeLessThanOrEqual(0.5);
+  expect(Math.max(...result.diffs)).toBeLessThanOrEqual(2.5);
+  expect(result.peak).toBeLessThan(0.7); // getAudioOutput's limiter stays idle
 });
 
 test('CLEAN/OVERDRIVE toggle exists only where opted in', async ({ page }) => {

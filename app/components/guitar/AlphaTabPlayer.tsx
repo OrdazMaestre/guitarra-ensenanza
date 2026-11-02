@@ -15,8 +15,10 @@ import {
   type BendNoteLike,
 } from '@/app/lib/bendCurve';
 import {
+  createCleanToneChain,
   createOverdriveChain,
   getAudioCurrentTime,
+  guitarSampleTrim,
   OVERDRIVE_VOICE_LEVEL,
   playBassNote,
   playMetronomeClick as playDrumClick,
@@ -122,6 +124,10 @@ const GUITAR_STRING_GAINS: Record<number, number> = {
   6: 0.5,
 };
 const GUITAR_SAMPLE_RELEASE = 0.2;
+// Longest a plucked sample note sustains before its release (playPluckedNote).
+// Also the limit for "a tie continuation isn't re-plucked": past it the head
+// is already fading out, so the continuation re-attacks (planNoteSound).
+const GUITAR_SAMPLE_MAX_SUSTAIN_SECONDS = 2.4;
 const GUITAR_SAMPLE_PALM_MUTE_RELEASE = 0.055;
 const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 // Soft-knee limiter threshold for the shared guitar/metronome-click output
@@ -136,6 +142,13 @@ const STRUM_OFFSETS = [0, 0.012, 0.021, 0.031, 0.043, 0.058];
 // a >1 trackVolumeMultiplier. It only engages once trackVolumeMultiplier's
 // new max of 2 (added alongside this constant) pushes a real peak above it.
 const GUITAR_OUTPUT_LIMITER_THRESHOLD = 0.7;
+// Overdrive output trim for THIS player (+2 dB): its notes are cut after
+// their notated duration (sustain + release), so the drive's long sustain,
+// which the fretboard's calibration counts on, never happens here and
+// overdrive measured ~3 LU under clean. With it, about as loud as clean
+// (median +0.2 LU), the same relation as the fretboard
+// (tests/guitar-overdrive.spec.ts, "tab player").
+const TAB_OVERDRIVE_OUTPUT_TRIM = 1.25;
 const STRING_LABELS_TOP_TO_BOTTOM = ['E', 'B', 'G', 'D', 'A', 'E'];
 const TAB_LINE_SPACING = 12.45;
 // Measured string labels (experimentalScheduler): how far left of the staff
@@ -768,6 +781,10 @@ function decorateTabNote(note: AlphaTabNoteLike, tabNote: TabNote): TabNote {
       head = head.tieOrigin;
       offsetQuarters += tabNoteQuarters(head);
     }
+    // A dead head never sounds, so its continuation must be a normal note.
+    if (head.isDead) {
+      return tabNote;
+    }
     const totalQuarters = tieChain(head).reduce((sum, chainNote) => sum + tabNoteQuarters(chainNote), 0);
     return { ...tabNote, tie: { headBend: buildBendCurve(head, tabNoteQuarters), offsetQuarters, totalQuarters } };
   }
@@ -1377,6 +1394,10 @@ export default function AlphaTabPlayer({
   // in quarter notes. Any jump (start, loop wrap, seek) starts a new run.
   const runStartQuarterRef = useRef(0);
   const lastScheduledEndQuarterRef = useRef(Number.NaN);
+  // Sample voice currently carrying a sustained tie, per "track|string": a
+  // continuation is only skipped while that voice is still alive (not
+  // stolen by enforceGuitarSamplePolyphony in dense passages).
+  const tieVoicesRef = useRef(new Map<string, GuitarSampleVoice>());
   const removeTabScrollListenerRef = useRef<() => void>(() => {});
   const programmaticPageScrollRef = useRef(false);
   const programmaticPageScrollTimerRef = useRef<number | null>(null);
@@ -1394,6 +1415,12 @@ export default function AlphaTabPlayer({
   const [guitarTone, setGuitarTone] = useState<'clean' | 'overdrive'>('clean');
   const guitarToneRef = useRef<'clean' | 'overdrive'>('clean');
   const overdriveChainRef = useRef<{ input: GainNode; output: GainNode } | null>(null);
+  // Clean tone (createCleanToneChain in guitarAudioEngine.ts: body EQ + low
+  // exciter, the same as the fretboard's), one per player, built lazily on
+  // this player's AudioContext. Shared bus node: never put it in a voice's
+  // `nodes` (GuitarSampleVoice.destroy() would disconnect it). See "Tono
+  // clean y sonoridad" in NOTES.
+  const cleanToneChainRef = useRef<{ input: GainNode } | null>(null);
   const voiceIdRef = useRef(0);
   const fallbackEvents = useMemo(() => (tab ? parseAlphaTexEvents(tab) : []), [tab]);
   // detectedScoreTempo is the real score.tempo (BPM) read off the loaded file,
@@ -2619,6 +2646,7 @@ export default function AlphaTabPlayer({
     stopActiveSources();
     // Next playback starts a fresh tie run (see planNoteSound).
     lastScheduledEndQuarterRef.current = Number.NaN;
+    tieVoicesRef.current.clear();
     isPlayingRef.current = false;
     setIsPlaying(false);
     clearGlobalPlaybackIfCurrent();
@@ -3223,19 +3251,19 @@ export default function AlphaTabPlayer({
     // Bend pitch curve (planNoteSound). Omitted = no detune automation at
     // all, i.e. the historical sound bit for bit.
     bend?: NoteBendPlan | null
-  ) {
+  ): GuitarSampleVoice | null {
     const midi = noteMidi(note);
     const isPalmMuted = note.palmMuted ?? false;
     const stringIndex = stringArrayIndex(note);
     const sample = chooseGuitarSample(midi);
     if (!sample) {
-      return;
+      return null;
     }
 
     const cutoff = GUITAR_SAMPLE_CUTOFFS[stringIndex] * (isPalmMuted ? 0.5 : 1);
     const playbackRate = 2 ** ((midi - sample.rootKey - sample.pitchCorrection / 100) / 12);
     const release = isPalmMuted ? GUITAR_SAMPLE_PALM_MUTE_RELEASE : GUITAR_SAMPLE_RELEASE;
-    const sustainDuration = isPalmMuted ? Math.min(0.16, duration) : clamp(duration, 0.18, 2.4);
+    const sustainDuration = isPalmMuted ? Math.min(0.16, duration) : clamp(duration, 0.18, GUITAR_SAMPLE_MAX_SUSTAIN_SECONDS);
     const chordCompensation = 1 / Math.sqrt(Math.max(1, eventNoteCount));
     const stringBalance = eventNoteCount >= DENSE_CHORD_NOTE_COUNT ? GUITAR_STRING_GAINS[note.stringNumber] ?? 1 : 1;
     const articulationLevel = isPalmMuted ? 0.34 : 0.58;
@@ -3243,7 +3271,9 @@ export default function AlphaTabPlayer({
     const targetLevel = currentVolume * articulationLevel * stringBalance * chordCompensation;
     // guitarStringVolumes trim (see the prop): after the clamp, so the ratio
     // between strings is exact. 1 (no-op) whenever the prop is omitted.
-    const stringTrim = guitarStringVolumes?.[note.stringNumber] ?? 1;
+    // guitarSampleTrim: per-sample leveling shared with the fretboard (two
+    // samples were 5-6 dB quieter; the top sample is stretched +16 semitones).
+    const stringTrim = (guitarStringVolumes?.[note.stringNumber] ?? 1) * guitarSampleTrim(sample.file, midi);
     const level =
       currentVolume <= 0
         ? 0
@@ -3291,10 +3321,11 @@ export default function AlphaTabPlayer({
     toneFilter.connect(voiceGain);
     if (overdrive) {
       if (!overdriveChainRef.current) overdriveChainRef.current = createOverdriveChain(context, getAudioOutput(context).input);
-      overdriveChainRef.current.output.gain.setTargetAtTime(volumeRef.current, context.currentTime, 0.02);
+      overdriveChainRef.current.output.gain.setTargetAtTime(volumeRef.current * TAB_OVERDRIVE_OUTPUT_TRIM, context.currentTime, 0.02);
       voiceGain.connect(overdriveChainRef.current.input);
     } else {
-      voiceGain.connect(getAudioOutput(context).input);
+      if (!cleanToneChainRef.current) cleanToneChainRef.current = createCleanToneChain(context, getAudioOutput(context).input);
+      voiceGain.connect(cleanToneChainRef.current.input);
     }
 
     source.start(startTime);
@@ -3313,6 +3344,7 @@ export default function AlphaTabPlayer({
       () => cleanupGuitarSampleVoice(voice),
       Math.max(0, (startTime + sustainDuration + release + 0.05 - context.currentTime) * 1000)
     );
+    return voice;
   }
 
   function playMetronomeClick(context: AudioContext, startTime: number) {
@@ -3462,17 +3494,28 @@ export default function AlphaTabPlayer({
   // guitar: the string keeps ringing, no new attack); otherwise its length
   // (a tie head sustains its whole chain) and its bend plan. A note with no
   // tie and no bend gets exactly `baseDuration` and no bend.
+  //
+  // `voiceKey` ("track|string") identifies the sample voice that carries the
+  // tie (guitar only; bass passes null). A continuation is re-plucked anyway
+  // when the head can't still be ringing: its voice was stolen by the
+  // 12-voice cap, or the chain is past the samples' max sustain (long ties at
+  // slow tempo / low speed).
   function planNoteSound(
     note: TabNote,
     noteStartQuarter: number,
     secondsPerQuarter: number,
-    baseDuration: number
+    baseDuration: number,
+    voiceKey: string | null = null
   ): { bend: NoteBendPlan | null; duration: number } | null {
     let duration = baseDuration;
     let bend: NoteBendPlan | null = null;
     if (note.tie) {
       const headStartQuarter = noteStartQuarter - note.tie.offsetQuarters;
-      if (headStartQuarter >= runStartQuarterRef.current - TIMING_EPSILON) {
+      const headInRun = headStartQuarter >= runStartQuarterRef.current - TIMING_EPSILON;
+      const withinSustain = note.tie.offsetQuarters * secondsPerQuarter < GUITAR_SAMPLE_MAX_SUSTAIN_SECONDS;
+      const tieVoice = voiceKey ? tieVoicesRef.current.get(voiceKey) : undefined;
+      const voiceAlive = voiceKey === null || (tieVoice !== undefined && activeVoicesRef.current.includes(tieVoice));
+      if (headInRun && withinSustain && voiceAlive) {
         return null;
       }
       duration = Math.max(0, note.tie.totalQuarters - note.tie.offsetQuarters) * secondsPerQuarter;
@@ -3523,11 +3566,17 @@ export default function AlphaTabPlayer({
         if (track.kind === 'guitar' && auxEvent.guitarNotes) {
           const trackVolume = getTrackVolume(track.index);
           const planned = auxEvent.guitarNotes
-            .map((note) => ({ note, plan: planNoteSound(note, auxEvent.quarterStart, secondsPerQuarter, auxDurationSeconds) }))
+            .map((note) => ({
+              note,
+              plan: planNoteSound(note, auxEvent.quarterStart, secondsPerQuarter, auxDurationSeconds, `${track.index}|${note.stringNumber}`),
+            }))
             .filter((entry): entry is { note: TabNote; plan: NonNullable<ReturnType<typeof planNoteSound>> } => entry.plan !== null);
           for (const { note, plan } of planned) {
             const chordDelay = planned.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
-            playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, plan.duration, planned.length, trackVolume, plan.bend);
+            const voice = playPluckedNote(context, note, startTime + offsetSeconds + chordDelay, plan.duration, planned.length, trackVolume, plan.bend);
+            if (voice && (note.tie || note.sustainQuarters !== undefined)) {
+              tieVoicesRef.current.set(`${track.index}|${note.stringNumber}`, voice);
+            }
           }
         } else if (track.kind === 'bass' && auxEvent.bassNotes) {
           const bassStartTime = auxEngineNow + auxLeadSeconds + offsetSeconds;
@@ -3773,8 +3822,12 @@ export default function AlphaTabPlayer({
     const secondsPerQuarter = event.quarterNotes > 0 ? eventDuration / event.quarterNotes : 0;
 
     const primaryTrackAudible = !multiTrack || isTrackAudible(primaryTrackIndexRef.current);
+    const primaryIsBass = multiTrack && primaryTrackKindRef.current === 'bass';
     const audibleNotes = (primaryTrackAudible ? event.notes : [])
-      .map((note) => ({ note, plan: planNoteSound(note, eventStartQuarter, secondsPerQuarter, eventDuration) }))
+      .map((note) => ({
+        note,
+        plan: planNoteSound(note, eventStartQuarter, secondsPerQuarter, eventDuration, primaryIsBass ? null : `p|${note.stringNumber}`),
+      }))
       .filter((entry): entry is { note: TabNote; plan: NonNullable<ReturnType<typeof planNoteSound>> } => entry.plan !== null);
 
     // Primary track's own notes: 'bass' (only reachable when multiTrack picks
@@ -3803,7 +3856,10 @@ export default function AlphaTabPlayer({
       const trackVolume = multiTrack ? getTrackVolume(primaryTrackIndexRef.current) : 1;
       for (const { note, plan } of audibleNotes) {
         const chordDelay = audibleNotes.length >= DENSE_CHORD_NOTE_COUNT ? STRUM_OFFSETS[stringArrayIndex(note)] ?? 0 : 0;
-        playPluckedNote(context, note, startTime + chordDelay, plan.duration, audibleNotes.length, trackVolume, plan.bend);
+        const voice = playPluckedNote(context, note, startTime + chordDelay, plan.duration, audibleNotes.length, trackVolume, plan.bend);
+        if (voice && (note.tie || note.sustainQuarters !== undefined)) {
+          tieVoicesRef.current.set(`p|${note.stringNumber}`, voice);
+        }
       }
     }
 
