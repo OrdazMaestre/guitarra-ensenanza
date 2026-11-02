@@ -137,8 +137,9 @@ const romanFretLabels: Record<number, string> = {
   12: 'XII',
 };
 
-// Niveles del juego que se estiran: los de 6 trastes (0-5). Fácil (0-10) usa el mástil normal.
-const STRETCH_MAX_FRET = 5;
+// Niveles del juego que se estiran: todos los que usan menos trastes que el mástil entero (0-5 en
+// trastes Principiante/Fácil/Medio; 0-10 en trastes Avanzado y 0-11 en Medio cuerdas, petición del
+// usuario 2026-11-02). Avanzado/Difícil cuerdas (0-12) y Experto usan el mástil normal.
 
 function fretMarkerX(boardX: number, fretWidth: number, startFret: number, fret: number, openWidth: number | null = null) {
   if (startFret === 0 && fret === 0) {
@@ -198,7 +199,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const song = riffGame ? songChoice.song : undefined;
   const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
-  const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret <= STRETCH_MAX_FRET && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
+  const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del

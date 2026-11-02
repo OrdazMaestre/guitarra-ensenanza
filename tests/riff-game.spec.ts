@@ -354,7 +354,7 @@ test('con bucle no se puntúa y se puede cambiar la dificultad en pausa y contin
   await expect(stage).toHaveAttribute('data-status', 'idle');
 });
 
-test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
+test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   const fretNumbers = page.locator('.test-room-fretboard .reduced-fret-number');
@@ -362,8 +362,9 @@ test('el mástil ocupa lo mismo en todos los niveles; los de 6 trastes lo estira
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
-  // Modo trastes Principiante, Fácil y Medio usan los trastes 0-5: solo se dibujan esos 6, más anchos.
-  for (const [label, frets] of [['Principiante', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 13], ['Medio cuerdas', 13], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
+  // Solo se dibujan los trastes del nivel, más anchos: 0-5 en trastes Principiante/Fácil/Medio, 0-10
+  // en trastes Avanzado y 0-11 en Medio cuerdas.
+  for (const [label, frets] of [['Principiante', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 11], ['Medio cuerdas', 12], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
     await choose(page, 'Nivel', label);
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
