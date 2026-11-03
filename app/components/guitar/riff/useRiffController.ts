@@ -4,7 +4,7 @@ import { buildChart, listGuitarTracks, loadScore, type Chart, type GuitarTrackIn
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
 import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
-import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
+import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
 import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
@@ -42,11 +42,18 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // batería (metrónomo si el archivo no trae batería). `resetDefaults` vuelve a ella.
   const [speed, setSpeed] = useState<number>(DEFAULTS.speed);
   const [mode, setMode] = useState<RiffMode>(DEFAULTS.mode);
-  const [backing, setBacking] = useState<RiffBacking>('bateria');
+  // Acompañamiento (petición del usuario, 2026-11-03): el metrónomo es un botón sí/no y la batería
+  // es una pista más de "Pistas", que se puede silenciar como la otra guitarra o el bajo. Al cargar
+  // una canción: con batería, batería sin metrónomo; sin batería, metrónomo.
+  const [click, setClick] = useState<RiffClick>('nada');
+  const [muted, setMuted] = useState<number[]>([]);
+  const backing: RiffBacking = useMemo(() => ({ click, muted }), [click, muted]);
+  const toggleMuted = (index: number) => setMuted((current) => (current.includes(index) ? current.filter((value) => value !== index) : [...current, index]));
   const [loop, setLoop] = useState(DEFAULTS.loop);
   const [fromBar, setFromBar] = useState(1);
   const [toBar, setToBar] = useState(1);
-  const [narrow, setNarrow] = useState(false);
+  // Ancho real del mástil (null hasta medirlo): de él sale qué niveles caben (ver `fitsFrets`).
+  const [hostWidth, setHostWidth] = useState<number | null>(null);
   // Principiante..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
   const [level, setLevel] = useState<RiffLevel>(DEFAULTS.level);
   // Partida tutorial (riffTutorial.ts): su canción remix sustituye al chart mientras dura, y sus
@@ -55,7 +62,18 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // primera tarjeta, porque la partida se paró).
   const [tutorialWanted, setTutorialOn] = useState(false);
   const [remixState, setTutorialRemix] = useState<{ chart: Chart; breaks: number[] } | null>(null);
-  const tutorialOn = tutorialWanted && !narrow;
+  // Cabe un mástil de `frets` trastes (contando como el estirado del juego) en el ancho medido.
+  const fitsFrets = (frets: number) => hostWidth === null || hostWidth >= frets * MIN_PX_PER_FRET + SIDE_MARGIN_PX;
+  const fullFretCount = startFret === 0 ? endFret : endFret - startFret + 1;
+  // Trastes que dibuja un nivel: los niveles con menos trastes que el mástil lo estiran (0-5 = 5
+  // columnas además de la del aire), así que en pantalla estrecha siguen cabiendo (petición del
+  // usuario, 2026-11-03: Principiante, Fácil y Medio de trastes también en el móvil en vertical).
+  const levelFrets = (value: RiffLevel) => {
+    const maxFret = value === 'experto' ? endFret : RIFF_LEVELS[value].maxFret;
+    return startFret === 0 && maxFret < endFret ? maxFret : fullFretCount;
+  };
+  const fitsLevel = (value: RiffLevel) => fitsFrets(levelFrets(value));
+  const tutorialOn = tutorialWanted && fitsFrets(RIFF_LEVELS.medio.maxFret);
   const tutorialRemix = tutorialOn ? remixState : null;
   const activeChart = tutorialRemix?.chart ?? chart;
   // En el tutorial el mástil del juego es el de modo trastes 0-5 (Fácil y Medio).
@@ -135,7 +153,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
       // conserva el que había (bug real: en modo práctica, cambiar la dificultad devolvía el bucle a
       // la canción entera), recortado al final de la canción si hiciera falta.
       const last = Math.max(1, ...built.bars.map((bar) => bar.number));
-      if (barsSourceRef.current !== source) {
+      const newSong = barsSourceRef.current !== source;
+      if (newSong) {
         barsSourceRef.current = source;
         setFromBar(1);
         setToBar(last);
@@ -143,8 +162,12 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
         setFromBar((value) => Math.min(value, last));
         setToBar((value) => Math.min(value, last));
       }
-      // Sin pista de batería en el archivo, "Batería" no tiene nada que tocar: metrónomo.
-      setBacking((current) => (current === 'bateria' && built.drums.length === 0 ? 'metronomo' : current));
+      // Otra canción: todas las pistas suenan; metrónomo solo si no trae batería (la batería
+      // automática, solo para canciones sin batería: con batería vuelve a nada).
+      if (newSong) {
+        setMuted([]);
+        setClick(built.drums.length === 0 ? 'metronomo' : 'nada');
+      }
     });
     return () => { cancelled = true; };
   }, [source, trackIndex, endFret, level, leader]);
@@ -156,13 +179,13 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   }, [chart, fromBar, tutorialRemix]);
 
   // Aviso de pantalla estrecha: se mide el ancho REAL del mástil (cubre móvil vertical, pantallas
-  // pequeñas y ventanas estrechas por igual), no el tipo de dispositivo.
-  const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
-  const minWidth = fretCount * MIN_PX_PER_FRET + SIDE_MARGIN_PX;
+  // pequeñas y ventanas estrechas por igual), no el tipo de dispositivo; cada nivel cabe o no según
+  // sus trastes (`fitsLevel`).
+  const narrow = !fitsLevel(level);
   useEffect(() => {
     const el = measureRef.current;
     if (!source || !el) return;
-    const measure = () => setNarrow(el.clientWidth < minWidth);
+    const measure = () => setHostWidth(el.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
@@ -171,7 +194,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [source, minWidth, measureRef]);
+  }, [source, measureRef]);
 
   const { stop } = game;
   useEffect(() => {
@@ -243,7 +266,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setSpeed(DEFAULTS.speed);
     setMode(DEFAULTS.mode);
     setLoop(DEFAULTS.loop);
-    setBacking(hasDrums ? 'bateria' : 'metronomo');
+    setMuted([]);
+    setClick(hasDrums ? 'nada' : 'metronomo');
     setFromBar(1);
     setToBar(maxBar);
   }
@@ -273,7 +297,9 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     chart: activeChart, loadError,
     speed, setSpeed,
     mode, setMode,
-    backing, setBacking,
+    click, setClick,
+    muted, toggleMuted,
+    fitsLevel,
     loop, setLoop,
     fromBar, setFromBar, toBar, setToBar, maxBar,
     previewTime,

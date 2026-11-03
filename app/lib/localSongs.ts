@@ -78,12 +78,16 @@ function withDistinctTitles(songs: LocalSong[]): LocalSong[] {
   });
 }
 
+// Pantalla táctil sin ratón (móvil, tableta): la misma consulta que esconde el botón KEYBOARD.
+export function isTouchOnly(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none) and (pointer: coarse)').matches;
+}
+
 // ¿Cómo buscar en este dispositivo? Por capacidad, nunca por el nombre del dispositivo: pantalla
 // táctil sin ratón (la misma consulta que esconde el botón KEYBOARD) -> elegir archivos; si no,
 // carpeta, con la API que la recuerda (Chrome/Edge) o con el <input> de carpeta.
 export function localSearchMode(): LocalSearchMode {
-  if (typeof window === 'undefined') return 'files';
-  if (window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) return 'files';
+  if (typeof window === 'undefined' || isTouchOnly()) return 'files';
   if ('showDirectoryPicker' in window) return 'directory-api';
   if ('webkitdirectory' in HTMLInputElement.prototype) return 'directory-input';
   return 'files';

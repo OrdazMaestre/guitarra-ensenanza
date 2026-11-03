@@ -8,9 +8,19 @@
 
 import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
 import { thinRepeatedBass } from './band';
+import { autoDrums, type AutoDrumHit } from './autoDrums';
+
 import { bendAutomation, type BendCurve } from '../bendCurve';
 import type { ScheduledBend } from '../guitarAudioEngine';
 import { isAdjacentSlide, type PracticeNoteEvent } from '../useFretboardPractice';
+
+// La batería automática de cada chart, calculada una sola vez.
+const autoDrumCache = new WeakMap<Chart, AutoDrumHit[]>();
+function autoDrumsOf(chart: Chart): AutoDrumHit[] {
+  let hits = autoDrumCache.get(chart);
+  if (!hits) autoDrumCache.set(chart, (hits = autoDrums(chart)));
+  return hits;
+}
 
 // Puntuación por nota (decisión del usuario), con márgenes en segundos REALES (también al 50 %):
 // exacta ≤0,1 s = 4 "Perfecto", ≤0,2 = 3, ≤0,4 = 2; cercana (a una casilla) ≤0,2 = 1, ≤0,4 = 0,5;
@@ -46,9 +56,22 @@ const END_TAIL_SECONDS = 1;
 // 'ritmo': la canción avanza sola. 'paso': la canción se para en cada nota hasta tocarla.
 export type RiffMode = 'ritmo' | 'paso';
 export type RiffStatus = 'countin' | 'playing' | 'paused' | 'finished';
-// Acompañamiento: clic de metrónomo en cada pulso, la batería del propio .gp, o nada. La cuenta de
-// entrada (4 clics) suena siempre.
-export type RiffBacking = 'metronomo' | 'bateria' | 'nada';
+// Acompañamiento: el metrónomo (sí/no) y qué pistas de fondo están silenciadas; la batería del .gp
+// es una pista más. La cuenta de entrada (4 clics) suena siempre.
+export type RiffClick = 'nada' | 'metronomo' | 'auto';
+
+export interface RiffBacking {
+  // Clic de la canción aparte de la batería (que es una pista más): nada, el metrónomo en cada pulso,
+  // o la batería automática hecha con los ritmos del metrónomo (autoDrums.ts; canciones sin batería).
+  click: RiffClick;
+  // Índices de las pistas de fondo silenciadas en "Pistas" (otra guitarra, bajo, batería).
+  muted: number[];
+}
+
+// Mismo acompañamiento (para saber si al continuar una pausa hace falta una sesión nueva).
+export function sameBacking(a: RiffBacking, b: RiffBacking): boolean {
+  return a.click === b.click && [...a.muted].sort().join(',') === [...b.muted].sort().join(',');
+}
 
 export interface RiffOptions {
   // Velocidad de la canción (0.5 = mitad).
@@ -238,9 +261,14 @@ export class RiffSession {
     this.translated = !!chart.sourceNotes;
     this.guideNotes = (chart.sourceNotes ?? chart.notes).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6);
     // El bajo, sin la misma nota repetida en semicorcheas (ver thinRepeatedBass).
-    this.bandNotes = backing === 'bateria'
-      ? thinRepeatedBass((chart.band ?? []).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6), chart, options.speed)
-      : [];
+    // Todas las pistas de fondo que no estén silenciadas, haya batería o no (petición del usuario,
+    // 2026-11-03: antes la banda solo sonaba con el acompañamiento "Batería").
+    const muted = new Set(backing.muted);
+    this.bandNotes = thinRepeatedBass(
+      (chart.band ?? []).filter((note) => note.t >= this.startT - 1e-6 && note.t < this.endT - 1e-6 && !(note.track !== undefined && muted.has(note.track))),
+      chart,
+      options.speed,
+    );
     // Experto: cada nota es "dueña" de sí misma (acertarla sube su propio sonido de fondo).
     for (const note of this.notes) {
       for (const sourceId of note.sourceIds ?? [note.id]) this.ownerOf.set(sourceId, note.id);
@@ -248,12 +276,13 @@ export class RiffSession {
 
     const beatSeconds = 60 / chart.bpm;
     const inRange = (t: number) => t >= this.startT - 1e-6 && t < this.endT - 1e-6;
-    let songClicks: Click[] = [];
-    if (backing === 'metronomo') {
-      songClicks = chart.beats.filter((beat) => inRange(beat.t)).map((beat) => ({ t: beat.t, sound: 'snare', volume: beat.isBarStart ? 1 : 0.65 }));
-    } else if (backing === 'bateria') {
-      songClicks = chart.drums.filter((hit) => inRange(hit.t)).map((hit) => ({ t: hit.t, sound: hit.sound, volume: 0.8 }));
-    }
+    // Metrónomo (si está encendido) y batería (si no está silenciada) pueden sonar a la vez.
+    const drumTrack = chart.bandTracks?.find((track) => track.kind === 'drums');
+    const songClicks: Click[] = [
+      ...(backing.click === 'auto' ? autoDrumsOf(chart).filter((hit) => inRange(hit.t)) : []),
+      ...(backing.click === 'metronomo' ? chart.beats.filter((beat) => inRange(beat.t)).map((beat) => ({ t: beat.t, sound: 'snare' as DrumSound, volume: beat.isBarStart ? 1 : 0.65 })) : []),
+      ...(drumTrack && muted.has(drumTrack.index) ? [] : chart.drums.filter((hit) => inRange(hit.t)).map((hit) => ({ t: hit.t, sound: hit.sound, volume: 0.8 }))),
+    ].sort((a, b) => a.t - b.t);
     this.songClicks = songClicks;
     this.countInTarget = this.startT;
     this.clickTimes = [...this.countInClicks(this.startT), ...songClicks];

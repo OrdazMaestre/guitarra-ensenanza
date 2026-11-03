@@ -60,7 +60,7 @@ async function openGame(page: Page, song = 'Canción de prueba') {
   }).toPass({ timeout: 15000 });
   await choose(page, 'Canción', song);
   // La de prueba tiene dos guitarras: su desplegable de pista confirma que ya cargó.
-  if (song === 'Canción de prueba') await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toBeVisible({ timeout: 10000 });
+  if (song === 'Canción de prueba') await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toBeVisible({ timeout: 10000 });
 }
 
 // Abre el desplegable `menu` ("Pista", "Ritmo"...) del panel y elige `option`.
@@ -90,10 +90,11 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
-  // El disco (Canción) va a la izquierda del todo.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción/, /Pista/, /Nivel/, /Modo/, /Velocidad/, /Ritmo/, /Compases/], { timeout: 10000 });
-  // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle, batería.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Canción de prueba/, /Guitarra solista/, /Principiante/, /Batería/, /100%/, /Con ritmo/, /^Compases1–\d+▾$/]);
+  // Orden del panel (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/], { timeout: 10000 });
+  // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle; con
+  // batería en la canción, el metrónomo apagado.
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -115,13 +116,19 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   const inFront = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.riff-overlay'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   expect(inFront).toBe(true);
 
-  await choose(page, 'Modo', 'Batería');
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Modo' })).toContainText('Batería');
+  // Metrónomo: desplegable Nada / Metrónomo / Batería automática (esta, solo sin batería).
+  const riffMetronome = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
+  await choose(page, 'Metrónomo', 'Metrónomo');
+  await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo');
+  await riffMetronome.click();
+  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeDisabled();
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'Nada', exact: true }).click();
+  await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Nada');
   await choose(page, 'Velocidad', '75%');
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('75%');
 
   // Solo un desplegable abierto, y se cierra al pulsar fuera.
-  await page.locator('.riff-dd-toggle', { hasText: 'Pista' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
   await page.locator('.riff-dd-toggle', { hasText: 'Velocidad' }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(1);
   await expect(page.locator('.riff-dd-menu')).toContainText('50%');
@@ -186,7 +193,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   // (petición del usuario, 2026-10-28).
   await hold(page, pause);
   await choose(page, 'Velocidad', '50%');
-  await choose(page, 'Pista', 'Guitarra rítmica');
+  await choose(page, 'Pistas', 'Guitarra rítmica');
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
@@ -216,7 +223,7 @@ for (const [level, label] of [['experto', 'Experto'], ['practica', 'Principiante
     await openGame(page);
     const panel = page.locator('.test-room-fretboard .riff-stage');
     await choose(page, 'Nivel', label);
-    await choose(page, 'Pista', 'Guitarra rítmica');
+    await choose(page, 'Pistas', 'Guitarra rítmica');
     await choose(page, 'Ritmo', 'Paso a paso');
     // Como una persona: bajar hasta el botón y pulsarlo (así "Empezar" puede recolocar la página).
     await page.locator('.riff-actions').scrollIntoViewIfNeeded();
@@ -279,7 +286,7 @@ test('Kirk sigue a James en los riffs compartidos (Avanzado cuerdas, paso a paso
 // Al empezar (petición del usuario): abajo del todo, los números de traste; encima, todo lo posible
 // de la autopista. La barra MIDI solo entra si cabe todo (pantalla alta).
 for (const [name, width, height, pillVisible] of [['pantalla baja (móvil apaisado)', 760, 420, false], ['pantalla alta', 1366, 1400, true]] as const) {
-  test(`al empezar, ${name}: números de traste abajo, máxima autopista arriba`, async ({ page }) => {
+  test(`al empezar, ${name}: máxima autopista arriba`, async ({ page }) => {
     await page.setViewportSize({ width, height });
     await page.goto(URL);
     await openGame(page);
@@ -296,7 +303,11 @@ for (const [name, width, height, pillVisible] of [['pantalla baja (móvil apaisa
       if (scrollY === 0) expect(pill.y + pill.height).toBeLessThanOrEqual(height);
       else expect(Math.abs(pill.y + pill.height - height)).toBeLessThanOrEqual(3);
     } else {
-      expect(Math.abs(svg.y + svg.height - height)).toBeLessThanOrEqual(3);
+      // No cabe todo: el borde inferior de la MADERA del mástil va al borde de la pantalla; los
+      // números de traste quedan debajo, fuera de la vista (petición del usuario, 2026-11-03).
+      const wood = (await page.locator('.test-room-fretboard .reduced-board-bg').boundingBox())!;
+      expect(Math.abs(wood.y + wood.height - height)).toBeLessThanOrEqual(2);
+      expect(svg.y + svg.height).toBeGreaterThan(height + 5);
       expect(pill.y).toBeGreaterThanOrEqual(height - 1);
     }
   });
@@ -373,19 +384,103 @@ test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo es
   }
 });
 
-test('aviso de pantalla estrecha: aparece y desaparece solo según el ancho', async ({ page }) => {
-  await page.setViewportSize({ width: 600, height: 900 });
+test('aviso de pantalla estrecha: "Pantalla pequeña"; los niveles de trastes 0-5 caben', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(URL);
   await openGame(page);
-  const warning = page.getByText('Esta pantalla es muy estrecha para jugar.');
-  await expect(warning).toBeVisible();
+  await choose(page, 'Nivel', 'Experto');
+  const warning = page.locator('.riff-narrow-warning');
+  await expect(warning).toHaveCount(0);
+
+  // Estrecha: Experto no cabe (aviso corto, sin autopista, sin Empezar)...
+  await page.setViewportSize({ width: 480, height: 900 });
+  await expect(warning).toHaveText('Pantalla pequeña');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeDisabled();
   await expect(page.getByTestId('riff-highway')).toHaveCount(0);
-
-  await page.setViewportSize({ width: 1280, height: 900 });
+  // ...y en el menú los niveles que no caben llevan un icono ámbar (ensanchar la pantalla), pero se
+  // pueden elegir; los de trastes 0-5 caben.
+  await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+  const menu = page.locator('.riff-dd-menu');
+  const trastes = menu.getByRole('group', { name: 'Modo trastes' });
+  for (const name of ['Principiante', 'Fácil', 'Medio']) {
+    await expect(trastes.getByRole('button', { name, exact: true })).toHaveAttribute('data-fits', 'true');
+    await expect(trastes.getByRole('button', { name, exact: true }).locator('.riff-fit-icon')).toHaveCount(0);
+  }
+  const avanzado = trastes.getByRole('button', { name: 'Avanzado', exact: true });
+  await expect(avanzado).toBeEnabled();
+  await expect(avanzado).toHaveAttribute('title', 'Ensancha la pantalla para jugar este nivel');
+  await expect(avanzado.locator('.riff-fit-icon')).toHaveCount(1);
+  await expect(menu.getByRole('button', { name: 'Experto', exact: true }).locator('.riff-fit-icon')).toHaveCount(1);
+  await menu.getByRole('button', { name: 'Principiante', exact: true }).click();
   await expect(warning).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 10000 });
   await expect(page.getByTestId('riff-highway')).toHaveCount(1);
+});
+
+test.describe('aviso en un móvil', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test('estrecho y táctil: "Gira el móvil"', async ({ page }) => {
+    // Tan estrecho que ni el mástil 0-5 de Principiante cabe.
+    await page.setViewportSize({ width: 300, height: 700 });
+    await page.goto(URL);
+    await openGame(page);
+    await expect(page.locator('.riff-narrow-warning')).toHaveText('Gira el móvil');
+    // En el menú Nivel, el icono del móvil girando a la derecha de los que no caben.
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Experto', exact: true })).toHaveAttribute('title', 'Gira el móvil para jugar este nivel');
+  });
+});
+
+test('Pistas: la otra guitarra, el bajo y la batería se pueden silenciar; el metrónomo, aparte', async ({ page }) => {
+  await page.addInitScript(() => {
+    const m = { saws: 0 };
+    (window as unknown as { __bass: typeof m }).__bass = m;
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = createOscillator.call(this);
+      const start = osc.start.bind(osc);
+      osc.start = (when = 0) => {
+        if (osc.type === 'sawtooth') m.saws++;
+        return start(when);
+      };
+      return osc;
+    };
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  // Canción con batería: metrónomo apagado.
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+  const menu = page.locator('.riff-dd-menu');
+  await expect(menu.locator('.riff-band-track')).toHaveText([/Bajo/, /Guitarra rítmica/, /Batería/]);
+  const bass = menu.getByRole('button', { name: /^Bajo:/ });
+  await expect(bass).toHaveAttribute('aria-pressed', 'true');
+  await bass.click();
+  // Silenciar no cierra el menú.
+  await expect(bass).toHaveAttribute('aria-pressed', 'false');
+  await expect(bass).toHaveAttribute('aria-label', 'Bajo: silenciada');
+  await page.mouse.click(5, 5);
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+  await page.waitForTimeout(3000);
+  // Con el bajo silenciado no se programa ni una nota de bajo (osciladores de sierra).
+  expect(await page.evaluate(() => (window as unknown as { __bass: { saws: number } }).__bass.saws)).toBe(0);
+});
+
+test('canción sin batería: empieza con el metrónomo encendido', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await page.getByTestId('local-song-files').setInputFiles([
+    { name: 'cumple.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/cumpleanos-feliz.gp') },
+  ]);
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Canción' })).toHaveAttribute('aria-label', 'Canción: cumple', { timeout: 20000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo', { timeout: 10000 });
 });
 
 for (const width of [360, 1280]) {
@@ -479,13 +574,26 @@ for (const width of [1280, 760]) {
     const a = (await arrow.boundingBox())!;
     const k = (await kb.boundingBox())!;
     expect(Math.abs(a.x + a.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
-    // A la altura de los números de traste (bajo el mástil) y por encima del botón.
-    const number = (await page.locator('.test-room-fretboard .reduced-fret-number').first().boundingBox())!;
-    expect(Math.abs(a.y + a.height / 2 - (number.y + number.height / 2))).toBeLessThan(10);
     expect(a.y + a.height).toBeLessThan(k.y);
-    // Activado el teclado, la flecha se va (el brillo sigue mientras JUGAR esté abierto).
+    const number = (await page.locator('.test-room-fretboard .reduced-fret-number').first().boundingBox())!;
+    // Con sitio entre los números de traste y la barra (petición del usuario, 2026-11-03): "Usa teclado"
+    // encima de la flecha, los dos por DEBAJO de los números (sin invadir el mástil ni taparlos). Sin
+    // sitio, la flecha sola a la altura de los números, como antes.
+    const hint = page.locator('.test-room-fretboard [data-testid="riff-kb-hint"]');
+    if (width === 1280) await expect(hint).toBeVisible();
+    if (await hint.count()) {
+      await expect(hint).toContainText('Usa teclado');
+      const text = (await hint.locator('.riff-kb-hint-text').boundingBox())!;
+      expect(text.y).toBeGreaterThanOrEqual(number.y + number.height);
+      expect(text.y + text.height).toBeLessThanOrEqual(a.y + 1);
+      expect(Math.abs(text.x + text.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
+    } else {
+      expect(Math.abs(a.y + a.height / 2 - (number.y + number.height / 2))).toBeLessThan(10);
+    }
+    // Activado el teclado, la flecha (y su mensaje) se van (el brillo sigue mientras JUGAR esté abierto).
     await kb.click();
     await expect(arrow).toHaveCount(0);
+    await expect(hint).toHaveCount(0);
     await expect(kb).toHaveClass(/riff-kb-glow/);
   });
 }
@@ -642,13 +750,13 @@ test('cambiar de canción con el disco: en el juego y en la tablatura de debajo 
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   const disc = page.locator('.riff-dd-toggle', { hasText: 'Canción' });
   await expect(disc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
-  // Una sola guitarra: sin desplegable de pista. 44 compases.
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toHaveCount(0);
+  // Una sola guitarra, pero con bajo y batería: "Pistas" está para silenciarlas. 44 compases.
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toBeVisible();
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–44▾$/, { timeout: 10000 });
   await choose(page, 'Canción', 'Iron Rain');
   await expect(disc).toHaveAttribute('aria-label', 'Canción: Iron Rain');
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–101▾$/, { timeout: 10000 });
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pista' })).toBeVisible();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toBeVisible();
   // Se puede jugar: Empezar arranca la partida.
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/);
@@ -896,7 +1004,7 @@ test('canción muy densa: notas de fondo con tope y batería sin buffers nuevos 
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'estres', exact: true }).click();
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–110▾$/, { timeout: 20000 });
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Modo' })).toContainText('Batería');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 20000 });
   const buffersAtStart = await page.evaluate(() => (window as unknown as { __audio: { buffers: number } }).__audio.buffers);
@@ -966,4 +1074,45 @@ test('canción muy densa: el bajo es monofónico y el temporizador no se retrasa
     expect(notes[i - 1].stop - notes[i].start).toBeLessThan(0.04);
   }
   expect(m.maxTickGap).toBeLessThan(250);
+});
+
+test('batería automática: en una canción sin batería se elige en "Metrónomo" y suena con bombos', async ({ page }) => {
+  await page.addInitScript(() => {
+    const m = { kicks: 0 };
+    (window as unknown as { __drums: typeof m }).__drums = m;
+    // El bombo de playMetronomeClick es un oscilador senoidal (el metrónomo solo usa cajas de ruido, y
+    // Cumpleaños feliz no tiene bajo, cuyo sub también lo es).
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = createOscillator.call(this);
+      const start = osc.start.bind(osc);
+      osc.start = (when = 0) => {
+        if (osc.type === 'sine') m.kicks++;
+        return start(when);
+      };
+      return osc;
+    };
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  // Con batería en la canción, la batería automática no se puede elegir (todavía).
+  await page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' }).click();
+  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeDisabled();
+  await page.mouse.click(5, 5);
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await page.getByTestId('local-song-files').setInputFiles([
+    { name: 'cumple.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/cumpleanos-feliz.gp') },
+  ]);
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
+  const toggle = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
+  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo', { timeout: 20000 });
+  await choose(page, 'Metrónomo', 'Batería automática');
+  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Batería automática');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+  await page.waitForTimeout(4000);
+  expect(await page.evaluate(() => (window as unknown as { __drums: { kicks: number } }).__drums.kicks)).toBeGreaterThan(2);
 });

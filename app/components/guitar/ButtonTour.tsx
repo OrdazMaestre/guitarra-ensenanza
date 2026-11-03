@@ -54,11 +54,12 @@ export const TUNING_TOUR: TourStep[] = [
 const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.riff-dd-toggle[aria-controls="riff-menu-${id}"]`);
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
-  { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
-  { title: 'Pista', lines: ['Elige qué guitarra tocas.'], find: ddToggle('pista') },
+  // Mismo orden que el panel (decisión del usuario, 2026-11-03).
   { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
-  { title: 'Acompañamiento', lines: ['Elige el ritmo:', 'batería, metrónomo o nada.'], find: ddToggle('modo') },
   { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
+  { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
+  { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
+  { title: 'Metrónomo', lines: ['Metrónomo o batería automática.', 'Para canciones sin batería.'], find: ddToggle('metronomo') },
   { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
   { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
@@ -230,6 +231,7 @@ function TourStyles() {
     <style>{`
       .tour-launch {
         align-items: center;
+        animation: tour-launch-text 2s ease-in-out infinite;
         background: #ffffff;
         border: 1.5px solid #047857;
         border-radius: 999px;
@@ -241,6 +243,23 @@ function TourStyles() {
         line-height: 1.3;
         padding: 4px 14px;
         position: relative;
+        /* z-index propio (no "auto"): forma SU PROPIO contexto de apilamiento, para que el
+           z-index: -1 del ::before de abajo se hunda solo por debajo del texto de ESTE botón --
+           sin esto, se hundiría por debajo del fondo del propio botón (el contexto de apilamiento
+           más cercano sería el de un ancestro), dejando el relleno invisible detrás de él. */
+        z-index: 0;
+      }
+
+      /* Junto al halo exterior de abajo, el propio interior se rellena del color del brillo y el
+         texto pasa a blanco en el pico (petición del usuario) -- sin 0%/100% explícitos: el
+         navegador usa el valor "de reposo" (el color fijo de arriba) como extremo implícito, así
+         que funciona igual sin duplicar el verde aquí. El blanco sirve para los dos temas sin
+         variante propia: en oscuro pasa por el invert(1) de .site-shell y sale negro (la rotación
+         de tono no toca los acromáticos), buen contraste sobre el dorado. El z-index: -1 de arriba
+         es justo lo que deja el texto por ENCIMA de este relleno -- sin él, un ::before posicionado
+         (nivel de pila 0 por defecto) pinta después que el texto en flujo normal y lo tapa entero. */
+      @keyframes tour-launch-text {
+        50% { color: #ffffff; }
       }
 
       /* Brillo que late (petición del usuario): verde; en modo oscuro, amarillo. El modo oscuro
@@ -254,6 +273,7 @@ function TourStyles() {
         inset: 0;
         pointer-events: none;
         position: absolute;
+        z-index: -1;
         --tour-glow: rgba(16, 185, 129, 0.8);
       }
 
@@ -263,12 +283,18 @@ function TourStyles() {
 
       @keyframes tour-launch-glow {
         0%, 100% { box-shadow: 0 0 2px 0 var(--tour-glow); }
-        50% { box-shadow: 0 0 14px 4px var(--tour-glow); }
+        50% { background: var(--tour-glow); box-shadow: 0 0 14px 4px var(--tour-glow); }
       }
 
       @media (prefers-reduced-motion: reduce) {
+        .tour-launch {
+          animation: none;
+          color: #ffffff;
+        }
+
         .tour-launch::before {
           animation: none;
+          background: var(--tour-glow);
           box-shadow: 0 0 10px 3px var(--tour-glow);
         }
       }

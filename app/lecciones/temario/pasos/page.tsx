@@ -59,23 +59,22 @@ export default function PasosPage() {
   return (
     <main className="cn-page">
       <header className="cn-hero">
-        <p className="cn-eyebrow">Mapa de contenidos</p>
         <h1 className="cn-title">Temario</h1>
         <p className="cn-note">(Esta web está pendiente de ser ampliada)</p>
 
         <div className="cn-guide">
           <section className="cn-guide-card">
-            <h2>Método Ordaz</h2>
+            <h2>ESTRUCTURA</h2>
             <p className="cn-guide-sub">Temas principales + apartados.</p>
             <ul>
-              <li><strong>Soy nuevo:</strong> Céntrate en los temas principales (1, 2, 3... 10), y entra en los apartados de los temas 2 y 3.</li>
-              <li><strong>Llegué al final:</strong> tras llegar al tema 10, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
+              <li><strong>Soy nuevo:</strong> Céntrate en los temas principales (1, 2, 3... 9), y entra en los apartados de los temas 2 y 3.</li>
+              <li><strong>Llegué al final:</strong> tras llegar al tema 9, vuelve al inicio y entra en los apartados pendientes. Si uno se te atasca, pasa a otro.</li>
               <li>Aprender cosas nuevas es necesario para avanzar y también facilita entender lo anterior.</li>
             </ul>
           </section>
 
           <section className="cn-guide-card">
-            <h2>Niveles</h2>
+            <h2>NIVELES</h2>
             <p className="cn-guide-sub">A nuestro ritmo.</p>
             <ul className="cn-levels">
               <li><span>1</span><strong>Superar el tema 5</strong></li>

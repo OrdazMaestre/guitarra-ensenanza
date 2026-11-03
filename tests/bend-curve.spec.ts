@@ -145,7 +145,7 @@ test('Riff-Hero: las notas de fondo programadas llevan su curva (también a medi
   const kirk = score.tracks.findIndex((track) => /Kirk/.test(track.name));
   const chart = buildChart(at, score, kirk);
   for (const speed of [1, 0.5]) {
-    const session = new RiffSession(chart, { speed, mode: 'ritmo', loop: false, fromBar: 27, toBar: 29 }, 100, 'bateria');
+    const session = new RiffSession(chart, { speed, mode: 'ritmo', loop: false, fromBar: 27, toBar: 29 }, 100, { click: 'nada', muted: [] });
     const scheduled: Array<{ duration: number; bend?: { automation: Array<{ t: number; cents: number }>; offset?: number } }> = [];
     for (let real = 100; real < 140 && session.status !== 'finished'; real += 0.025) {
       session.advance(real);

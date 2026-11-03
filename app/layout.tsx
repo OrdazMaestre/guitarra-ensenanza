@@ -13,8 +13,11 @@ import { DEPLOY_TARGET } from "./lib/deployTarget";
 import { SITE_SEARCH_ENTRIES } from "./lib/siteSearchIndex";
 
 export const metadata: Metadata = {
-  title: "Primeros Pasos con mi Guitarra",
+  title: "Riffcademy",
   description: "Aprende guitarra de forma clara, visual y progresiva",
+  // Nombre de la app instalada (el mismo que el título de la web).
+  applicationName: "Riffcademy",
+  appleWebApp: { title: "Riffcademy", capable: true },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },

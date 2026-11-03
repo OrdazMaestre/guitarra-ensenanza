@@ -182,6 +182,9 @@ function getSvgCoords(
   return { x: r.x, y: r.y };
 }
 
+// Hueco mínimo (px) entre los números de traste y el botón KEYBOARD para poner "Usa teclado" + la flecha.
+const KB_HINT_MIN_GAP = 34;
+
 export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
   // partida en sí la arranca "Empezar". El mástil ocupa siempre lo mismo en pantalla; en los niveles
@@ -396,7 +399,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // activar, en la fila de los números de traste justo encima del botón. Se mide el botón (su
   // centro) y la fila de los números (bottomLabelY) respecto al host, y se vuelve a medir si cambia
   // el tamaño de algo o la barra (al empezar la partida aparece PAUSA y el botón se mueve).
-  const [kbArrow, setKbArrow] = useState<{ left: number; top: number } | null>(null);
+  // Con sitio entre los números de traste y la barra, la flecha baja y lleva encima el mensaje "Usa
+  // teclado" (petición del usuario, 2026-11-03: sin invadir el mástil ni tapar números); `top` es entonces
+  // el BORDE INFERIOR del bloque, 4 px por encima del botón. Sin sitio, la flecha sola en la fila de números.
+  const [kbArrow, setKbArrow] = useState<{ left: number; top: number; hint: boolean } | null>(null);
   const kbArrowWanted = !!riffGame && gameOpen && !kbMode;
   useLayoutEffect(() => {
     if (!kbArrowWanted) return;
@@ -412,8 +418,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         setKbArrow(null);
         return;
       }
+      const left = buttonRect.left + buttonRect.width / 2 - hostRect.left;
+      const numbersBottom = host.querySelector('.reduced-fret-number')?.getBoundingClientRect().bottom;
+      if (numbersBottom !== undefined && buttonRect.top - numbersBottom >= KB_HINT_MIN_GAP) {
+        setKbArrow({ left, top: buttonRect.top - 4 - hostRect.top, hint: true });
+        return;
+      }
       const rowY = ctm.d * (bottomLabelY - 5) + ctm.f;
-      setKbArrow({ left: buttonRect.left + buttonRect.width / 2 - hostRect.left, top: rowY - hostRect.top });
+      setKbArrow({ left, top: rowY - hostRect.top, hint: false });
     };
     place();
     const observer = new ResizeObserver(place);
@@ -785,7 +797,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const neckBottom = svg.getBoundingClientRect().bottom;
     const pill = hostRef.current?.querySelector('.midi-float-pill');
     const pillBottom = pill ? pill.getBoundingClientRect().bottom : neckBottom;
-    const bottom = pillBottom - top <= window.innerHeight ? pillBottom : neckBottom;
+    // Si no cabe todo (móvil en horizontal, ventanas bajas), el borde inferior de la MADERA va al
+    // borde inferior de la pantalla: los números de traste quedan debajo, fuera de la vista, y la
+    // autopista gana esa altura para ver antes las notas que caen (petición del usuario, 2026-11-03).
+    const ctm = svg.getScreenCTM();
+    const woodBottom = ctm ? ctm.d * (boardY + boardHeight) + ctm.f : neckBottom;
+    const bottom = pillBottom - top <= window.innerHeight ? pillBottom : woodBottom;
     window.scrollTo({ top: window.scrollY + bottom - window.innerHeight, behavior: 'instant' });
   }
   const placeOnStartRef = useRef(false);
@@ -1031,7 +1048,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
       </p>
     )}
-    {kbArrowWanted && kbArrow && <span aria-hidden="true" className="riff-kb-arrow" data-testid="riff-kb-arrow" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>▼</span>}
+    {kbArrowWanted && kbArrow && (kbArrow.hint ? (
+      <span aria-hidden="true" className="riff-kb-hint" data-testid="riff-kb-hint" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>
+        <span className="riff-kb-hint-text">Usa teclado</span>
+        <span className="riff-kb-arrow" data-testid="riff-kb-arrow">▼</span>
+      </span>
+    ) : (
+      <span aria-hidden="true" className="riff-kb-arrow riff-kb-arrow-alone" data-testid="riff-kb-arrow" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>▼</span>
+    ))}
     <MidiInstrumentChrome
       belowNote={allowLeftHanded && kbMode && lefty && <KeyboardLeftyNote />}
       warning={kbMode && kbGhostWarn && (

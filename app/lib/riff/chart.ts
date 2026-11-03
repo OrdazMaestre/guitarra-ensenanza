@@ -49,6 +49,9 @@ export interface ChartBar {
   // Número de compás tal como se ve en la partitura (1, 2, 3...). Con repeticiones, un mismo
   // número puede aparecer varias veces en `bars`, en orden de reproducción.
   number: number;
+  // Compás de la partitura ([numerador, denominador]): con los pulsos solos, un 3/4 y un 6/8 son
+  // iguales (3 negras). Lo usa la batería automática (autoDrums.ts).
+  timeSig?: [number, number];
   t: number;
   end: number;
 }
@@ -77,11 +80,19 @@ export interface ChartBandNote {
   midi: number;
   kind: 'guitar' | 'bass';
   palmMute: boolean;
+  // Índice de su pista en el archivo (para silenciarla desde "Pistas").
+  track?: number;
   // Pista + cuerda ("2/5"): en una guitarra de verdad, una nota nueva en la misma cuerda corta la
   // anterior. El juego hace lo mismo con el sonido de fondo (ver useRiffGame) para no amontonar notas.
   voice?: string;
   // Igual que ChartNote.bend.
   bend?: BendCurve;
+}
+
+export interface ChartBandTrack {
+  index: number;
+  name: string;
+  kind: 'guitar' | 'bass' | 'drums';
 }
 
 export interface Chart {
@@ -97,6 +108,9 @@ export interface Chart {
   drums: ChartDrumHit[];
   // Notas de las demás pistas con altura (ver ChartBandNote), ordenadas por tiempo.
   band?: ChartBandNote[];
+  // Las pistas que suenan de fondo (las demás guitarras, el bajo y la batería), para silenciarlas
+  // una a una desde "Pistas". La batería es la de `drums`.
+  bandTracks?: ChartBandTrack[];
   // Semitonos entre la afinación de la pista y la estándar cuando todas sus cuerdas están bajadas
   // (o subidas) lo mismo: -3 en Do#, -1 en Mi♭. Las notas del chart van en posiciones/alturas de la
   // afinación estándar (el mástil del juego y los niveles traducidos razonan sobre él); al SONAR se
@@ -194,7 +208,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   for (const lookup of lookups) {
     const masterBar = lookup.masterBar;
     const barStartSec = tickToSec(lookup.start);
-    bars.push({ number: masterBar.index + 1, t: barStartSec, end: tickToSec(lookup.end) });
+    bars.push({ number: masterBar.index + 1, t: barStartSec, end: tickToSec(lookup.end), timeSig: [masterBar.timeSignatureNumerator, masterBar.timeSignatureDenominator] });
 
     for (let tick = lookup.start; tick < lookup.end - 1; tick += ppq) {
       beats.push({ t: tickToSec(tick), q: tick / ppq, isBarStart: tick === lookup.start });
@@ -230,7 +244,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
             for (let tied: Note | null = note.tieDestination; tied; tied = tied.tieDestination) durTicks += tied.beat.playbackDuration;
             const dur = tickToSec(startTick + durTicks) - t;
             const bend = chainBend(note, durTicks, dur);
-            band.push({ t, dur, midi: note.realValue, kind, palmMute: beat.isPalmMute, voice: `${bandTrack.index}/${note.string}`, ...(bend ? { bend } : {}) });
+            band.push({ t, dur, midi: note.realValue, kind, palmMute: beat.isPalmMute, track: bandTrack.index, voice: `${bandTrack.index}/${note.string}`, ...(bend ? { bend } : {}) });
           }
         }
       }
@@ -295,6 +309,10 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     beats,
     drums,
     band,
+    bandTracks: [
+      ...bandTracks.map(({ track: bandTrack, kind }) => ({ index: bandTrack.index, name: bandTrack.name, kind })),
+      ...(drumTrack ? [{ index: drumTrack.index, name: drumTrack.name, kind: 'drums' as const }] : []),
+    ].sort((a, b) => a.index - b.index),
     ...(soundOffset ? { soundOffset } : {}),
     movedAboveMaxFret: placed.moved,
     skippedAboveMaxFret: placed.skipped,

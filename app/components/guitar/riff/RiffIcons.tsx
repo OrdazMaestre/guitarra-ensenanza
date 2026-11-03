@@ -1,7 +1,7 @@
 import { type CSSProperties, type ReactNode, useId } from 'react';
 import type { RiffLevel } from '@/app/lib/riff/levels';
 import { DIFFICULTY_LABEL, DIFFICULTY_LEVEL, type SongDifficulty } from '@/app/lib/riff/difficulty';
-import type { RiffBacking, RiffMode } from '@/app/lib/riff/session';
+import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 
 // Iconos del panel de partida (petición del usuario: en el panel solo se ven iconos; en los menús,
 // icono + nombre). 24×24, trazo fino que hereda el color (`currentColor`).
@@ -246,19 +246,80 @@ export function LoopIcon({ loop }: { loop: boolean }) {
   );
 }
 
-// Acompañamiento: tambor (batería), metrónomo, o tambor tachado (sin nada).
-export function BackingIcon({ backing }: { backing: RiffBacking }) {
-  if (backing === 'metronomo') {
+// Nivel que no cabe en la pantalla (petición del usuario, 2026-11-03): pequeño, ámbar, a la derecha
+// del nivel. En móvil, un móvil girando (vertical -> horizontal, con su flecha); en ordenador, una
+// pantalla que se ensancha (flechas hacia los lados).
+export function RotatePhoneIcon() {
+  return (
+    <Icon className="riff-fit-icon" size={18}>
+      <rect height="13" rx="1.6" width="7.5" x="3" y="8" />
+      <path d="M13 4.5a7 7 0 0 1 6.5 6.5" />
+      <path d="M17.5 10.5l2 .8.8-2.1" />
+      <rect height="5" rx="1" opacity="0.55" width="7.5" x="13" y="15.5" />
+    </Icon>
+  );
+}
+
+export function WidenScreenIcon() {
+  return (
+    <Icon className="riff-fit-icon" size={18}>
+      <rect height="10" rx="1.4" width="10" x="7" y="5" />
+      <path d="M10 19h4M12 15v4" />
+      <path d="M4.5 10H1.5M3 8.5L1.5 10 3 11.5M19.5 10h3M21 8.5l1.5 1.5L21 11.5" />
+    </Icon>
+  );
+}
+
+// Metrónomo: encendido, o tachado si está apagado.
+export function MetronomeIcon({ on }: { on: boolean }) {
+  return (
+    <Icon>
+      <path d="M6.5 21L10 3h4l3.5 18zM5 21h14M12 17l5.5-9" />
+      {!on && <Strike />}
+    </Icon>
+  );
+}
+
+const DRUM_PATH = 'M4 9c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v7c0 1.7 3.6 3 8 3s8-1.3 8-3V9M8 2l3 5M16 2l-3 5';
+
+// Clic de la canción (desplegable Metrónomo): nada (metrónomo tachado), metrónomo, o batería
+// automática (un tambor con una chispa de "automático").
+export function ClickIcon({ click }: { click: RiffClick }) {
+  if (click === 'auto') {
     return (
       <Icon>
-        <path d="M6.5 21L10 3h4l3.5 18zM5 21h14M12 17l5.5-9" />
+        <path d="M3 11c0-1.5 3.1-2.6 7-2.6s7 1.1 7 2.6-3.1 2.6-7 2.6-7-1.1-7-2.6zm0 0v6c0 1.5 3.1 2.6 7 2.6s7-1.1 7-2.6v-6M6.5 4.5l2.5 4M13.5 4.5l-2.5 4" />
+        <path d="M19.5 2.5v4M17.5 4.5h4M20.5 8.5v2.4M19.3 9.7h2.4" strokeWidth="1.6" />
       </Icon>
     );
   }
+  return <MetronomeIcon on={click === 'metronomo'} />;
+}
+
+// Pistas de fondo en "Pistas": batería (tambor) y bajo (mástil largo con 4 clavijas).
+export function DrumIcon() {
   return (
     <Icon>
-      <path d="M4 9c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v7c0 1.7 3.6 3 8 3s8-1.3 8-3V9M8 2l3 5M16 2l-3 5" />
-      {backing === 'nada' && <Strike />}
+      <path d={DRUM_PATH} />
+    </Icon>
+  );
+}
+
+export function BassIcon() {
+  return (
+    <Icon>
+      <path d="M14 3h4v5h-4zM16 8v7M12.5 15.5c-3 0-5 1.8-5 4 0 1.4 1 2.5 2.6 2.5 1.6 0 2.4-1 3.4-1s1.8 1 3.4 1c1.6 0 2.6-1.1 2.6-2.5 0-2.2-2-4-5-4z" />
+      <path d="M13 4h-1.5M13 7h-1.5M19 4h1.5M19 7h1.5" />
+    </Icon>
+  );
+}
+
+// Altavoz: suena (con ondas) o silenciado (tachado).
+export function SpeakerIcon({ on }: { on: boolean }) {
+  return (
+    <Icon>
+      <path d="M4 9h4l5-4v14l-5-4H4z" />
+      {on ? <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /> : <Strike />}
     </Icon>
   );
 }
@@ -283,8 +344,7 @@ export function SongDifficultyLegend({ className, style }: { className?: string;
   );
 }
 
-// Canción del dispositivo sin batería / sin guitarra: el tambor tachado del acompañamiento "Sin nada"
-// y el logo de las pistas (clavijero), tachado. Lo que falta va en `title` y `data-lacks`, nunca en el
+// Canción del dispositivo sin batería / sin guitarra: el tambor tachado (DrumIcon) y el logo de las pistas (clavijero), tachado. Lo que falta va en `title` y `data-lacks`, nunca en el
 // nombre accesible del botón (los tests y los lectores de pantalla siguen viendo solo el título).
 export function SongLacksIcons({ noDrums, noGuitar }: { noDrums?: boolean; noGuitar?: boolean }) {
   if (!noDrums && !noGuitar) return null;
@@ -305,7 +365,7 @@ export function SongLacksIcons({ noDrums, noGuitar }: { noDrums?: boolean; noGui
       )}
       {noDrums && (
         <Icon className="riff-icon song-lacks-drums" size={18}>
-          <path d="M4 9c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zm0 0v7c0 1.7 3.6 3 8 3s8-1.3 8-3V9M8 2l3 5M16 2l-3 5" />
+          <path d={DRUM_PATH} />
           <Strike />
         </Icon>
       )}

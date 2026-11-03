@@ -87,7 +87,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
     for (let r = 0; r < Math.max(1, section.repeats); r++) {
       const dt = cursorT - segStart;
       const dq = cursorQ - q0;
-      for (const bar of run) bars.push({ number: barNumber++, t: bar.t + dt, end: bar.end + dt });
+      for (const bar of run) bars.push({ number: barNumber++, t: bar.t + dt, end: bar.end + dt, timeSig: bar.timeSig });
       for (const beat of chart.beats) if (inSeg(beat.t)) beats.push({ t: beat.t + dt, q: beat.q + dq, isBarStart: beat.isBarStart });
       for (const hit of chart.drums) if (inSeg(hit.t)) drums.push({ t: hit.t + dt, sound: hit.sound });
       for (const note of chart.band ?? []) if (inSeg(note.t)) band.push({ ...note, t: note.t + dt });
@@ -123,6 +123,7 @@ export function buildRemix(sections: RemixSection[]): Remix {
       sourceNotes: translated ? sourceNotes : undefined,
       drums,
       band,
+      bandTracks: sections[0].chart.bandTracks,
       soundOffset: sections[0].chart.soundOffset,
       movedAboveMaxFret: 0,
       skippedAboveMaxFret: 0,

@@ -3,7 +3,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 
 import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
-import { GUIDE_GAIN, OPEN_GAIN, RiffSession, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
+import { GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
 
 // Envuelve RiffSession con el reloj real (AudioContext), el metrónomo y el estado de React.
 // El dibujo (RiffHighway) lee `sessionRef` en cada frame; aquí solo cambia el estado cuando
@@ -182,7 +182,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     const session = sessionRef.current;
     if (!session) return;
     const now = getAudioCurrentTime();
-    const same = !next || (next.chart === session.chart && next.backing === session.backing
+    const same = !next || (next.chart === session.chart && sameBacking(next.backing, session.backing)
       && (['speed', 'mode', 'loop', 'fromBar', 'toBar', 'freeStrings'] as const).every((key) => next.options[key] === session.options[key]));
     if (same || session.status !== 'paused' || session.stoppedAtBreak !== null) {
       session.resume(now);
