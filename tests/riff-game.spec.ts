@@ -469,7 +469,7 @@ test('Pistas: la otra guitarra, el bajo y la batería se pueden silenciar; el me
   expect(await page.evaluate(() => (window as unknown as { __bass: { saws: number } }).__bass.saws)).toBe(0);
 });
 
-test('canción sin batería: empieza con el metrónomo encendido', async ({ page }) => {
+test('canción sin batería: empieza con la batería automática', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page, 'Black Gilmur');
@@ -480,7 +480,7 @@ test('canción sin batería: empieza con el metrónomo encendido', async ({ page
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Canción' })).toHaveAttribute('aria-label', 'Canción: cumple', { timeout: 20000 });
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo', { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 10000 });
 });
 
 for (const width of [360, 1280]) {
@@ -1076,7 +1076,7 @@ test('canción muy densa: el bajo es monofónico y el temporizador no se retrasa
   expect(m.maxTickGap).toBeLessThan(250);
 });
 
-test('batería automática: en una canción sin batería se elige en "Metrónomo" y suena con bombos', async ({ page }) => {
+test('batería automática: en una canción sin batería se pone sola y suena con bombos', async ({ page }) => {
   await page.addInitScript(() => {
     const m = { kicks: 0 };
     (window as unknown as { __drums: typeof m }).__drums = m;
@@ -1107,9 +1107,8 @@ test('batería automática: en una canción sin batería se elige en "Metrónomo
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
   const toggle = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
-  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo', { timeout: 20000 });
-  await choose(page, 'Metrónomo', 'Batería automática');
-  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Batería automática');
+  // Se pone sola al elegir una canción sin batería.
+  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });

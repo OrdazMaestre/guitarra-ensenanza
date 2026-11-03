@@ -162,11 +162,11 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
         setFromBar((value) => Math.min(value, last));
         setToBar((value) => Math.min(value, last));
       }
-      // Otra canción: todas las pistas suenan; metrónomo solo si no trae batería (la batería
-      // automática, solo para canciones sin batería: con batería vuelve a nada).
+      // Otra canción: todas las pistas suenan; si no trae batería, la batería automática (petición
+      // del usuario, 2026-11-03; antes, el metrónomo); con batería, nada.
       if (newSong) {
         setMuted([]);
-        setClick(built.drums.length === 0 ? 'metronomo' : 'nada');
+        setClick(built.drums.length === 0 ? 'auto' : 'nada');
       }
     });
     return () => { cancelled = true; };
@@ -267,7 +267,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setMode(DEFAULTS.mode);
     setLoop(DEFAULTS.loop);
     setMuted([]);
-    setClick(hasDrums ? 'nada' : 'metronomo');
+    setClick(hasDrums ? 'nada' : 'auto');
     setFromBar(1);
     setToBar(maxBar);
   }
