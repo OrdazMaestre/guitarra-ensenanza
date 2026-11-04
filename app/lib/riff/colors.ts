@@ -11,6 +11,10 @@ export const RIFF_STRING_COLORS: Record<number, string> = {
   4: '#f97316',
   5: '#22c55e',
   6: '#ef4444',
+  // Cuerdas graves de los instrumentos de más de 6 (solo en Experto).
+  7: '#ec4899',
+  8: '#14b8a6',
+  9: '#84cc16',
 };
 
 // Niveles por traste (colorBy 'fret', modo trastes): arcoíris rojo, naranja, amarillo, verde,

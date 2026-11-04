@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from './AlphaTabPlayer';
 import { DiscIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons } from './riff/RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
@@ -36,6 +36,8 @@ export default function SongTabPlayer({ songs, initialSong, minHeight }: Props) 
   );
 }
 
+const NARROW_MENU_WIDTH = 700;
+
 // Mismo aspecto que los botones de la barra del reproductor (IconButton en AlphaTabPlayer: 52×52,
 // colores en `style` porque esas clases de color de Tailwind no se compilan en este proyecto) y un
 // menú que se abre hacia la derecha, como "Pistas".
@@ -44,6 +46,28 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
   // Tarjeta "Buscar mis canciones" abierta: lista y tarjeta en dos columnas (sin scroll).
   const [searching, setSearching] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Pantalla estrecha (móvil en vertical; petición del usuario, 2026-11-04): el menú centrado en la
+  // ventana, no pegado al disco. Se mide en vez de usar position: fixed, que el `filter` del tema
+  // oscuro rompería.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const root = rootRef.current;
+    if (!open || !menu || !root) return;
+    const place = () => {
+      const narrow = window.innerWidth <= NARROW_MENU_WIDTH;
+      menu.style.left = narrow ? `${(window.innerWidth - menu.offsetWidth) / 2 - root.getBoundingClientRect().left}px` : '0px';
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(menu);
+    window.addEventListener('resize', place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +110,7 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
         <div
           aria-label="Selector de canción"
           className="absolute top-[calc(100%+0.5rem)] z-[130] p-2 shadow-2xl"
+          ref={menuRef}
           role="menu"
           style={{ alignItems: searching ? 'flex-start' : 'stretch', background: '#09090b', border: '1px solid #52525b', display: 'flex', flexDirection: searching ? 'row' : 'column', flexWrap: 'wrap', gap: searching ? 10 : 4, left: 0, maxHeight: 'min(60vh, 420px)', maxWidth: 'calc(100vw - 32px)', overflowY: 'auto', width: searching ? 'max-content' : 260 }}
         >

@@ -69,8 +69,8 @@ export default function ConceptosBasicosPage({ previous, next, quizHref }: Lesso
               <p>El sonido lo generan las cuerdas.
               </p>
               <p>
-                Con las clavijas afinamos las cuerdas.</p>
-              <p>Los trastes ordenan las notas. </p>
+                Con las clavijas ajustamos/afinamos las cuerdas.</p>
+              <p>Los trastes con las cuerdas ordenan las notas. </p>
               <p>El cuerpo amplifica el sonido.
               </p>
             </div>

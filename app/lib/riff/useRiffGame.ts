@@ -1,6 +1,6 @@
 'use client';
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
 import { GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
@@ -16,6 +16,13 @@ const TICK_MS = 25;
 // El bajo, como el del reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
 const BAND_GUITAR_GAIN = 0.195;
 const BAND_BASS_GAIN = 0.5;
+
+// La pista propia cuando se toca el bajo (mismo sintetizador que el bajo de la banda). `volume` en la
+// escala de GUIDE_GAIN/OPEN_GAIN, como la guitarra: abierta suena como el bajo de la banda.
+function playOwnBass(note: { midi: number; palmMute: boolean; bend?: ScheduledBend }, at: number, duration: number, volume: number): GuideNoteHandle | null {
+  const handle = playBassNote(at, note.midi, duration, volume * BAND_BASS_GAIN, note.palmMute, note.bend);
+  return handle && { setVolume: (next) => handle.setVolume(next * BAND_BASS_GAIN), stopAt: handle.stopAt };
+}
 // Cuánto se programa por adelantado (segundos reales). 0,3 s (antes 0,15): con canciones muy densas
 // el temporizador llegaba a retrasarse 130 ms, y una nota programada tarde se oye a destiempo.
 const CLICK_LOOKAHEAD_SECONDS = 0.3;
@@ -58,7 +65,10 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
   const applyHit = useCallback((session: RiffSession, hit: ChartNote, now: number) => {
     for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(OPEN_GAIN);
-    for (const note of session.playNowFor(hit)) void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN, note.bend);
+    for (const note of session.playNowFor(hit)) {
+      if (session.bass) playOwnBass(note, now, note.duration, OPEN_GAIN);
+      else void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN, note.bend);
+    }
   }, []);
 
   const clearTimer = useCallback(() => {
@@ -119,7 +129,9 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
         playMetronomeClick(click.at, click.volume, click.sound);
       }
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
-        void scheduleGuideNote(note.midi, note.at, note.duration, note.open ? OPEN_GAIN : GUIDE_GAIN, note.bend).then((handle) => {
+        const volume = note.open ? OPEN_GAIN : GUIDE_GAIN;
+        const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
+        void scheduled.then((handle) => {
           if (!handle) return;
           // Llegó tarde (ya se paró o se salió de la página): se calla en vez de quedarse sonando.
           if (sessionRef.current !== session) handle.setVolume(0);

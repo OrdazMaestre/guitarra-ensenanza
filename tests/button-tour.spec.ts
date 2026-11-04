@@ -86,22 +86,41 @@ test('Colores: el globo dice para qué sirve, en una frase', async ({ page }) =>
   await expect(bubble).toContainText('Pinta notas para ver dónde se repiten.');
 });
 
-// Todos los instrumentos MIDI de la web llevan su botón "Tutorial" (petición del usuario): dentro
-// de su `.midi-instrument-host` (diagramas propios de cada lección) o justo encima (mástil y
-// teclado compartidos). Cada uno enseña solo los botones que tiene ese instrumento.
+// Los instrumentos MIDI de los temas 1 a 6 (y sus ramas) llevan su botón "Tutorial": dentro de su
+// `.midi-instrument-host` (diagramas propios de cada lección) o justo encima (mástil y teclado
+// compartidos). Cada uno enseña solo los botones que tiene ese instrumento. Del tema 7 en adelante
+// no lo llevan (decisión del usuario, 2026-11-01).
 const MIDI_PAGES = [
   '/lecciones/temario/conceptos-basicos',
   '/lecciones/temario/tablaturas',
   '/lecciones/temario/notacion-musical',
-  '/lecciones/temario/escalas',
   '/lecciones/temario/afinacion',
+  '/lecciones/temario/figuras-de-acordes',
+];
+
+const NO_TUTORIAL_PAGES = [
+  '/lecciones/temario/ampliacion-arpegios',
+  '/lecciones/temario/pentatonica',
+  '/lecciones/temario/ejercicios-pentatonica',
+  '/lecciones/temario/ejercicios-pentatonica-avanzados',
+  '/lecciones/temario/pentatonica-blues',
+  '/lecciones/temario/ejercicios-pentatonica-blues',
+  '/lecciones/temario/escalas',
   '/lecciones/temario/escala-completa-sol-mayor',
+  '/lecciones/temario/ejercicios-escalas',
+  '/lecciones/temario/ejercicios-escalas-avanzados',
   '/lecciones/temario/acordes-escala-sol-mayor',
   '/lecciones/temario/acordes-con-septima',
-  '/lecciones/temario/figuras-de-acordes',
-  '/lecciones/temario/pentatonica',
-  '/lecciones/temario/pentatonica-blues',
 ];
+
+for (const path of NO_TUTORIAL_PAGES) {
+  test(`${path} (del tema 7 en adelante) no lleva tutorial en sus instrumentos`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(path);
+    await expect(page.locator('.midi-instrument-host').first()).toBeAttached({ timeout: 15000 });
+    await expect(page.locator('.tour-launch')).toHaveCount(0);
+  });
+}
 
 for (const path of MIDI_PAGES) {
   test(`cada instrumento MIDI de ${path} tiene su tutorial`, async ({ page }) => {

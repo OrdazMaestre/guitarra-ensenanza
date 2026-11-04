@@ -1,6 +1,6 @@
 'use client';
 import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
-import { buildChart, listGuitarTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
+import { buildChart, listGuitarTracks, listPlayableTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
 import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
@@ -108,7 +108,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     loadScore(source)
       .then(({ score }) => {
         if (cancelled) return;
-        const list = listGuitarTracks(score);
+        const list = listPlayableTracks(score);
         setTracks(list);
         const preferred = list.find((track) => track.name === initialTrack) ?? list[0];
         setTrackIndex(preferred ? preferred.index : null);
@@ -121,7 +121,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // para los efectos (los papeles llegan como objeto literal en cada render).
   const rolesKey = JSON.stringify(trackRoles ?? {});
   const leader = useMemo(
-    () => (trackIndex === null ? null : leaderTrack(tracks, trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
+    () => (trackIndex === null ? null : leaderTrack(tracks.filter((track) => track.kind !== 'bass'), trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
     [tracks, trackIndex, rolesKey],
   );
 
@@ -136,14 +136,17 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
       if (cancelled) return;
       // Recién cambiada la canción, `trackIndex`/`leader` aún son de la anterior: se espera a que
       // la carga de arriba elija pista (este efecto vuelve a correr entonces).
-      const guitars = listGuitarTracks(score);
-      if (!guitars.some((track) => track.index === trackIndex)) return;
-      if (leader !== null && !guitars.some((track) => track.index === leader)) return;
+      const playable = listPlayableTracks(score);
+      const current = playable.find((track) => track.index === trackIndex);
+      if (!current) return;
+      if (leader !== null && !playable.some((track) => track.index === leader)) return;
       const translate = (index: number, profile: (typeof RIFF_LEVELS)[keyof typeof RIFF_LEVELS]) => {
-        // Rango del instrumento: todas las guitarras juntas (zonas de graves/agudas compartidas).
-        const range = pitchRange(listGuitarTracks(score).map((track) => buildChart(at, score, track.index, 24)));
-        const follow = leader === null ? undefined : reduceChart(buildChart(at, score, leader, 24), profile, { range });
-        return reduceChart(buildChart(at, score, index, 24), profile, { follow, range });
+        // Rango del instrumento: todas las guitarras juntas (zonas de graves/agudas compartidas); el
+        // bajo, el suyo.
+        const levelChart = (track: number) => buildChart(at, score, track, 24, { fold: true });
+        const range = pitchRange((current.kind === 'bass' ? [current] : listGuitarTracks(score)).map((track) => levelChart(track.index)));
+        const follow = leader === null ? undefined : reduceChart(levelChart(leader), profile, { range });
+        return reduceChart(levelChart(index), profile, { follow, range });
       };
       const built = level === 'experto'
         ? buildChart(at, score, trackIndex, endFret)

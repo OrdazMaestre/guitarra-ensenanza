@@ -38,6 +38,9 @@ export interface ChartNote {
   // Si la nota original no cabía en el mástil (traste > maxFret) y se recolocó: 'string' = misma
   // altura en una cuerda más aguda; 'octave' = una octava más grave.
   moved?: 'string' | 'octave';
+  // Semitonos que hay que sumar al SONAR además de `chart.soundOffset`: una nota de una cuerda extra
+  // subida de octava para caber en los niveles (ver `foldToStandard`) sigue sonando en su altura real.
+  soundShift?: number;
   // Solo en charts TRADUCIDOS (todos los niveles menos Experto, ver reduce.ts): ids de las notas de
   // la canción original (`Chart.sourceNotes`) que "son de" esta nota -- desde su golpe hasta la
   // siguiente nota traducida -- y la frase a la que pertenece.
@@ -116,6 +119,12 @@ export interface Chart {
   // afinación estándar (el mástil del juego y los niveles traducidos razonan sobre él); al SONAR se
   // suma esto, para que la canción suene en su tono real. Sin él (o afinaciones mixtas), 0.
   soundOffset?: number;
+  // La pista es un bajo: sus notas van una octava por encima de lo que suena (`soundOffset` lo
+  // compensa) para leerse en las cuerdas 6-3 del mástil, y suena con el sintetizador de bajo.
+  bass?: boolean;
+  // Solo en Experto, cuando el instrumento no tiene las 6 cuerdas de siempre: sus cuerdas, de la más
+  // grave a la más aguda (ver `gameStrings`). El mástil del juego dibuja justo esas.
+  strings?: number[];
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -125,18 +134,73 @@ export interface Chart {
 export interface GuitarTrackInfo {
   index: number;
   name: string;
+  kind?: 'guitar' | 'bass';
 }
 
-// Solo pistas de guitarra de 6 cuerdas (el mástil del juego es de 6 cuerdas).
-export function listGuitarTracks(score: Score): GuitarTrackInfo[] {
+// Bajo: su cuerda más aguda queda por debajo de un Sol3. (No vale mirar la más grave: una guitarra
+// de 8 cuerdas baja hasta un Fa#1. Las guitarras llegan como poco al Si3 de una barítono.)
+export function isBassTuning(tuning: number[]): boolean {
+  return tuning.length > 0 && Math.max(...tuning) < 55;
+}
+
+function pitchedTracks(score: Score) {
   return score.tracks
     .map((track, index) => ({ index, name: track.name, staff: track.staves[0] }))
-    .filter(({ staff }) => staff && !staff.isPercussion && staff.tuning.length === 6)
-    .map(({ index, name }) => ({ index, name }));
+    .filter(({ staff }) => staff && !staff.isPercussion);
+}
+
+// Guitarras de 6 cuerdas o más.
+export function listGuitarTracks(score: Score): GuitarTrackInfo[] {
+  return pitchedTracks(score)
+    .filter(({ staff }) => staff.tuning.length >= 6 && !isBassTuning(staff.tuning))
+    .map(({ index, name }) => ({ index, name, kind: 'guitar' as const }));
+}
+
+// Todo lo que se puede jugar: las guitarras primero (la pista inicial sigue siendo una guitarra) y
+// luego los bajos de 4 cuerdas o más.
+export function listPlayableTracks(score: Score): GuitarTrackInfo[] {
+  const basses = pitchedTracks(score)
+    .filter(({ staff }) => staff.tuning.length >= 4 && isBassTuning(staff.tuning))
+    .map(({ index, name }) => ({ index, name, kind: 'bass' as const }));
+  return [...listGuitarTracks(score), ...basses];
 }
 
 // Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
 const STANDARD_TUNING = [64, 59, 55, 50, 45, 40];
+const OPEN_E = STANDARD_TUNING[5];
+const ALL_STRINGS = [6, 5, 4, 3, 2, 1];
+const BASS_STRINGS = [6, 5, 4, 3];
+const BASS_OCTAVE = -12;
+
+// Cuerda del juego de cada cuerda al aire de `tuning` (que va de aguda a grave). Una sola regla, por
+// altura (petición del usuario, 2026-11-04): la 6 es SIEMPRE la del Mi grave. Hacia arriba 5, 4, 3, 2,
+// 1; hacia abajo 7, 8... Guitarra de 7: 7..1. Bajo de 4: 6..3. Bajo de 5: 7..3 (con Si grave) o 6..2
+// (con Do agudo). Bajo de 6: 7..2.
+export function gameStrings(tuning: number[]): number[] {
+  const count = tuning.length;
+  const highC = count > 4 && Math.max(...tuning) >= 46 ? 1 : 0;
+  const lowest = isBassTuning(tuning) ? 6 + Math.max(0, count - 4 - highC) : Math.max(6, count);
+  return tuning.map((_, k) => lowest - (count - 1 - k));
+}
+
+// Los niveles (todos menos Experto) solo conocen las cuerdas 1-6 de la guitarra y las 3-6 del bajo. Una
+// nota de una cuerda extra pasa a la vecina que sí existe: las graves, a su misma altura en la 6 (u
+// octavas arriba, si no llega: `soundShift` la deja sonando donde estaba); la Do del bajo, en la 3.
+function foldToStandard(notes: ChartNote[], bass: boolean) {
+  for (const note of notes) {
+    if (note.string > 6) {
+      let shift = 0;
+      while (note.midi + shift < OPEN_E) shift += 12;
+      note.string = 6;
+      note.midi += shift;
+      note.fret = note.midi - OPEN_E;
+      if (shift) note.soundShift = -shift;
+    } else if (bass && note.string < 3) {
+      note.string = 3;
+      note.fret = note.midi - STANDARD_TUNING[2];
+    }
+  }
+}
 
 // Curva de bend de una nota y su cadena ligada, en segundos. Cada nota de la cadena dura su parte
 // proporcional en ticks del total (`durTicks` -> `durSeconds`).
@@ -146,7 +210,8 @@ function chainBend(note: Note, durTicks: number, durSeconds: number): BendCurve 
   return buildBendCurve(note as unknown as BendNoteLike, (chainNote) => ((chainNote as unknown as Note).beat?.playbackDuration ?? 0) * secondsPerTick);
 }
 
-export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number, maxFret = 24): Chart {
+// `fold`: para traducirlo a un nivel (ver `foldToStandard`). Sin él, Experto: todas las cuerdas.
+export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number, maxFret = 24, { fold = false }: { fold?: boolean } = {}): Chart {
   const track = score.tracks[trackIndex];
   if (!track) throw new Error(`La pista ${trackIndex} no existe`);
   const staff = track.staves[0];
@@ -188,21 +253,25 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const beats: ChartBeat[] = [];
   const drums: ChartDrumHit[] = [];
   const drumTrack = score.tracks.find((candidate) => candidate.staves[0]?.isPercussion);
-  // La banda: todas las pistas con altura menos la que se toca. Bajo = pista de 4-5 cuerdas o cuya
-  // cuerda más grave está por debajo de un Mi1 + 5 (las guitarras empiezan en Mi2 = 40).
+  // La banda: todas las pistas con altura menos la que se toca.
   const band: ChartBandNote[] = [];
   const bandTracks = score.tracks
     .filter((candidate, index) => index !== trackIndex && candidate.staves[0] && !candidate.staves[0].isPercussion)
     .map((candidate) => {
-      const tuning = candidate.staves[0].tuning;
-      const bass = tuning.length > 0 && (tuning.length < 6 || Math.min(...tuning) < 34);
-      return { track: candidate, kind: (bass ? 'bass' : 'guitar') as ChartBandNote['kind'] };
+      return { track: candidate, kind: (isBassTuning(candidate.staves[0].tuning) ? 'bass' : 'guitar') as ChartBandNote['kind'] };
     });
   // Afinación uniformemente bajada/subida (Do#, Mi♭...): las notas se leen como en la estándar y la
   // diferencia se guarda en `soundOffset` (ver Chart). Afinaciones mixtas (Drop D...): alturas reales.
-  const offsets = staff.tuning.map((open, k) => open - STANDARD_TUNING[k]);
-  const soundOffset = offsets.length === 6 && offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0;
-  const openMidi = (string: number) => staff.tuning[string - 1] - soundOffset;
+  // Se mide en las cuerdas que tiene la guitarra de 6 (en el bajo, las 6-3, una octava más abajo).
+  const bass = isBassTuning(staff.tuning);
+  const stringOf = gameStrings(staff.tuning);
+  const openOf = new Map(stringOf.map((string, k) => [string, staff.tuning[k]]));
+  const base = bass ? BASS_OCTAVE : 0;
+  const offsets = (bass ? BASS_STRINGS : ALL_STRINGS).map((string) => (openOf.get(string) ?? NaN) - STANDARD_TUNING[string - 1] - base);
+  const soundOffset = base + (offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0);
+  const openMidi = (string: number) => (openOf.get(string) ?? NaN) - soundOffset;
+  // Cuerda del juego de una nota (la cuerda 1 de alphaTab es la más grave).
+  const gameString = (note: Note) => stringOf[staff.tuning.length - note.string];
   let nextId = 0;
 
   for (const lookup of lookups) {
@@ -256,11 +325,11 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
       for (const beat of voice.beats) {
         if (beat.isRest || beat.notes.length === 0) continue;
         const startTick = lookup.start + beat.playbackStart;
-        const playable = beat.notes.filter((note) => !note.isDead && !note.isTieDestination && 7 - note.string >= 1 && 7 - note.string <= 6);
+        const playable = beat.notes.filter((note) => !note.isDead && !note.isTieDestination && gameString(note) !== undefined);
         // Las notas que se salen del mástil (traste > maxFret) se recolocan después, por PASAJES
         // enteros (relocatePassages, relocate.ts).
         for (const note of playable) {
-          const string = 7 - note.string;
+          const string = gameString(note);
           const fret = note.fret;
           let durTicks = beat.playbackDuration;
           let tied: Note | null = note.tieDestination;
@@ -294,7 +363,9 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   }
 
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
-  const placed = placeAboveMaxFret(notes, bars, beats, maxFret, openMidi);
+  if (fold) foldToStandard(notes, bass);
+  const instrument = fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
+  const placed = placeAboveMaxFret(notes, bars, beats, maxFret, openMidi, instrument);
   notes.splice(0, notes.length, ...placed.notes);
   drums.sort((a, b) => a.t - b.t);
   band.sort((a, b) => a.t - b.t);
@@ -314,6 +385,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
       ...(drumTrack ? [{ index: drumTrack.index, name: drumTrack.name, kind: 'drums' as const }] : []),
     ].sort((a, b) => a.index - b.index),
     ...(soundOffset ? { soundOffset } : {}),
+    ...(bass ? { bass } : {}),
+    ...(!fold && instrument.join() !== ALL_STRINGS.join() ? { strings: instrument } : {}),
     movedAboveMaxFret: placed.moved,
     skippedAboveMaxFret: placed.skipped,
   };
@@ -322,8 +395,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
 // Notas por encima de `maxFret` (Experto: el mástil del juego llega al 12): primero los PASAJES
 // enteros (relocate.ts: subir de cuerda u octava abajo con la misma digitación); lo poco que quede,
 // nota a nota con `relocate()`, como último recurso (en las canciones de la web, nada).
-function placeAboveMaxFret(notes: ChartNote[], bars: ChartBar[], beats: ChartBeat[], maxFret: number, openMidi: (string: number) => number) {
-  const out = relocatePassages(notes, bars, beats, maxFret, openMidi).notes;
+function placeAboveMaxFret(notes: ChartNote[], bars: ChartBar[], beats: ChartBeat[], maxFret: number, openMidi: (string: number) => number, strings: number[]) {
+  const out = relocatePassages(notes, bars, beats, maxFret, openMidi, strings).notes;
   const kept: ChartNote[] = [];
   let skipped = 0;
   for (let start = 0; start < out.length;) {
@@ -337,7 +410,7 @@ function placeAboveMaxFret(notes: ChartNote[], bars: ChartBar[], beats: ChartBea
         kept.push(note);
         continue;
       }
-      const place = relocate(note.midi, note.string, used, openMidi, maxFret);
+      const place = relocate(note.midi, note.string, used, openMidi, maxFret, strings);
       if (!place) {
         skipped++;
         continue;
@@ -362,16 +435,17 @@ function relocate(
   used: Set<number>,
   openMidi: (string: number) => number,
   maxFret: number,
+  strings: number[],
 ): { string: number; fret: number; moved: 'string' | 'octave' } | null {
   const fits = (s: number, m: number) => {
     const fret = m - openMidi(s);
     return fret >= 0 && fret <= maxFret && !used.has(s) ? fret : null;
   };
-  for (let s = string - 1; s >= 1; s--) {
+  for (let s = string - 1; s >= Math.min(...strings); s--) {
     const fret = fits(s, midi);
     if (fret !== null) return { string: s, fret, moved: 'string' };
   }
-  const byDistance = [1, 2, 3, 4, 5, 6].sort((a, b) => Math.abs(a - string) - Math.abs(b - string) || a - b);
+  const byDistance = [...strings].sort((a, b) => Math.abs(a - string) - Math.abs(b - string) || a - b);
   for (const s of byDistance) {
     const fret = fits(s, midi - 12);
     if (fret !== null) return { string: s, fret, moved: 'octave' };
@@ -412,7 +486,7 @@ export function forgetScore(url: string) {
 export async function isPlayableScore(url: string): Promise<boolean> {
   try {
     const { score } = await loadScore(url);
-    return listGuitarTracks(score).length > 0;
+    return listPlayableTracks(score).length > 0;
   } catch {
     return false;
   }

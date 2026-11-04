@@ -31,6 +31,8 @@ import { KeyboardToggleLabel } from './InstrumentIcons';
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
   1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40,
+  // Cuerdas graves de los instrumentos de más de 6 (Experto, ver `gameStrings` en chart.ts).
+  7: 35, 8: 30, 9: 25,
 };
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -40,7 +42,7 @@ const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A
 // `cents[string]`) como desde los manejadores de puntero/teclado asíncronos (pasando
 // `centsRef.current[string]`, el valor más reciente tras un `await`). Ver `allowTuning` más abajo.
 function effectiveMidi(string: number, fret: number, centsValue: number): number {
-  return OPEN_STRING_MIDI[string] + fret + centsToMidiOffset(centsValue);
+  return OPEN_STRING_MIDI[string] + fret + centsToMidiOffset(centsValue ?? 0);
 }
 
 function noteNameForFret(string: number, fret: number, centsValue: number) {
@@ -284,13 +286,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // estándar y suena con `soundOffset` (chart.ts), así que mástil y canción coinciden. Se aplica
   // una vez por canción (ajuste de estado durante el render, no en un efecto): luego se puede
   // reafinar a mano con el botón de afinación hasta empezar.
-  const songTuningKey = riffGame && gameOpen && riff.chart && song ? `${song.id}:${riff.chart.soundOffset ?? 0}` : null;
+  // El bajo: su octava de `soundOffset` no es afinación; el mástil solo toma lo que esté bajado.
+  const songTuningShift = (riff.chart?.soundOffset ?? 0) + (riff.chart?.bass ? 12 : 0);
+  const songTuningKey = riffGame && gameOpen && riff.chart && song ? `${song.id}:${songTuningShift}` : null;
   const [appliedSongTuning, setAppliedSongTuning] = useState<string | null>(null);
   if (songTuningKey !== appliedSongTuning) {
     setAppliedSongTuning(songTuningKey);
     if (songTuningKey && riff.chart) {
-      const shift = riff.chart.soundOffset ?? 0;
-      setCents(centsForPreset({ id: 'song', label: '', shiftSemitones: shift }));
+      setCents(centsForPreset({ id: 'song', label: '', shiftSemitones: songTuningShift }));
     }
   }
   const stringY = (string: number) => boardY + (string - 1) * stringGap;
@@ -298,7 +301,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // cuerda real; en el resto de niveles, sus cuerdas repartidas por el centro del mástil (los dos Mi
   // quedan para Experto). Mientras se juega (o en pausa) el mástil se TOCA igual: cada cuerda del
   // nivel tiene su franja, que llega hasta la mitad del camino a la vecina (ver getPos).
-  const lanes = riffGame && gameOpen && riff.profile ? laneRows(riff.profile.freeStrings ? [6] : riff.profile.strings) : null;
+  // Experto con un instrumento que no tiene 6 cuerdas: las suyas, repartidas por el mástil.
+  const laneStrings = riff.profile ? (riff.profile.freeStrings ? [6] : riff.profile.strings) : riff.chart?.strings;
+  const lanes = riffGame && gameOpen && laneStrings ? laneRows(laneStrings) : null;
   const laneY = (string: number) => {
     const row = lanes?.get(string);
     return row === undefined ? stringY(string) : boardY + (row - 1) * stringGap;
@@ -1009,7 +1014,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     <PracticeFeedback feedback={practice.feedback} />
     {showHighway && riff.chart && (
       <RiffHighway
-        activeStrings={riff.profile?.strings}
+        activeStrings={riff.profile?.strings ?? riff.chart?.strings}
         chart={riff.chart}
         colorBy={riff.profile?.colorBy ?? 'string'}
         fretRange={riff.profile ? [riff.profile.minFret, riff.profile.maxFret] : undefined}
@@ -1068,8 +1073,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           pulsado 1 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
       <HoldGuard active={!!riffGame && gameOpen && riff.playing}>
       {riffGame && (
+        // Con el juego abierto, el mismo botón es PARAR: cierra panel y autopista y para la partida.
         <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">
-          JUGAR
+          {gameOpen ? 'PARAR' : 'JUGAR'}
         </button>
       )}
       {/* PAUSA, junto a JUGAR mientras hay partida: la para y despliega los ajustes delante del

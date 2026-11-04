@@ -62,7 +62,7 @@ export type RiffClick = 'nada' | 'metronomo' | 'auto';
 
 export interface RiffBacking {
   // Clic de la canción aparte de la batería (que es una pista más): nada, el metrónomo en cada pulso,
-  // o la batería automática hecha con los ritmos del metrónomo (autoDrums.ts; canciones sin batería).
+  // o la batería automática hecha con los ritmos del metrónomo (autoDrums.ts).
   click: RiffClick;
   // Índices de las pistas de fondo silenciadas en "Pistas" (otra guitarra, bajo, batería).
   muted: number[];
@@ -116,6 +116,7 @@ export interface ScheduledBandNote {
 }
 
 export interface ScheduledGuideNote {
+  palmMute: boolean;
   // id de la nota real de la canción (para poder subirle el volumen después, ver `openedBy`).
   id: number;
   at: number;
@@ -484,8 +485,9 @@ export class RiffSession {
           id: note.id,
           at: now + Math.max(0, note.t - this.songPos) / this.options.speed,
           duration: note.dur / this.options.speed,
-          midi: note.midi + (this.chart.soundOffset ?? 0),
+          midi: this.soundingMidi(note),
           open: owner !== undefined && this.hitAt.has(owner),
+          palmMute: note.palmMute,
           voice: `own/${note.string}`,
           ...this.scheduledBend(note.bend, note.t),
         });
@@ -606,13 +608,23 @@ export class RiffSession {
     return { gain: 0, hit: best, playNow: this.playNowFor(best) };
   }
 
+  private soundingMidi(note: ChartNote): number {
+    return note.midi + (this.chart.soundOffset ?? 0) + (note.soundShift ?? 0);
+  }
+
+  // Se toca el bajo: sus notas de fondo van con el sintetizador de bajo.
+  get bass(): boolean {
+    return !!this.chart.bass;
+  }
+
   // Sin fondo ('paso'), un acierto hace sonar ya las notas reales de su golpe.
-  playNowFor(hit: ChartNote): { midi: number; duration: number; bend?: ScheduledBend }[] {
+  playNowFor(hit: ChartNote): { midi: number; palmMute: boolean; duration: number; bend?: ScheduledBend }[] {
     if (this.options.mode !== 'paso') return [];
     return this.guideNotes
       .filter((note) => Math.abs(note.t - hit.t) < 0.005)
       .map((note) => ({
-        midi: note.midi + (this.chart.soundOffset ?? 0),
+        midi: this.soundingMidi(note),
+        palmMute: note.palmMute,
         duration: Math.max(0.15, note.dur / this.options.speed),
         ...this.scheduledBend(note.bend, note.t, 0),
       }));

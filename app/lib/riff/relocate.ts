@@ -43,7 +43,11 @@ export function relocatePassages(
   beats: ChartBeat[],
   maxFret: number,
   openMidi: (string: number) => number,
+  // Cuerdas que tiene el instrumento: nunca se recoloca en una que no existe (un bajo de 4 no tiene 2).
+  strings: number[] = [6, 5, 4, 3, 2, 1],
 ): RelocateResult {
+  const topString = Math.min(...strings);
+  const bottomString = Math.max(...strings);
   const notes = input.map((note) => ({ ...note }));
   const passages: RelocateResult['passages'] = [];
   if (!notes.some((note) => note.fret > maxFret)) return { notes, passages };
@@ -160,7 +164,7 @@ export function relocatePassages(
       for (const i of hand) {
         const string = notes[i].string - shift;
         const fret = notes[i].midi - openMidi(string);
-        if (string < 1 || fret < 0 || fret > maxFret) {
+        if (string < topString || fret < 0 || fret > maxFret) {
           ok = false;
           break;
         }
@@ -256,7 +260,7 @@ export function relocatePassages(
         for (const i of indices) {
           const string = notes[i].string + k;
           const fret = notes[i].midi - 12 - openMidi(string);
-          if (string > 6 || fret < 0 || fret > maxFret) {
+          if (string > bottomString || fret < 0 || fret > maxFret) {
             ok = false;
             break;
           }

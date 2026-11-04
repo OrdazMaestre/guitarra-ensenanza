@@ -43,7 +43,8 @@ interface Props {
 
 export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = [], trackRoles }: Props) {
   const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
-  // Solo un desplegable abierto a la vez; se cierra al pulsar fuera o con Escape.
+  const trackLabel = (track: { name: string; kind?: string }) => (track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)]);
+  // Solo un desplegable abierto a la vez.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   // Tarjeta "Buscar mis canciones" abierta: el menú del disco pasa a dos columnas.
   const [songSearchOpen, setSongSearchOpen] = useState(false);
@@ -54,18 +55,14 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
   // Pistas que suenan de fondo: todas menos la que se toca (chart.bandTracks).
   const bandTracks = (chart?.bandTracks ?? []).filter((track) => track.index !== riff.trackIndex);
 
+  // El desplegable abierto solo se cierra a propósito: eligiendo, abriendo otro, pulsando su botón,
+  // con Escape, o con Empezar / Continuar / PARAR (petición del usuario, 2026-11-04: en el móvil,
+  // deslizar el dedo para hacer scroll lo cerraba).
   useEffect(() => {
     if (!openMenu) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (!panelRef.current?.contains(e.target as Node)) setOpenMenu(null);
-    };
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenMenu(null); };
-    document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
+    return () => document.removeEventListener('keydown', onKey);
   }, [openMenu]);
 
   // Elegir una opción cierra el desplegable (salvo "Compases", que tiene campos que rellenar).
@@ -162,12 +159,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             pistas de la canción (otra guitarra, bajo, batería), que suenan de fondo y se pueden
             silenciar una a una con su altavoz. Silenciar no cierra el menú. */}
         {(riff.tracks.length > 1 || bandTracks.length > 0) && (
-          <RiffDropdown {...menuProps('pista')} icon={<TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pistas" value={currentTrack ? ROLE_LABEL[roleOf(currentTrack.name)] : '—'}>
+          <RiffDropdown {...menuProps('pista')} icon={currentTrack?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pistas" value={currentTrack ? trackLabel(currentTrack) : '—'}>
             <span className="riff-level-heading">Tocas</span>
             {riff.tracks.map((track) => (
               <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
-                <TrackIcon role={roleOf(track.name)} />
-                {ROLE_LABEL[roleOf(track.name)]}
+                {track.kind === 'bass' ? <BassIcon /> : <TrackIcon role={roleOf(track.name)} />}
+                {trackLabel(track)}
               </button>
             ))}
             {bandTracks.length > 0 && <span className="riff-level-heading">Suenan de fondo</span>}
@@ -193,26 +190,15 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
           </RiffDropdown>
         )}
         {/* Metrónomo (petición del usuario, 2026-11-03): nada, el metrónomo o la batería automática
-            (autoDrums.ts, los 4 ritmos del metrónomo según tempo y compás; de momento solo en
-            canciones sin batería). La batería real es una pista más de "Pistas". */}
+            (autoDrums.ts, ritmos según tempo, compás y densidad de la música). La batería real es una
+            pista más de "Pistas": silenciándola, la automática la sustituye; si no, suenan las dos. */}
         <RiffDropdown {...menuProps('metronomo')} icon={<ClickIcon click={riff.click} />} label="Metrónomo" value={CLICK_LABEL[riff.click]}>
-          {(['nada', 'metronomo', 'auto'] as const).map((value) => {
-            const unavailable = value === 'auto' && !!chart && chart.drums.length > 0;
-            return (
-              <button
-                aria-pressed={riff.click === value}
-                className="riff-chip"
-                disabled={unavailable}
-                key={value}
-                onClick={() => pick(() => riff.setClick(value))}
-                title={unavailable ? 'Pronto, también con batería' : undefined}
-                type="button"
-              >
-                <ClickIcon click={value} />
-                {CLICK_LABEL[value]}
-              </button>
-            );
-          })}
+          {(['nada', 'metronomo', 'auto'] as const).map((value) => (
+            <button aria-pressed={riff.click === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setClick(value))} type="button">
+              <ClickIcon click={value} />
+              {CLICK_LABEL[value]}
+            </button>
+          ))}
         </RiffDropdown>
         <RiffDropdown {...menuProps('ritmo')} icon={<ModeIcon mode={riff.mode} />} label="Ritmo" value={MODE_LABEL[riff.mode]}>
           {(['ritmo', 'paso'] as const).map((value) => (
@@ -713,6 +699,26 @@ export function RiffStyles() {
       .riff-dd-menu.riff-dd-menu-start {
         left: 0;
         transform: none;
+      }
+
+      /* Pantallas estrechas (móvil en vertical; petición del usuario, 2026-11-04): todos los
+         desplegables, también el de canciones, centrados sobre el panel, no sobre su botón. */
+      @media (max-width: 700px) {
+        .riff-panel {
+          position: relative;
+        }
+        .riff-dd {
+          position: static;
+        }
+        .riff-dd-menu,
+        .riff-dd-menu.riff-dd-menu-start {
+          left: 50%;
+          transform: translateX(-50%);
+        }
+        .riff-song-menu.is-searching {
+          flex-direction: column;
+          flex-wrap: nowrap;
+        }
       }
 
       /* Con la tarjeta abierta: lista a la izquierda y tarjeta a la derecha, todo a la vista. */

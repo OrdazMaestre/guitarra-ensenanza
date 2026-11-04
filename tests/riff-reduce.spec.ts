@@ -815,3 +815,32 @@ for (const [level, levelName] of CUERDAS_LEVELS) test(`${levelName}: orden verti
     if (pairs >= 10) expect(ordered / pairs, name).toBeGreaterThanOrEqual(0.88);
   }
 });
+
+// Lucretia (petición del usuario, 2026-11-04): el mismo compás caía en frases distintas según la vuelta
+// y salía con otro dibujo, o perdía otras notas. Un compás repetido copia su primera aparición.
+test('vueltas iguales: un compás repetido sale igual aunque le acompañen compases distintos', () => {
+  const quarter = 0.5;
+  const barsMidi = [[50, 52, 54, 52], [40, 42, 44, 45], [50, 52, 54, 52], [60, 64, 70, 76], [50, 52, 54, 52], [47, 49, 47, 49]];
+  const notes = barsMidi.flatMap((bar, b) => bar.map((midi, k) => ({ id: b * 4 + k, t: (b * 4 + k) * quarter, dur: quarter * 0.9, string: 6, fret: Math.max(0, midi - 40), midi, palmMute: false, tech: [] })));
+  const chart = {
+    trackName: 'x',
+    bpm: 120,
+    duration: barsMidi.length * 4 * quarter,
+    notes,
+    bars: barsMidi.map((_, b) => ({ number: b + 1, t: b * 4 * quarter, end: (b + 1) * 4 * quarter })),
+    beats: Array.from({ length: barsMidi.length * 4 }, (_, q) => ({ t: q * quarter, q, isBarStart: q % 4 === 0 })),
+    drums: [],
+    movedAboveMaxFret: 0,
+    skippedAboveMaxFret: 0,
+  };
+  for (const level of ['practica', 'facil', 'medio', 'avanzado', 'medio-cuerdas', 'avanzado-cuerdas', 'dificil'] as const) {
+    const game = reduceChart(chart, RIFF_LEVELS[level]);
+    const drawing = (bar: number) => game.notes
+      .filter((note) => note.t >= chart.bars[bar].t - 1e-6 && note.t < chart.bars[bar].end - 1e-6)
+      .map((note) => `${(note.t - chart.bars[bar].t).toFixed(2)}:${note.string}/${note.fret}`)
+      .join(' ');
+    expect(drawing(0), level).not.toBe('');
+    expect(drawing(2), level).toBe(drawing(0));
+    expect(drawing(4), level).toBe(drawing(0));
+  }
+});

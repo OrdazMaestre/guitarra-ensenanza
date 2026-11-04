@@ -777,9 +777,9 @@ export function playBassNote(
   // Optional bend (app/lib/bendCurve.ts), applied to both oscillators'
   // `detune` so the sub follows the main voice. Omitted = unchanged.
   bend?: ScheduledBend | null
-): void {
+): GuideNoteHandle | null {
   const context = getCtx();
-  if (volume <= 0) return;
+  if (volume <= 0) return null;
   cutBassVoicesBefore(scheduledAt, context);
   enforceBassPolyphony(context);
 
@@ -879,7 +879,10 @@ export function playBassNote(
   preGain.connect(shaper);
   shaper.connect(postGain);
   postGain.connect(ampGain);
-  ampGain.connect(getBassBus(context));
+  // A 1 no cambia nada. Solo la mueve `setVolume`: el juego abre con ella el bajo que toca el alumno.
+  const trim = context.createGain();
+  ampGain.connect(trim);
+  trim.connect(getBassBus(context));
 
   osc.start(scheduledAt);
   sub.start(scheduledAt);
@@ -893,8 +896,15 @@ export function playBassNote(
     const idx = bassVoices.indexOf(voice);
     if (idx !== -1) bassVoices.splice(idx, 1);
     // Fuera del grafo en cuanto acaba (no esperar al recolector con cientos de nodos por minuto).
-    for (const node of [osc, sub, oscGain, subGain, filter, preGain, shaper, postGain, ampGain]) node.disconnect();
+    for (const node of [osc, sub, oscGain, subGain, filter, preGain, shaper, postGain, ampGain, trim]) node.disconnect();
   });
+  return {
+    setVolume(next) {
+      trim.gain.setTargetAtTime(next / volume, context.currentTime, 0.015);
+    },
+    // El bajo es monofónico: la nota siguiente ya corta esta (cutBassVoicesBefore).
+    stopAt() {},
+  };
 }
 
 export function touchAudioContext(): void {

@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
-import { buildChart } from '../app/lib/riff/chart';
+import { buildChart, listPlayableTracks } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
 import { reduceChart } from '../app/lib/riff/reduce';
 import { laneRows } from '../app/lib/riff/lanes';
@@ -53,7 +53,7 @@ async function openGame(page: Page, song = 'Canción de prueba') {
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
   // Un clic antes de que React haya hidratado la página se pierde (era el origen de los fallos
   // intermitentes en pantalla estrecha/baja): se repite hasta que JUGAR queda activado.
-  const jugar = page.getByRole('button', { name: 'JUGAR', exact: true });
+  const jugar = page.locator('.test-room-fretboard .riff-open-toggle');
   await expect(async () => {
     if ((await jugar.getAttribute('aria-pressed')) !== 'true') await jugar.click();
     await expect(page.locator('.riff-panel')).toBeVisible({ timeout: 1000 });
@@ -90,6 +90,8 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
+  // Abierto, el mismo botón es PARAR.
+  await expect(pill.locator('button').first()).toHaveText('PARAR');
   // Orden del panel (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases.
   await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/], { timeout: 10000 });
   // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle; con
@@ -116,12 +118,12 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   const inFront = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.riff-overlay'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   expect(inFront).toBe(true);
 
-  // Metrónomo: desplegable Nada / Metrónomo / Batería automática (esta, solo sin batería).
+  // Metrónomo: desplegable Nada / Metrónomo / Batería automática.
   const riffMetronome = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
   await choose(page, 'Metrónomo', 'Metrónomo');
   await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo');
   await riffMetronome.click();
-  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeDisabled();
+  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeEnabled();
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'Nada', exact: true }).click();
   await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Nada');
   await choose(page, 'Velocidad', '75%');
@@ -135,7 +137,12 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await page.locator('.riff-dd-toggle', { hasText: 'Velocidad' }).click();
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await expect(page.getByLabel('Desde el compás')).toBeVisible();
+  // Tocar fuera o hacer scroll NO lo cierra (en el móvil, deslizar el dedo lo cerraba); su botón, sí.
   await page.mouse.click(5, 5);
+  await page.mouse.wheel(0, 200);
+  await page.waitForTimeout(200);
+  await expect(page.locator('.riff-dd-menu')).toHaveCount(1);
+  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 
   // Fuera de partida, la barra tiene afinación, colores y metrónomo, y no hay PAUSA.
@@ -207,9 +214,9 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
   await expect(tuning).toBeVisible();
 
-  // Cerrar JUGAR quita el panel y la autopista (y para la partida si la hubiera).
+  // PARAR (JUGAR con el juego abierto) quita el panel y la autopista y para la partida.
   await page.getByRole('button', { name: 'Volver a empezar' }).click();
-  await hold(page, page.getByRole('button', { name: 'JUGAR', exact: true }));
+  await hold(page, page.getByRole('button', { name: 'PARAR', exact: true }));
   await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect(page.getByTestId('riff-highway')).toHaveCount(0);
   await expect(pause).toHaveCount(0);
@@ -460,7 +467,6 @@ test('Pistas: la otra guitarra, el bajo y la batería se pueden silenciar; el me
   // Silenciar no cierra el menú.
   await expect(bass).toHaveAttribute('aria-pressed', 'false');
   await expect(bass).toHaveAttribute('aria-label', 'Bajo: silenciada');
-  await page.mouse.click(5, 5);
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
@@ -503,7 +509,6 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await page.getByLabel('Hasta el compás').fill('42');
   await page.getByLabel('Desde el compás').fill('42');
-  await page.mouse.click(5, 5);
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await page.waitForTimeout(200);
@@ -697,7 +702,7 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   await page.locator('.riff-tutorial-card').getByRole('button', { name: '¡A tocar!' }).click();
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  await hold(page, page.getByRole('button', { name: 'JUGAR', exact: true }));
+  await hold(page, page.getByRole('button', { name: 'PARAR', exact: true }));
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
   await expect(page.locator('.riff-panel')).toBeVisible();
@@ -1096,10 +1101,10 @@ test('batería automática: en una canción sin batería se pone sola y suena co
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page, 'Black Gilmur');
-  // Con batería en la canción, la batería automática no se puede elegir (todavía).
-  await page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' }).click();
-  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeDisabled();
-  await page.mouse.click(5, 5);
+  // Con batería en la canción no se pone sola, pero se puede elegir (para cambiar la real por esta).
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
+  await choose(page, 'Metrónomo', 'Batería automática');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática');
   await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
   await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
   await page.getByTestId('local-song-files').setInputFiles([
@@ -1115,3 +1120,158 @@ test('batería automática: en una canción sin batería se pone sola y suena co
   await page.waitForTimeout(4000);
   expect(await page.evaluate(() => (window as unknown as { __drums: { kicks: number } }).__drums.kicks)).toBeGreaterThan(2);
 });
+
+for (const width of [360, 480]) {
+  test(`desplegables centrados a ${width}px, también el de canciones (juego y tablatura)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(URL);
+    await openGame(page);
+    const centered = async (selector: string) => {
+      const box = (await page.locator(selector).first().boundingBox())!;
+      expect(box.x, selector).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
+      expect(Math.abs(box.x + box.width / 2 - width / 2), selector).toBeLessThanOrEqual(3);
+    };
+    for (const menu of ['Nivel', 'Velocidad', 'Canción', 'Pistas', 'Metrónomo', 'Ritmo', 'Compases']) {
+      await page.locator('.riff-dd-toggle', { hasText: menu }).click();
+      await centered('.riff-dd-menu');
+      await page.locator('.riff-dd-toggle', { hasText: menu }).click();
+    }
+    const tabDisc = page.locator('.test-room-tab').getByRole('button', { name: /^Canción:/ });
+    await tabDisc.scrollIntoViewIfNeeded();
+    await tabDisc.click();
+    await centered('.test-room-tab [aria-label="Selector de canción"]');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  });
+}
+
+test('canción sin batería pero con bajo: el bajo suena de fondo junto a la batería automática', async ({ page }) => {
+  await page.addInitScript(() => {
+    const m = { saws: 0 };
+    (window as unknown as { __band: typeof m }).__band = m;
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = createOscillator.call(this);
+      const start = osc.start.bind(osc);
+      osc.start = (when = 0) => {
+        if (osc.type === 'sawtooth') m.saws++;
+        return start(when);
+      };
+      return osc;
+    };
+  });
+  // La partitura de estrés sin su parte de batería: 2 guitarras + bajo.
+  const xml = fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml', 'utf8')
+    .replace(/<score-part id="P4">[\s\S]*?<\/score-part>/, '')
+    .replace(/<part id="P4">[\s\S]*?<\/part>/, '');
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+  await page.getByTestId('local-song-files').setInputFiles([{ name: 'sinbateria.musicxml', mimeType: 'application/xml', buffer: Buffer.from(xml) }]);
+  await page.locator('.riff-dd-menu').getByRole('button', { name: 'sinbateria', exact: true }).click();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: /^Bajo:/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+  await page.waitForTimeout(3000);
+  expect(await page.evaluate(() => (window as unknown as { __band: { saws: number } }).__band.saws)).toBeGreaterThan(5);
+});
+
+// Bajo jugable (petición del usuario, 2026-11-04).
+test('bajo jugable: se elige en Pistas, suena con su sintetizador y la guitarra pasa al fondo', async ({ page }) => {
+  await page.addInitScript(() => {
+    const m = { saws: 0 };
+    (window as unknown as { __bass: typeof m }).__bass = m;
+    const createOscillator = AudioContext.prototype.createOscillator;
+    AudioContext.prototype.createOscillator = function () {
+      const osc = createOscillator.call(this);
+      const start = osc.start.bind(osc);
+      osc.start = (when = 0) => {
+        if (osc.type === 'sawtooth') m.saws++;
+        return start(when);
+      };
+      return osc;
+    };
+  });
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings());
+  const bassTrack = listPlayableTracks(score).find((track) => track.kind === 'bass')!;
+  const chart = reduceChart(buildChart(at, score, bassTrack.index, 24, { fold: true }), RIFF_LEVELS.dificil);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const panel = page.locator('.test-room-fretboard .riff-stage');
+  await choose(page, 'Nivel', 'Difícil');
+  await choose(page, 'Pistas', 'Bajo');
+  const pistas = page.locator('.riff-dd-toggle', { hasText: 'Pistas' });
+  await expect(pistas).toHaveAttribute('aria-label', 'Pistas: Bajo');
+  // El mástil no toma la octava del bajo como afinación.
+  await pistas.click();
+  await expect(page.getByRole('button', { name: 'Guitarra rítmica: suena' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Bajo: suena' })).toHaveCount(0);
+  await pistas.click();
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(panel).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+  await page.mouse.move(0, 0);
+  const rows = laneRows(RIFF_LEVELS.dificil.strings);
+  const before = await page.evaluate(() => (window as unknown as { __bass: { saws: number } }).__bass.saws);
+  const [first, second] = chart.notes;
+  await tap(page, first.string, first.fret, rows.get(first.string)!);
+  await expect(panel).toHaveAttribute('data-hits', '1');
+  await tap(page, second.string, second.fret, rows.get(second.string)!);
+  await expect(panel).toHaveAttribute('data-hits', '2');
+  // Un acierto en 'paso' hace sonar sus notas con el sintetizador de bajo.
+  expect(await page.evaluate(() => (window as unknown as { __bass: { saws: number } }).__bass.saws)).toBeGreaterThan(before);
+});
+
+// Partitura de una nota por pulso en `strings` (MusicXML: cuerda 1 = la más aguda).
+function tabXml(tuning: Array<[string, number]>, notes: Array<[number, number]>) {
+  const staffTuning = tuning.map(([step, octave], k) => `<staff-tuning line="${k + 1}"><tuning-step>${step}</tuning-step><tuning-octave>${octave}</tuning-octave></staff-tuning>`).join('');
+  const measures = Array.from({ length: Math.ceil(notes.length / 4) }, (_, m) => {
+    const attrs = m === 0 ? `<attributes><divisions>1</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>TAB</sign><line>5</line></clef><staff-details><staff-lines>${tuning.length}</staff-lines>${staffTuning}</staff-details></attributes><sound tempo="120"/>` : '';
+    const bar = notes.slice(m * 4, m * 4 + 4).map(([string, fret]) => `<note><pitch><step>C</step><octave>3</octave></pitch><duration>1</duration><type>quarter</type><notations><technical><string>${string}</string><fret>${fret}</fret></technical></notations></note>`).join('');
+    return `<measure number="${m + 1}">${attrs}${bar}</measure>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><part-list><score-part id="P1"><part-name>Instrumento</part-name></score-part></part-list><part id="P1">${measures}</part></score-partwise>`;
+}
+
+const SEVEN = [['B', 1], ['E', 2], ['A', 2], ['D', 3], ['G', 3], ['B', 3], ['E', 4]] as Array<[string, number]>;
+const BASS_FIVE = [['B', 0], ['E', 1], ['A', 1], ['D', 2], ['G', 2]] as Array<[string, number]>;
+
+for (const [label, tuning, count] of [['guitarra de 7', SEVEN, 7], ['bajo de 5', BASS_FIVE, 5]] as const) {
+  test(`Experto con ${label}: todas sus cuerdas en el mástil, y la más grave se toca`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    const xml = tabXml([...tuning], [[count, 1], [count, 2], [1, 3], [count - 1, 0]]);
+    await page.getByTestId('local-song-files').setInputFiles([{ name: 'muchas.musicxml', mimeType: 'application/xml', buffer: Buffer.from(xml) }]);
+    await page.locator('.riff-dd-menu').getByRole('button', { name: 'muchas', exact: true }).click();
+    await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
+    await choose(page, 'Nivel', 'Experto');
+    await choose(page, 'Ritmo', 'Paso a paso');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    const panel = page.locator('.test-room-fretboard .riff-stage');
+    await expect(panel).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+    await page.mouse.move(0, 0);
+    // La más grave va en la fila de abajo; la vecina, justo encima (no vale).
+    const gap = 5 / (count - 1);
+    await tap(page, 6, 1, 6 - gap);
+    await page.waitForTimeout(200);
+    await expect(panel).toHaveAttribute('data-hits', '0');
+    await tap(page, 6, 1, 6);
+    await expect(panel).toHaveAttribute('data-hits', '1');
+    await tap(page, 6, 2, 6);
+    await expect(panel).toHaveAttribute('data-hits', '2');
+    await page.screenshot({ path: `test-results/experto-${count}-cuerdas.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  });
+}

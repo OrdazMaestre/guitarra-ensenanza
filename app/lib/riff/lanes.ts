@@ -8,7 +8,7 @@
 //   2026-11-02): el borde de cada cuerda dibujada pasa a 1 px del borde de su punto, así quedan algo
 //   más juntas pero no tanto como dos cuerdas normales (filas ~4,7 y ~2,3; antes, 5 y 2).
 // - 3 (Avanzado cuerdas): filas 5, 3,5 y 2.
-// - 4 (Difícil): separación de 1,2 filas, centradas (5,3 / 4,1 / 2,9 / 1,7).
+// - 4 (Difícil, y Experto de un bajo de 4): separación de 1,2 filas, centradas (5,3 / 4,1 / 2,9 / 1,7).
 // La casilla de cada cuerda llega hasta la mitad del camino a la vecina (y hasta el borde del
 // mástil en las de fuera), así que se aprovecha todo el alto.
 //
@@ -36,7 +36,9 @@ const LANE_ROWS: Record<number, number[]> = {
 // Fila de cada cuerda usada (las graves, abajo).
 export function laneRows(strings: number[]): Map<number, number> {
   const sorted = [...new Set(strings)].sort((a, b) => b - a); // 6 (grave) primero
-  const rows = LANE_ROWS[sorted.length] ?? sorted.map((string) => string);
+  // Más cuerdas (Experto con un instrumento de 5, 7 u 8): repartidas por igual en el alto del mástil, que
+  // siempre mide lo mismo. Con 6 da su fila real.
+  const rows = LANE_ROWS[sorted.length] ?? sorted.map((_, k) => 6 - (k * 5) / (sorted.length - 1));
   return new Map(sorted.map((string, k) => [string, rows[k]]));
 }
 

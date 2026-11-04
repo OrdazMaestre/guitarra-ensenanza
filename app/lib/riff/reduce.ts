@@ -419,6 +419,8 @@ const CONTOUR_COST = 6;
 // Trastes que una nota puede pasarse del máximo de su cuerda y aun así quedarse en ella, bajada (ver
 // "posición de partida" en placePhraseMulti).
 const MAX_CLAMP_FRETS = 3;
+// Distancia entre cuerdas vecinas en las que usa modo cuerdas (6-5-4-3, cuartas justas).
+const STRING_INTERVAL = 5;
 
 // PASAJES RÁPIDOS TOCABLES (petición del usuario, 2026-11-02, al quitar el límite de 0,1 s del modo
 // cuerdas): en cada tiempo de negra cuyas notas van a menos de 0,1 s, todas caben en una caja de 4
@@ -616,6 +618,22 @@ function placePhraseMulti(
         if (moved > folded) candidates.push({ pitches: cell, extra: OCTAVE_SHIFT_COST * moved, shift: 0, octaveMoved: cell.map((q, k) => q !== pitches[k]) });
       }
     }
+    // La tab tal cual, con las notas que no están en su sitio movidas a la cuerda más cercana del compás
+    // SIN CAMBIAR DE TRASTE: el dibujo de la tab, aplastado sobre las cuerdas que hay. Bajarlas de octava
+    // da la vuelta al riff y transportar la frase mueve las notas que sí cabían (James 25-26: 4/4 -> 5/4,
+    // con el 6/2 en su sitio). Si el riff ENTERO cabe una cuerda más abajo o más arriba, conserva mejor su
+    // forma y gana eso (Crystal Mountain en Medio: 5/10 6/7 6/0 6/7, decisión del 2026-11-02).
+    const wholeRiffFits = shifts.has(-STRING_INTERVAL) || shifts.has(STRING_INTERVAL);
+    if (!wholeRiffFits && inPlace < pitches.length && inPlace * 2 >= pitches.length) {
+      let moved = 0;
+      const out = pitches.map((p, k) => {
+        if (fixedReal[k] && sets[k].has(fixedReal[k]!.string)) return p;
+        const near = [...sets[k]].sort((a, b) => Math.abs(a - start[k].string) - Math.abs(b - start[k].string))[0];
+        moved++;
+        return OPEN_MIDI[near] + start[k].fret;
+      });
+      if (out.every((p, k) => fits(k, p))) candidates.push({ pitches: out, extra: OCTAVE_SHIFT_COST * moved, shift: 0, octaveMoved: out.map((q, k) => q !== pitches[k]) });
+    }
     if (candidates.length === 0) {
       // Contorno sobre las alturas de cada tramo de compases seguidos con las MISMAS cuerdas (si
       // todos usan las mismas, la frase entera, como siempre). Si un tramo empieza repitiendo la
@@ -733,6 +751,8 @@ function phraseKey(phrase: Onset[]): string {
 // Motivo: trozo de MOTIF_LENGTH notas seguidas (dentro de una frase) con las mismas alturas reales
 // y el mismo ritmo.
 const MOTIF_LENGTH = 4;
+// Diferencia de altura (en el mapa de registro) que abre un tramo nuevo dentro de un pasaje rápido.
+const PASSAGE_STRETCH_SEMITONES = 1;
 // Hueco medio entre notas (s reales, a velocidad normal) por debajo del cual un compás es "rápido".
 const FAST_GAP_SECONDS = 0.16;
 const MOTIF_PASSES = 4;
@@ -877,13 +897,12 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
     // Tantos trastes como alturas distintas tiene el pasaje (mín. 3, máx. media cuerda): justo lo que
     // necesita su cromatismo, y así un pasaje más grave cabe más a la izquierda que uno más agudo.
     const distinct = new Set(notes.map((k) => kept[k].lead.midi)).size;
-    const target = registerOf ? notes.reduce((sum, k) => sum + registerOf(kept[k].lead.midi), 0) / notes.length : Infinity;
+    const registerTarget = (indices: number[]) => (registerOf ? indices.reduce((sum, k) => sum + registerOf(kept[k].lead.midi), 0) / indices.length : Infinity);
     // Ventana SIEMPRE en la mitad derecha de su cuerda (petición del usuario), centrada lo mejor
     // posible en la altura que le toca al pasaje en el mapa de registro. Se elige la cuerda donde esa
     // ventana queda más cerca de su altura (si empatan, la que más notas lleva): así la altura decide
-    // también la CUERDA y no se invierte el orden entre pasajes (Kirk en Difícil: el 14, lo más
-    // agudo, en la Sol; el barrido y el 21, en la Re).
-    const windowOn = (string: number) => {
+    // también la CUERDA y no se invierte el orden entre pasajes.
+    const windowOn = (string: number, target: number) => {
       const cap = capOf.get(string)!;
       const lowest = profile.rightHalfFrom?.[string] ?? Math.ceil(cap / 2);
       // Como mucho media cuerda (la figura sigue compacta) y lo que cubre una mano en un pasaje rápido
@@ -895,8 +914,24 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
       const from = Math.min(cap - size + 1, Math.max(lowest, Math.round(center - half)));
       return { string, frets: [from, from + size - 1] as [number, number], miss, votes: count.get(string) ?? 0 };
     };
-    const choice = [...capOf.keys()].map(windowOn).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
-    for (const bar of passage) fastBars.set(bar, { string: choice.string, frets: choice.frets });
+    const passageTarget = registerTarget(notes);
+    const choice = [...capOf.keys()].map((string) => windowOn(string, passageTarget)).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
+    // La CUERDA es la del pasaje entero; la ventana, la de cada TRAMO de compases de altura parecida. Con
+    // una sola ventana por pasaje, el promedio igualaba pasajes largos (Kirk: 9-16 y 21-26) y el 21
+    // quedaba tan arriba como el 13-14, lo más agudo. Compases casi iguales siguen en el mismo tramo: la
+    // misma nota no cambia de traste dentro del barrido.
+    let stretch: number[] = [];
+    const closeStretch = () => {
+      const frets = windowOn(choice.string, registerTarget(stretch.flatMap((bar) => notesOfBar.get(bar)!))).frets;
+      for (const bar of stretch) fastBars.set(bar, { string: choice.string, frets });
+      stretch = [];
+    };
+    for (const bar of passage) {
+      const barTarget = registerTarget(notesOfBar.get(bar)!);
+      if (stretch.length > 0 && Math.abs(barTarget - registerTarget(stretch.flatMap((b) => notesOfBar.get(b)!))) >= PASSAGE_STRETCH_SEMITONES) closeStretch();
+      stretch.push(bar);
+    }
+    closeStretch();
     i = end;
   }
   if (fastBars.size > 0) placed = pass();
@@ -972,24 +1007,63 @@ export interface ReduceOptions {
   range?: [number, number];
 }
 
+const MAX_SEAM_LEAP = 5;
+
+// Huella de un compás: dónde cae cada nota dentro de él y su altura. Dos compases con la misma huella
+// son la misma vuelta de un riff.
+function barPrint(onsets: Onset[], bar: { t: number; end: number }) {
+  return onsets.map((onset) => `${Math.round(((onset.t - bar.t) / (bar.end - bar.t)) * 96)}:${onset.lead.midi}`).join(' ');
+}
+
+// Vueltas iguales, mismas notas (petición del usuario, 2026-11-04: Lucretia): los filtros de densidad
+// miran lo que viene justo antes, así que dos vueltas idénticas perdían notas distintas. Cada compás
+// repetido conserva las notas (por su sitio en el compás) que conservó su primera aparición, salvo
+// la que quedaría demasiado pegada a la anterior (la densidad del nivel manda en la unión).
+function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: number) => number, chart: Chart, profile: LevelProfile): Onset[] {
+  const keptSet = new Set(kept);
+  const byBar = new Map<number, Onset[]>();
+  for (const onset of onsets) {
+    const bar = barIndex(onset.t);
+    const list = byBar.get(bar);
+    if (list) list.push(onset);
+    else byBar.set(bar, [onset]);
+  }
+  const firstKept = new Map<string, boolean[]>();
+  const out: Onset[] = [];
+  for (const [bar, barOnsets] of [...byBar].sort((a, b) => a[0] - b[0])) {
+    const print = barPrint(barOnsets, chart.bars[bar]);
+    const mask = firstKept.get(print);
+    if (!mask) firstKept.set(print, barOnsets.map((onset) => keptSet.has(onset)));
+    barOnsets.forEach((onset, k) => {
+      if (!(mask ? mask[k] : keptSet.has(onset))) return;
+      const prev = out[out.length - 1];
+      const gap = prev ? onset.t - prev.t : Number.POSITIVE_INFINITY;
+      const tooClose = gap < profile.minGapSeconds - 1e-3 || (prev?.lead.midi === onset.lead.midi && gap < profile.repeatGapSeconds - 1e-3);
+      if (mask && !keptSet.has(onset) && tooClose) return;
+      out.push(onset);
+    });
+  }
+  return out;
+}
+
 export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions = {}): Chart {
   const { pos, beatSeconds } = makeBeatPosition(chart);
   const onsets = groupOnsets(chart, pos);
-  const kept = capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile);
+  const barIndex = (t: number) => {
+    let lo = 0;
+    let hi = chart.bars.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (chart.bars[mid].t <= t + 1e-6) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const kept = sameNotesInRepeatedBars(onsets, capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile), barIndex, chart, profile);
   // Niveles de varias cuerdas: compás de cada golpe y cuántas cuerdas distintas usa la tab en cada
   // compás (notas guía), para el límite de cuerdas por compás (ver placePhraseMulti).
   let barInfo: { barOf: number[]; stringsUsed: Map<number, Set<number>> } | null = null;
   if (profile.strings.length > 1) {
-    const barIndex = (t: number) => {
-      let lo = 0;
-      let hi = chart.bars.length - 1;
-      while (lo < hi) {
-        const mid = (lo + hi + 1) >> 1;
-        if (chart.bars[mid].t <= t + 1e-6) lo = mid;
-        else hi = mid - 1;
-      }
-      return lo;
-    };
     const stringsOfBar = new Map<number, Set<number>>();
     for (const onset of onsets) {
       const bar = barIndex(onset.t);
@@ -1044,6 +1118,36 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
       translate(indices, layout.pitches);
     }
     i = end;
+  }
+  // Vueltas iguales, mismo dibujo: cada frase elige su colocación mirando TODAS sus notas, así que el
+  // mismo compás salía distinto según con qué compases le tocara ir (Lucretia: la mitad de las vueltas
+  // en modo trastes). Cada compás repetido copia la colocación de su primera aparición; con varias
+  // cuerdas, salvo si tiene notas fijadas por la guitarra que manda (riffs compartidos), que ganan, o
+  // si la unión con el compás de al lado dejaría de valer: una nota repetida no se mueve (hace falta
+  // para mantenerla pulsada) y dentro de una frase no hay saltos de más de MAX_SEAM_LEAP trastes.
+  const seamOk = (i: number, a: LanePosition | undefined, j: number, b: LanePosition | undefined) => {
+    if (!a || !b) return true;
+    if (kept[i].lead.midi === kept[j].lead.midi) return a.string === b.string && a.fret === b.fret;
+    return phraseOf[i] !== phraseOf[j] || Math.abs(a.fret - b.fret) <= MAX_SEAM_LEAP;
+  };
+  const firstPlacing = new Map<string, Array<number | LanePosition>>();
+  for (let k = 0; k < kept.length;) {
+    const bar = barIndex(kept[k].t);
+    let end = k + 1;
+    while (end < kept.length && barIndex(kept[end].t) === bar) end++;
+    const print = barPrint(kept.slice(k, end), chart.bars[bar]);
+    const placing = firstPlacing.get(print);
+    if (!placing) {
+      firstPlacing.set(print, multiPlaces ? multiPlaces.slice(k, end) : targetPitch.slice(k, end));
+    } else if (multiPlaces) {
+      const copy = placing as LanePosition[];
+      const pinned = pins.slice(k, end).some(Boolean);
+      const fits = seamOk(k - 1, multiPlaces[k - 1], k, copy[0]) && seamOk(end - 1, copy[copy.length - 1], end, multiPlaces[end]);
+      if (!pinned && fits && copy.length === end - k) copy.forEach((place, j) => { multiPlaces[k + j] = place; });
+    } else {
+      placing.forEach((target, j) => { targetPitch[k + j] = target as number; });
+    }
+    k = end;
   }
 
   let prevFret = profile.minFret;
