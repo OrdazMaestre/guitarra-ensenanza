@@ -58,9 +58,9 @@ test('tutorial del panel de partida: pone la configuración de base y enseña su
   await page.locator('.riff-dd-menu').getByRole('button', { name: '100%', exact: true }).click();
   // ...y el tutorial los devuelve a la configuración de base.
   await page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' }).click();
-  await expect(toggles).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /ModoEnsayo/]);
+  await expect(toggles).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /Concierto.*no/]);
   // El último paso ofrece la partida de prueba ("¡A jugar!"); aquí se rechaza con "Ahora no".
-  await walk(page, ['Nivel', 'Velocidad', 'Canción', 'Pistas', 'Metrónomo', 'Ritmo', 'Compases', 'Modo', 'Partida de prueba'], 'Ahora no');
+  await walk(page, ['Nivel', 'Velocidad', 'Canción', 'Pistas', 'Metrónomo', 'Ritmo', 'Compases y bucle', 'Concierto', 'Partida de prueba'], 'Ahora no');
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
 });
 

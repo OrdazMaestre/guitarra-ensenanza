@@ -1,11 +1,11 @@
 'use client';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { levelLabel, RIFF_LEVEL_GROUPS, RIFF_LEVELS } from '@/app/lib/riff/levels';
+import { levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
-import type { RiffController, RiffGameMode } from './useRiffController';
+import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BassIcon, DiscIcon, GameModeIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, SpeakerIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BassIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, SpeakerIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
 import { LocalSongSearch } from '../LocalSongSearch';
@@ -17,17 +17,12 @@ import { isTouchOnly } from '@/app/lib/localSongs';
 
 const SPEEDS = [0.5, 0.75, 1] as const;
 const MODE_LABEL: Record<RiffMode, string> = { ritmo: 'Con ritmo', paso: 'Paso a paso' };
-type MenuId = 'cancion' | 'nivel' | 'pista' | 'metronomo' | 'velocidad' | 'ritmo' | 'compases' | 'modo';
-const GAME_MODES: Array<{ id: RiffGameMode; label: string; hint: string }> = [
-  { id: 'practica', label: 'Práctica', hint: 'Repite un trozo. Sin puntos.' },
-  { id: 'ensayo', label: 'Ensayo', hint: 'Juega y sigue si paras.' },
-  { id: 'concierto', label: 'Concierto', hint: 'Toda la canción, sin parar.' },
-];
+type MenuId = 'cancion' | 'nivel' | 'pista' | 'metronomo' | 'velocidad' | 'ritmo' | 'compases' | 'concierto';
 const CONCERT_LOCK = 'En Concierto no se cambia';
 const CLICK_LABEL: Record<RiffClick, string> = { nada: 'Nada', metronomo: 'Metrónomo', auto: 'Batería automática' };
 const ROLE_LABEL: Record<TrackRole, string> = { S: 'Guitarra solista', R: 'Guitarra rítmica' };
 
-// Orden (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases; y Modo al final.
+// Orden (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases; y Concierto al final.
 // Las notas que pasan del último traste se siguen recolocando (chart.ts), pero ya sin aviso.
 // En el panel solo se ven ICONOS (petición del usuario: ahorrar espacio); el nombre de cada ajuste
 // y su valor siguen en aria-label, en `title` y en texto oculto. En los menús, icono + nombre.
@@ -100,6 +95,23 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
   const from = Math.min(riff.fromBar, riff.toBar);
   const to = Math.max(riff.fromBar, riff.toBar);
 
+  // Botón de un nivel. Pantalla estrecha: los niveles cuyo mástil no cabe se pueden elegir igual, pero
+  // llevan a la derecha un icono pequeño ámbar (petición del usuario): gira el móvil, o ensancha la
+  // pantalla en el ordenador.
+  const levelChip = (value: RiffLevel) => {
+    const available = value === 'experto' || RIFF_LEVELS[value].available;
+    const fits = riff.fitsLevel(value);
+    const fitHint = touchOnly ? 'Gira el móvil para jugar este nivel' : 'Ensancha la pantalla para jugar este nivel';
+      return (
+        <button aria-pressed={riff.level === value} className="riff-chip" data-fits={fits ? 'true' : 'false'} disabled={!available} key={value} onClick={() => pick(() => riff.chooseLevel(value))} title={fits ? undefined : fitHint} type="button">
+          <LevelIcon level={value} />
+          {levelLabel(value)}{available ? '' : ' (pronto)'}
+          {/* El aviso va en `title` (no en el nombre del botón, que sigue siendo el del nivel). */}
+          {!fits && (touchOnly ? <RotatePhoneIcon /> : <WidenScreenIcon />)}
+        </button>
+    );
+  };
+
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
@@ -109,25 +121,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             {RIFF_LEVEL_GROUPS.map((group) => (
               <div aria-label={group.label} className="riff-level-group" key={group.id} role="group">
                 <span className="riff-level-heading">{group.label}</span>
-                {group.levels.map((value) => {
-                  const available = value === 'experto' || RIFF_LEVELS[value].available;
-                  // Pantalla estrecha: los niveles cuyo mástil no cabe se pueden elegir igual, pero llevan
-                  // a la derecha un icono pequeño ámbar (petición del usuario): gira el móvil, o
-                  // ensancha la pantalla en el ordenador.
-                  const fits = riff.fitsLevel(value);
-                  const fitHint = touchOnly ? 'Gira el móvil para jugar este nivel' : 'Ensancha la pantalla para jugar este nivel';
-                  return (
-                    <button aria-pressed={riff.level === value} className="riff-chip" data-fits={fits ? 'true' : 'false'} disabled={!available} key={value} onClick={() => pick(() => riff.chooseLevel(value))} title={fits ? undefined : fitHint} type="button">
-                      <LevelIcon level={value} />
-                      {levelLabel(value)}{available ? '' : ' (pronto)'}
-                      {/* El aviso va en `title` (no en el nombre del botón, que sigue siendo el del nivel). */}
-                      {!fits && (touchOnly ? <RotatePhoneIcon /> : <WidenScreenIcon />)}
-                    </button>
-                  );
-                })}
+                {group.levels.map(levelChip)}
               </div>
             ))}
           </div>
+          {/* Híbrido: de ningún modo, a todo el ancho debajo de los dos. */}
+          <div className="riff-level-hybrid">{levelChip(RIFF_HYBRID_LEVEL)}</div>
         </RiffDropdown>
         <RiffDropdown {...menuProps('velocidad', riff.concert)} icon={<SpeedIcon speed={riff.speed} />} label="Velocidad" value={`${Math.round(riff.speed * 100)}%`}>
           {SPEEDS.map((value) => (
@@ -227,17 +226,24 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
               <input aria-label="Hasta el compás" max={riff.maxBar} min={1} onChange={(e) => riff.setToBar(clampBar(e.target.value, riff.maxBar))} type="number" value={riff.toBar} />
             </label>
           </div>
+          <button aria-pressed={riff.loop} className="riff-chip" onClick={() => riff.setLoop((l) => !l)} type="button">
+            <LoopIcon loop={riff.loop} />
+            Repetir en bucle
+          </button>
         </RiffDropdown>
-        <RiffDropdown {...menuProps('modo')} icon={<GameModeIcon mode={riff.gameMode} />} label="Modo" value={GAME_MODES.find((mode) => mode.id === riff.gameMode)!.label}>
-          {GAME_MODES.map(({ id, label, hint }) => (
-            <button aria-label={label} aria-pressed={riff.gameMode === id} className="riff-chip" key={id} onClick={() => pick(() => riff.chooseGameMode(id))} type="button">
-              <GameModeIcon mode={id} />
-              <span>
-                {label}
-                <small className="riff-mode-hint">{hint}</small>
-              </span>
-            </button>
-          ))}
+        {/* El botón activa y desactiva el modo; al activarlo se abre su desplegable. */}
+        <RiffDropdown
+          {...menuProps('concierto')}
+          icon={<ConcertIcon />}
+          label="Concierto"
+          onToggle={() => {
+            riff.toggleConcert();
+            setOpenMenu(riff.concert ? null : 'concierto');
+          }}
+          pressed={riff.concert}
+          value={riff.concert ? 'sí' : 'no'}
+        >
+          <p className="riff-rankings-soon">Aquí irán tus rankings</p>
         </RiffDropdown>
       </div>
 
@@ -248,16 +254,18 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
         {/* Continuar: retoma la partida en pausa un compás antes, con cuenta de entrada. */}
         {!riff.concert && <button className="riff-action riff-action-stop" disabled={!riff.canContinue} onClick={continueGame} type="button">Continuar</button>}
         {/* Tutorial del panel: antes, vuelve a la configuración de base (petición del usuario). */}
-        <TutorialButton
-          // Al final, la partida tutorial de mecánicas (riffTutorial.ts).
-          finish={{ label: '¡A jugar!', run: () => { onStart?.(); riff.startTutorial(); } }}
-          onStart={() => {
-            setOpenMenu(null);
-            riff.resetDefaults();
-          }}
-          rootRef={panelRef}
-          steps={RIFF_PANEL_TOUR}
-        />
+        {!riff.concert && (
+          <TutorialButton
+            // Al final, la partida tutorial de mecánicas (riffTutorial.ts).
+            finish={{ label: '¡A jugar!', run: () => { onStart?.(); riff.startTutorial(); } }}
+            onStart={() => {
+              setOpenMenu(null);
+              riff.resetDefaults();
+            }}
+            rootRef={panelRef}
+            steps={RIFF_PANEL_TOUR}
+          />
+        )}
       </div>
 
       {riff.concert && riff.paused && (
@@ -278,6 +286,8 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
 interface DropdownProps {
   // Por qué está bloqueado (sustituye al `title` normal).
   hint?: string;
+  // Botón que además activa algo: su estado.
+  pressed?: boolean;
   // 'start': el menú se abre desde el borde izquierdo del botón en vez de centrado (el disco es
   // el primer botón del panel: centrado, su menú ancho se salía por la izquierda de la pantalla).
   align?: 'start';
@@ -293,13 +303,14 @@ interface DropdownProps {
 
 // Desplegable de los ajustes: un botón "icono ▾" (nombre y valor ocultos a la vista) y, encima,
 // una columna flotante con las opciones.
-function RiffDropdown({ align, children, disabled, hint, icon, id, label, onToggle, open, value }: DropdownProps) {
+function RiffDropdown({ align, children, disabled, hint, icon, id, label, onToggle, open, pressed, value }: DropdownProps) {
   return (
     <div className="riff-dd">
       <button
         aria-controls={`riff-menu-${id}`}
         aria-expanded={open}
         aria-label={`${label}: ${value}`}
+        aria-pressed={pressed}
         className="riff-dd-toggle"
         disabled={disabled}
         onClick={onToggle}
@@ -577,7 +588,9 @@ export function RiffStyles() {
         flex: none;
       }
 
-      .riff-chip[aria-pressed='true'] .riff-icon {
+      .riff-chip[aria-pressed='true'] .riff-icon,
+      .riff-dd-toggle[aria-pressed='true'] .riff-icon,
+      .riff-dd-toggle[aria-pressed='true'] .riff-dd-caret {
         color: #ffffff;
       }
 
@@ -667,6 +680,15 @@ export function RiffStyles() {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
+        justify-content: center;
+      }
+
+      .riff-level-hybrid {
+        display: grid;
+        margin-top: 10px;
+      }
+
+      .riff-level-hybrid .riff-chip {
         justify-content: center;
       }
 
@@ -866,11 +888,18 @@ export function RiffStyles() {
         white-space: normal;
       }
 
-      .riff-mode-hint {
-        display: block;
-        font-size: 11px;
-        font-weight: 600;
-        opacity: 0.75;
+      .riff-rankings-soon {
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0;
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+
+      .riff-dd-toggle[aria-pressed='true'] {
+        background: #047857;
+        border-color: #047857;
+        color: #ffffff;
       }
 
       .riff-highway-space {

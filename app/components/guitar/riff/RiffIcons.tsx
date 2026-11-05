@@ -44,19 +44,23 @@ import type { TrackRole } from '@/app/lib/riff/roles';
 
 export type { TrackRole };
 
-export function TrackIcon({ role }: { role: TrackRole }) {
+function Headstock({ letter, pegs }: { letter: string; pegs: number[] }) {
   return (
     <Icon>
-      {[7, 11, 15].map((y) => (
+      {pegs.map((y) => (
         <g fill="currentColor" key={y} stroke="none">
           <rect height="2.8" rx="1.3" width="4.4" x="3" y={y} />
           <rect height="2.8" rx="1.3" width="4.4" x="16.6" y={y} />
         </g>
       ))}
       <path d="M7 5.2C8.5 2.6 15.5 2.6 17 5.2L16.6 18.5C15.2 19.3 14.6 20.6 14.6 22.5H9.4C9.4 20.6 8.8 19.3 7.4 18.5Z" fill="currentColor" stroke="none" />
-      <text className="riff-track-letter" fontFamily="system-ui, sans-serif" fontSize="10" fontWeight="900" stroke="none" textAnchor="middle" x="12" y="15.2">{role}</text>
+      <text className="riff-track-letter" fontFamily="system-ui, sans-serif" fontSize="10" fontWeight="900" stroke="none" textAnchor="middle" x="12" y="15.2">{letter}</text>
     </Icon>
   );
+}
+
+export function TrackIcon({ role }: { role: TrackRole }) {
+  return <Headstock letter={role} pegs={[7, 11, 15]} />;
 }
 
 // Niveles: una carita por nivel, de menos a más miedo (petición del usuario, a partir de sus emojis
@@ -134,6 +138,15 @@ export function LevelIcon({ level }: { level: RiffLevel }) {
           <ellipse cx="5.9" cy="14.6" fill="#f87171" opacity="0.75" rx="2" ry="1.2" />
           <ellipse cx="18.1" cy="14.6" fill="#f87171" opacity="0.75" rx="2" ry="1.2" />
           <path d="M10 17H14" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.4" />
+        </Face>
+      );
+    case 'hibrido': // 😎 con cuernos
+      return (
+        <Face devil>
+          <path d="M4.6 9.4H19.4" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.3" />
+          <path d="M5.2 9.4H10.9V11.4A2.6 2.6 0 0 1 8.3 14H7.8A2.6 2.6 0 0 1 5.2 11.4ZM13.1 9.4H18.8V11.4A2.6 2.6 0 0 1 16.2 14H15.7A2.6 2.6 0 0 1 13.1 11.4Z" fill={DEVIL_INK} />
+          <path d="M6.6 10.6L8 10.6M14.5 10.6L15.9 10.6" stroke="#ffffff" strokeLinecap="round" strokeWidth="0.8" />
+          <path d="M8.4 16.6Q12 19.6 15.6 16.6" fill="none" stroke={DEVIL_INK} strokeLinecap="round" strokeWidth="1.5" />
         </Face>
       );
     case 'medio-cuerdas': // 😯
@@ -237,11 +250,8 @@ export function ModeIcon({ mode }: { mode: RiffMode }) {
 }
 
 // Bucle: flechas en círculo; tachado si no se repite.
-// Modos de juego (decisión del usuario, 2026-11-05): metrónomo (Práctica), batería (Ensayo) y
-// micrófono (Concierto).
-export function GameModeIcon({ mode }: { mode: 'practica' | 'ensayo' | 'concierto' }) {
-  if (mode === 'practica') return <MetronomeIcon on />;
-  if (mode === 'ensayo') return <DrumIcon />;
+// Modo Concierto: un micrófono.
+export function ConcertIcon() {
   return (
     <Icon>
       <rect height="12" rx="3" width="6" x="9" y="2" />
@@ -318,13 +328,9 @@ export function DrumIcon() {
   );
 }
 
+// Bajo: el clavijero de las guitarras, con 2 + 2 clavijas y una B.
 export function BassIcon() {
-  return (
-    <Icon>
-      <path d="M14 3h4v5h-4zM16 8v7M12.5 15.5c-3 0-5 1.8-5 4 0 1.4 1 2.5 2.6 2.5 1.6 0 2.4-1 3.4-1s1.8 1 3.4 1c1.6 0 2.6-1.1 2.6-2.5 0-2.2-2-4-5-4z" />
-      <path d="M13 4h-1.5M13 7h-1.5M19 4h1.5M19 7h1.5" />
-    </Icon>
-  );
+  return <Headstock letter="B" pegs={[8.5, 13]} />;
 }
 
 // Altavoz: suena (con ondas) o silenciado (tachado).

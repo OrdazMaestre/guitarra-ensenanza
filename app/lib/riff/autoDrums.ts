@@ -15,6 +15,11 @@ import type { Chart, DrumSound } from './chart';
 // salta a otra franja (menos de 100, 100-140, más de 140): entonces cambia ahí mismo. El patrón empieza
 // de nuevo en cada compás; los compases en los que no suena ninguna pista se quedan en silencio, y los
 // irregulares (21/32...) solo llevan la caja en el 1. Pura: sin audio ni React.
+//
+// Progresión (2026-11-05, diseño con el agente de música): cada ritmo tiene una escalera de variaciones
+// (`barHits`), y sube un escalón donde CAMBIA EL RIFF (`riffStarts`), para que dos riffs distintos
+// seguidos no lleven la misma batería; un riff que vuelve recupera su escalón. Si un riff dura mucho,
+// sube cada 16 compases. Los escalones solo añaden platos, salvo los que usan otro ritmo.
 
 export type AutoRhythm = 'blast' | 'skank' | 'eighth' | 'triplet' | 'sixteenth';
 
@@ -31,15 +36,32 @@ const SLOW_BPM = 100;
 const DENSE_DENSITY = 2.25;
 // El blast suena el doble de golpes que las corcheas: -3 dB para que no tape la guitarra.
 const BLAST_ACCENT = 0.7;
-// Rejilla para juntar ataques simultáneos: 12 por negra (caben semicorcheas y tresillos).
-const ONSET_GRID = 12;
+// Rejilla para juntar ataques simultáneos: 24 por negra (caben exactas fusas y tresillos; con 12, una
+// fusa se redondeaba a posición de tresillo).
+const ONSET_GRID = 24;
 // Volumen: el de la batería real (0,8) por 0,7, para que acompañe sin tapar.
 const AUTO_DRUM_GAIN = 0.8 * 0.7;
 // Dentro de una negra (960 ticks): tresillo 320/640, semicorchea 240/720, corchea 480.
 const TICKS = 960;
 const TICK_TOLERANCE = 12;
 
+// Plato suave de las variaciones, más fuerte en `sixteenth`, y el golpe que marca un cambio de escalón.
+const CYMBAL_ACCENT = 0.3;
+const STRONG_CYMBAL_ACCENT = 0.45;
+const CHANGE_CYMBAL_ACCENT = 1;
+// Por encima, las semicorcheas del tercer escalón del skank pasarían de 12 golpes por segundo.
+const SKANK_SIXTEENTHS_MAX_BPM = 180;
+// Detección de riffs: dos compases son del mismo riff si comparten el 60 % de su huella, mirando como
+// mucho 8 compases atrás. Un escalón dura al menos 4 compases, y un riff sin cambios sube cada 16.
+const RIFF_SIMILARITY = 0.6;
+const RIFF_MEMORY_BARS = 8;
+const MIN_STEP_BARS = 4;
+const LONG_RIFF_BARS = 16;
+// Compases en silencio seguidos que cierran un tramo.
+const TRAMO_SILENCE_BARS = 2;
+
 const STEP: Record<AutoRhythm, number> = { blast: 0.25, skank: 0.5, eighth: 0.5, triplet: 1 / 3, sixteenth: 0.25 };
+const LADDER_STEPS: Record<AutoRhythm, number> = { blast: 3, skank: 3, eighth: 3, sixteenth: 2, triplet: 2 };
 
 // Golpe `idx` (desde el inicio del compás) de cada patrón.
 function patternHit(rhythm: AutoRhythm, idx: number): { sound: DrumSound; accent: number } {
@@ -190,10 +212,178 @@ export function autoDrumPlan(chart: Chart): Array<AutoRhythm | null> {
   return bars.map((bar, i) => (bar.sounding ? chosen[Math.floor(i / SECTION_BARS)] ?? null : null));
 }
 
+type PrintedBar = Set<string>;
+
+// Huella de cada compás: qué notas suenan y dónde, con todas las pistas menos la batería.
+function barPrints(chart: Chart): PrintedBar[] {
+  const prints: PrintedBar[] = chart.bars.map(() => new Set());
+  const notes = [...(chart.sourceNotes ?? chart.notes), ...(chart.band ?? [])].sort((a, b) => a.t - b.t);
+  let index = 0;
+  for (const note of notes) {
+    while (index + 1 < chart.bars.length && chart.bars[index + 1].t <= note.t + 1e-6) index++;
+    const bar = chart.bars[index];
+    if (bar) prints[index].add(`${Math.round(((note.t - bar.t) / (bar.end - bar.t)) * 48)}:${note.midi}`);
+  }
+  return prints;
+}
+
+function sameRiff(a: PrintedBar, b: PrintedBar) {
+  if (a.size === 0 && b.size === 0) return true;
+  let shared = 0;
+  for (const value of a) if (b.has(value)) shared++;
+  return shared / (a.size + b.size - shared) >= RIFF_SIMILARITY;
+}
+
+// Dónde empieza cada riff (índices de compás) y qué riff es: la misma etiqueta si vuelve uno anterior.
+// Empieza uno cuando el riff actual ya se ha repetido, dura 4 compases o más, y este compás y el
+// siguiente no se parecen a él: un compás suelto distinto no cuenta, y un riff de varios compases
+// diferentes entre sí sigue siendo el mismo al repetirse.
+export function riffStarts(chart: Chart): { starts: number[]; labels: number[] } {
+  const prints = barPrints(chart);
+  const starts = [0];
+  let repeated = false;
+  for (let i = 1; i < prints.length; i++) {
+    const current = starts[starts.length - 1];
+    const from = Math.max(current, i - RIFF_MEMORY_BARS);
+    const known = (print: PrintedBar) => prints.slice(from, i).some((other) => sameRiff(print, other));
+    if (known(prints[i])) repeated = true;
+    else if (repeated && i - current >= MIN_STEP_BARS && (i + 1 >= prints.length || !known(prints[i + 1]))) {
+      starts.push(i);
+      repeated = false;
+    }
+  }
+  const labels: number[] = [];
+  let distinct = 0;
+  starts.forEach((start, k) => {
+    let label = -1;
+    for (let earlier = 0; earlier < k && label < 0; earlier++) {
+      for (let bar = starts[earlier]; bar < starts[earlier + 1] && label < 0; bar++) {
+        if (sameRiff(prints[start], prints[bar])) label = labels[earlier];
+      }
+    }
+    labels.push(label < 0 ? distinct++ : label);
+  });
+  return { starts, labels };
+}
+
+// Escalón de cada compás y en qué compases cambia.
+export function autoDrumSteps(chart: Chart): { steps: number[]; changes: Set<number> } {
+  const plan = autoDrumPlan(chart);
+  const { starts, labels } = riffStarts(chart);
+  const steps = plan.map(() => 0);
+  const changes = new Set<number>();
+  const labelAt = (bar: number) => {
+    let k = 0;
+    while (k + 1 < starts.length && starts[k + 1] <= bar) k++;
+    return labels[k];
+  };
+  const remembered = new Map<string, number>();
+  const stepOf = (rhythm: AutoRhythm, bar: number) => `${rhythm}:${labelAt(bar)}`;
+
+  let first = 0;
+  while (first < plan.length) {
+    const rhythm = plan[first];
+    if (!rhythm) {
+      first++;
+      continue;
+    }
+    // Tramo: el mismo ritmo, sin contar un compás en silencio suelto.
+    let last = first;
+    for (let bar = first + 1, silent = 0; bar < plan.length && silent < TRAMO_SILENCE_BARS; bar++) {
+      if (plan[bar] === rhythm) {
+        last = bar;
+        silent = 0;
+      } else if (plan[bar]) break;
+      else silent++;
+    }
+    // Se cambia donde empieza OTRO riff y, si no llega ninguno, cada 16 compases; siempre con 4
+    // compases de margen desde el cambio anterior y hasta el siguiente o el final del tramo.
+    const riffAt = new Map(starts.map((bar, k) => [bar, k]));
+    const nextRiff = (bar: number) => starts.find((start) => start > bar && start <= last) ?? last + 1;
+    const ladder = LADDER_STEPS[rhythm];
+    let step = remembered.get(stepOf(rhythm, first)) ?? 0;
+    remembered.set(stepOf(rhythm, first), step);
+    let from = first;
+    for (let bar = first + 1; bar <= last; bar++) {
+      const k = riffAt.get(bar);
+      const newRiff = k !== undefined && labels[k] !== labels[k - 1];
+      if (!newRiff && bar - from < LONG_RIFF_BARS) continue;
+      if (bar - from < MIN_STEP_BARS || nextRiff(bar) - bar < MIN_STEP_BARS) continue;
+      const known = newRiff ? remembered.get(stepOf(rhythm, bar)) : undefined;
+      const next = known !== undefined && known !== step ? known : (step + 1) % ladder;
+      steps.fill(step, from, bar);
+      from = bar;
+      step = next;
+      changes.add(bar);
+      if (newRiff && known === undefined) remembered.set(stepOf(rhythm, bar), step);
+    }
+    steps.fill(step, from, last + 1);
+    first = last + 1;
+  }
+  return { steps, changes };
+}
+
+interface BarHit {
+  q: number;
+  sound: DrumSound;
+  accent: number;
+}
+
+// Golpes de un compás con su escalón, en negras desde su inicio.
+function barHits(rhythm: AutoRhythm, step: number, bar: BarInfo): BarHit[] {
+  // 7/8 y parecidos: no se sabe cómo se agrupan, así que solo el ritmo, y plato en el 1 si lo lleva.
+  const wholeQuarters = Math.abs(bar.lengthQ - Math.round(bar.lengthQ)) < 0.02;
+  const level = wholeQuarters ? step : 0;
+  let base = rhythm;
+  let cymbals: 'none' | 'quarters' | 'kicks' | 'all' = 'none';
+  let fill = false;
+  if (rhythm === 'blast') {
+    if (level === 2) base = 'skank';
+    cymbals = level === 1 ? 'kicks' : 'quarters';
+  } else if (rhythm === 'skank') {
+    if (level === 1) cymbals = 'quarters';
+    if (level === 2) {
+      if (bar.bpm <= SKANK_SIXTEENTHS_MAX_BPM) fill = true;
+      else cymbals = 'all';
+    }
+  } else if (rhythm === 'eighth') {
+    if (level === 1) cymbals = 'quarters';
+    if (level === 2) base = 'sixteenth';
+  } else if (rhythm === 'triplet') {
+    if (level === 1) cymbals = 'kicks';
+  }
+
+  // En compás compuesto los tresillos van sobre sus corcheas reales (bombo en cada negra con puntillo).
+  const stepQ = base === 'triplet' && bar.compound ? 0.5 : STEP[base];
+  const count = Math.round(bar.lengthQ / stepQ);
+  const hits: BarHit[] = [];
+  for (let idx = 0; idx < count; idx++) {
+    const hit = patternHit(base, idx);
+    const accent = rhythm === 'sixteenth' && level === 1 && hit.sound === 'cymbal' ? STRONG_CYMBAL_ACCENT : hit.accent;
+    hits.push({ q: idx * stepQ, sound: hit.sound, accent });
+  }
+  if (!wholeQuarters) {
+    if (rhythm === 'blast' || step > 0) hits.push({ q: 0, sound: 'cymbal', accent: CYMBAL_ACCENT });
+    return hits;
+  }
+  // Tercer escalón del skank: bombo, plato, caja, plato, con el bombo aún en el pulso.
+  if (fill) {
+    for (let q = 0.25; q < bar.lengthQ; q += 0.5) hits.push({ q, sound: 'cymbal', accent: CYMBAL_ACCENT });
+  }
+  const onQuarter = (q: number) => Math.abs(q - Math.round(q)) < 1e-6;
+  for (const hit of [...hits]) {
+    if (hit.sound === 'cymbal') continue;
+    const wanted = cymbals === 'all' || (cymbals === 'kicks' && hit.sound === 'kick') || (cymbals === 'quarters' && onQuarter(hit.q));
+    if (wanted) hits.push({ q: hit.q, sound: 'cymbal', accent: CYMBAL_ACCENT });
+  }
+  return hits;
+}
+
 export function autoDrums(chart: Chart): AutoDrumHit[] {
   const clock = makeClock(chart);
   const bars = barInfos(chart);
   const plan = autoDrumPlan(chart);
+  const { steps, changes } = autoDrumSteps(chart);
   const hits: AutoDrumHit[] = [];
   bars.forEach((bar, i) => {
     const rhythm = plan[i];
@@ -204,13 +394,14 @@ export function autoDrums(chart: Chart): AutoDrumHit[] {
       hits.push({ t: bar.t, sound: 'snare', volume: AUTO_DRUM_GAIN });
       return;
     }
-    // En compás compuesto los tresillos van sobre sus corcheas reales (bombo en cada negra con puntillo).
-    const step = rhythm === 'triplet' && bar.compound ? 0.5 : STEP[rhythm];
-    const count = Math.round(bar.lengthQ / step);
-    for (let idx = 0; idx < count; idx++) {
-      const { sound, accent } = patternHit(rhythm, idx);
-      hits.push({ t: clock.t(bar.q0 + idx * step), sound, volume: AUTO_DRUM_GAIN * accent });
+    const barList = barHits(rhythm, steps[i], bar);
+    // Cambio de escalón: un plato fuerte en el primer golpe marca la frase nueva.
+    if (changes.has(i)) {
+      const first = barList.find((hit) => hit.q === 0 && hit.sound === 'cymbal');
+      if (first) first.accent = CHANGE_CYMBAL_ACCENT;
+      else barList.push({ q: 0, sound: 'cymbal', accent: CHANGE_CYMBAL_ACCENT });
     }
+    for (const { q, sound, accent } of barList) hits.push({ t: clock.t(bar.q0 + q), sound, volume: AUTO_DRUM_GAIN * accent });
   });
-  return hits;
+  return hits.sort((a, b) => a.t - b.t);
 }

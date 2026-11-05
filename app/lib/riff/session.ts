@@ -35,15 +35,11 @@ export const PERFECT_POINTS = 4;
 // Compases que se retrocede al continuar tras una pausa.
 export const RESUME_BARS_BACK = 2;
 // Nota repetida con la pulsación MANTENIDA (ver `autoHold`): cuenta SIEMPRE, quede lo que quede
-// hasta ella, pero puntúa según el hueco con la anterior (decisión del usuario, para que mantener
-// compense solo cuando hace falta): semicorchea (o menos) +1, corchea +2, negra +1, blanca o más +½.
-// Los huecos intermedios (corchea con puntillo, tresillos...) van al valor siguiente más largo.
-export function holdPoints(gapQuarters: number): number {
-  const eps = 0.02;
-  if (gapQuarters <= 0.25 + eps) return 1;
-  if (gapQuarters <= 0.5 + eps) return 2;
-  if (gapQuarters <= 1 + eps) return 1;
-  return 0.5;
+// hasta ella (decisión del usuario, 2026-11-05: el máximo es +4 y no era justo que una racha rápida
+// mantenida valiera +1): +3, o +4 si llega a menos de 0,2 s REALES de la anterior.
+const FAST_HOLD_SECONDS = 0.2;
+export function holdPoints(gapSeconds: number): number {
+  return gapSeconds < FAST_HOLD_SECONDS ? 4 : 3;
 }
 export const COUNT_IN_BEATS = 4;
 // Volumen de las notas de fondo (la canción sonando sola en modo 'ritmo').
@@ -646,19 +642,6 @@ export class RiffSession {
     return this.options.freeStrings ? `f${note.fret}` : `${note.string}/${note.fret}`;
   }
 
-  // Segundos de canción por negra alrededor de `t` (según las líneas de pulso del chart).
-  private quarterSecondsAt(t: number): number {
-    const beats = this.chart.beats;
-    for (let i = 0; i + 1 < beats.length; i++) {
-      if (beats[i + 1].t > t + 1e-6 || i + 2 === beats.length) {
-        const dq = beats[i + 1].q - beats[i].q;
-        if (dq > 0) return (beats[i + 1].t - beats[i].t) / dq;
-        break;
-      }
-    }
-    return 60 / this.chart.bpm;
-  }
-
   // Notas repetidas con la pulsación MANTENIDA (decisión del usuario): mientras el alumno sigue
   // pulsando la posición con la que acertó una nota, la siguiente nota del chart en esa MISMA
   // posición cuenta sola al llegar su momento (puntos según el hueco: `holdPoints`), sin límite de
@@ -688,7 +671,7 @@ export class RiffSession {
         const next = this.notes[nextIndex];
         if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id) || this.locked.has(next.id)) break;
         this.hitAt.set(next.id, this.songPos);
-        const points = holdPoints((next.t - prev.t) / this.quarterSecondsAt(prev.t));
+        const points = holdPoints((next.t - prev.t) / this.options.speed);
         if (this.rated) this.setScore(next.id, { points, exact: true, at: this.songPos });
         this.holdChains.set(key, next.id);
         out.push(next);

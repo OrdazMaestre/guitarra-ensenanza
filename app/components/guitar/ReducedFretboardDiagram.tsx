@@ -238,10 +238,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const boardX = gameLayout ? GAME_EDGE + fretWidth : 42 + (pegsShown ? PEG_AREA_WIDTH : 0);
   // Borde izquierdo del tablero dibujado (con la casilla del 0 en el juego).
   const boardLeftEdge = boardX - (openWidth ?? 0);
-  // Móvil en vertical con un nivel de 6 trastes (0-5): el mástil mide el doble de alto, porque con
+  // Móvil en vertical con un nivel de pocos trastes (0-5, y 0-6 en Híbrido): el mástil mide el doble de alto, porque con
   // ese ancho las casillas quedan muy bajas para tocarlas con el dedo (petición del usuario,
   // 2026-11-05). Solo cambia la altura: cuerdas, carriles y toque salen de `stringGap`.
-  const tallNeck = gameLayout && fretCount === 5 && riff.hostWidth !== null && riff.hostWidth < TALL_NECK_MAX_WIDTH;
+  const tallNeck = gameLayout && fretCount <= 6 && riff.hostWidth !== null && riff.hostWidth < TALL_NECK_MAX_WIDTH;
   const boardHeight = tallNeck ? 2 * BASE_BOARD_HEIGHT : BASE_BOARD_HEIGHT;
   const stringGap = boardHeight / 5;
   // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda

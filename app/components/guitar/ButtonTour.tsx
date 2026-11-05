@@ -55,14 +55,14 @@ const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.rif
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
   // Mismo orden que el panel (decisión del usuario, 2026-11-03).
-  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
+  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.', 'Híbrido: pocos trastes, cuatro cuerdas.'], find: ddToggle('nivel') },
   { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
   { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
   { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
   { title: 'Metrónomo', lines: ['Metrónomo o batería automática.', 'Para canciones sin batería.'], find: ddToggle('metronomo') },
   { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
-  { title: 'Compases', lines: ['Elige qué trozo tocar.'], find: ddToggle('compases') },
-  { title: 'Modo', lines: ['Elige cómo quieres jugar.', 'Práctica repite un trozo. Ensayo es la partida normal.', 'Concierto es toda la canción, ¡sin parar!'], find: ddToggle('modo') },
+  { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
+  { title: 'Concierto', lines: ['Toda la canción, ¡sin parar!', 'Si pausas, vuelves a empezar.'], find: ddToggle('concierto') },
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
   { title: 'Partida de prueba', lines: ['Aprende tres trucos jugando:', 'mantener pulsado, tapping y deslizar.'], find: (root) => root.querySelector('.tour-launch') },
 ];

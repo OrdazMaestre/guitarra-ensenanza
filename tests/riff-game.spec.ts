@@ -93,10 +93,10 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   // Abierto, el mismo botón es SALIR.
   await expect(pill.locator('button').first()).toHaveText('SALIR');
   // Orden del panel (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/, /Modo/], { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/, /Concierto/], { timeout: 10000 });
   // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle; con
   // batería en la canción, el metrónomo apagado.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /ModoEnsayo/]);
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /Concierto.*no/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -352,6 +352,56 @@ test('en ordenador no se bloquea el giro ni entra en pantalla completa', async (
   expect(await screenCalls(page)).toEqual([]);
 });
 
+test('nivel Híbrido: debajo de las dos columnas, cuenta la cuerda, se recuerda y usa 0-6', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const nivel = page.locator('.riff-dd-toggle', { hasText: 'Nivel' });
+  await nivel.click();
+  const chip = page.locator('.riff-level-hybrid').getByRole('button', { name: 'Híbrido', exact: true });
+  await expect(chip.locator('svg.riff-level-face')).toHaveCount(1);
+  const columns = (await page.locator('.riff-level-groups').boundingBox())!;
+  const box = (await chip.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(columns.y + columns.height);
+  await chip.click();
+  await expect(nivel).toContainText('Híbrido');
+  // Trastes 0-6, sin estirar más.
+  await expect(page.locator('.test-room-fretboard .reduced-fret-number')).toHaveCount(7);
+  await page.reload();
+  await openGame(page);
+  await expect(nivel).toContainText('Híbrido');
+
+  // Cuenta la cuerda: el traste bueno en otra cuerda no vale.
+  await choose(page, 'Pistas', 'Guitarra rítmica');
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+  const first = reduceChart(buildChart(at, at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('public/tabs/prueba-master-of-puppets.gp')), new at.Settings()), 1, 24, { fold: true }), RIFF_LEVELS.hibrido, { range: [40, 86] }).notes[0];
+  const rows = laneRows(RIFF_LEVELS.hibrido.strings);
+  const other = first.string === 6 ? 5 : 6;
+  await tap(page, other, first.fret, rows.get(other)!);
+  await expect(stage).toHaveAttribute('data-hits', '0');
+  await tap(page, first.string, first.fret, rows.get(first.string)!);
+  await expect(stage).toHaveAttribute('data-hits', '1');
+});
+
+test('nivel Híbrido en móvil vertical: mástil doble de alto y sin desbordar', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(URL);
+  await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+  const board = page.locator('.test-room-fretboard .reduced-board-bg');
+  const plain = (await board.boundingBox())!.height;
+  await openGame(page);
+  await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+  await page.locator('.riff-level-hybrid').getByRole('button', { name: 'Híbrido', exact: true }).click();
+  await expect.poll(async () => (await board.boundingBox())!.height).toBeGreaterThanOrEqual(plain * 1.98);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  // Se puede jugar en vertical, sin pedir girar el móvil.
+  await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 15000 });
+});
+
 test('recuerda la última dificultad elegida; el Tutorial no la cambia', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
@@ -493,7 +543,7 @@ test('MAIkael no se abre mientras se juega (sí en pausa)', async ({ page }) => 
 
 // Bucle = "modo práctica" (petición del usuario): no puntúa y deja cambiar la DIFICULTAD en pausa
 // y continuar. Sin bucle, cambiar la dificultad sí anula la partida.
-test('modo Práctica: no se puntúa y se puede cambiar la dificultad en pausa y continuar', async ({ page }) => {
+test('con bucle (Práctica) no se puntúa y se puede cambiar la dificultad en pausa y continuar', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
@@ -501,8 +551,9 @@ test('modo Práctica: no se puntúa y se puede cambiar la dificultad en pausa y 
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await page.getByLabel('Desde el compás').fill('9');
   await page.getByLabel('Hasta el compás').fill('12');
+  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
   await page.keyboard.press('Escape');
-  await choose(page, 'Modo', 'Práctica');
+  await expect(stage).toHaveAttribute('data-game-mode', 'practica');
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
@@ -517,10 +568,12 @@ test('modo Práctica: no se puntúa y se puede cambiar la dificultad en pausa y 
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toContainText('9–12');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  // Salir de Práctica con otra dificultad que la de la partida en pausa sí la anula.
+  // Quitar el bucle con otra dificultad que la de la partida en pausa sí la anula.
   await hold(page, pause);
   await choose(page, 'Nivel', 'Avanzado cuerdas');
-  await choose(page, 'Modo', 'Ensayo');
+  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
+  await page.keyboard.press('Escape');
   await expect(stage).toHaveAttribute('data-status', 'idle');
 });
 
@@ -535,18 +588,24 @@ test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continu
   await toggle('Compases').click();
   await page.getByLabel('Desde el compás').fill('9');
   await page.getByLabel('Hasta el compás').fill('12');
+  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
   await page.keyboard.press('Escape');
 
-  // Entrar en Concierto con una partida de Ensayo en pausa la anula.
+  // Entrar en Concierto con una partida en pausa la anula.
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
   const pause = page.getByRole('button', { name: 'PAUSA' });
   await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
-  await choose(page, 'Modo', 'Concierto');
+  const concert = toggle('Concierto');
+  await concert.click();
   await expect(stage).toHaveAttribute('data-status', 'idle');
   await expect(stage).toHaveAttribute('data-game-mode', 'concierto');
+  await expect(concert).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.riff-dd-menu')).toHaveText('Aquí irán tus rankings');
+  await expect(page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
 
   await expect(toggle('Velocidad')).toContainText('100%');
   await expect(toggle('Ritmo')).toContainText('Con ritmo');
@@ -566,9 +625,12 @@ test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continu
   await expect(pause).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Volver a empezar' })).toBeEnabled();
 
-  // Salir de Concierto anula esa partida y devuelve los ajustes de antes.
-  await choose(page, 'Modo', 'Ensayo');
+  // Salir de Concierto anula esa partida y devuelve los ajustes de antes, bucle incluido.
+  await concert.click();
   await expect(stage).toHaveAttribute('data-status', 'idle');
+  await expect(stage).toHaveAttribute('data-game-mode', 'practica');
+  await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
+  await expect(page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' })).toBeVisible();
   await expect(toggle('Velocidad')).toContainText('50%');
   await expect(toggle('Ritmo')).toContainText('Paso a paso');
   await expect(toggle('Compases')).toContainText('9–12');
@@ -733,11 +795,10 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   await page.waitForTimeout(bar * 1000 + 200);
   await page.mouse.up();
   await expect(stage).toHaveAttribute('data-hits', '9');
-  // La primera según su tiempo (2-4 puntos) y las 8 siguientes según su hueco: 7 corcheas (+2) y
-  // una semicorchea (+1) = 15.
+  // Al 50 %: la primera según su tiempo (2-4 puntos), 7 corcheas (+3) y una semicorchea (+4).
   const score = Number(await stage.getAttribute('data-score'));
-  expect(score).toBeGreaterThanOrEqual(17);
-  expect(score).toBeLessThanOrEqual(19);
+  expect(score).toBeGreaterThanOrEqual(27);
+  expect(score).toBeLessThanOrEqual(29);
 });
 
 test('jugando, el volumen solo se mueve tras mantenerlo 1 s; en pausa y fuera de partida, al instante', async ({ page }) => {

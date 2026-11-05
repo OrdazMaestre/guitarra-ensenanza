@@ -19,14 +19,13 @@ import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 const MIN_PX_PER_FRET = 44;
 const SIDE_MARGIN_PX = 60;
 
-const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as RiffMode };
+const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as RiffMode, loop: false };
 
 // Modos de juego (petición del usuario, 2026-11-05):
-// - Práctica: el tramo elegido en bucle, sin sumar puntos.
-// - Ensayo: la partida normal; tras pausar se continúa conservando los puntos.
-// - Concierto: canción entera al 100 % y con ritmo, con esos ajustes bloqueados; al pausar ya no se
-//   continúa. Es la partida comparable, la que servirá para futuros rankings.
-export type RiffGameMode = 'practica' | 'ensayo' | 'concierto';
+// - Ensayo, por defecto: la partida normal; tras pausar se continúa conservando los puntos.
+// - Práctica: se entra activando "Repetir en bucle"; el tramo en bucle, sin sumar puntos.
+// - Concierto: botón propio. Canción entera al 100 % y con ritmo, con esos ajustes bloqueados; al
+//   pausar ya no se continúa. Es la partida comparable, la que servirá para futuros rankings.
 
 // Última dificultad elegida, en este navegador (petición del usuario, 2026-11-05). Puede fallar en
 // modo privado: entonces el juego empieza en el nivel de base.
@@ -73,9 +72,10 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const [muted, setMuted] = useState<number[]>([]);
   const backing: RiffBacking = useMemo(() => ({ click, muted }), [click, muted]);
   const toggleMuted = (index: number) => setMuted((current) => (current.includes(index) ? current.filter((value) => value !== index) : [...current, index]));
-  const [gameMode, setGameMode] = useState<RiffGameMode>('ensayo');
-  const concert = gameMode === 'concierto';
-  const loop = gameMode === 'practica';
+  const [concert, setConcert] = useState(false);
+  const [wantsLoop, setLoop] = useState(DEFAULTS.loop);
+  const loop = wantsLoop && !concert;
+  const gameMode = concert ? 'concierto' : loop ? 'practica' : 'ensayo';
   const [fromBar, setFromBar] = useState(1);
   const [toBar, setToBar] = useState(1);
   // Ancho real del mástil (null hasta medirlo): de él sale qué niveles caben (ver `fitsFrets`).
@@ -108,6 +108,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // usuario, 2026-11-03: Principiante, Fácil y Medio de trastes también en el móvil en vertical).
   const levelFrets = (value: RiffLevel) => {
     const maxFret = value === 'experto' ? endFret : RIFF_LEVELS[value].maxFret;
+    // Híbrido (0-6) también se juega con el móvil en vertical: mismo ancho que los niveles 0-5.
+    if (value === 'hibrido') return RIFF_LEVELS.medio.maxFret;
     return startFret === 0 && maxFret < endFret ? maxFret : fullFretCount;
   };
   const fitsLevel = (value: RiffLevel) => fitsFrets(levelFrets(value));
@@ -320,7 +322,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setLevel(DEFAULTS.level);
     setSpeed(DEFAULTS.speed);
     setMode(DEFAULTS.mode);
-    setGameMode('ensayo');
+    setLoop(DEFAULTS.loop);
+    setConcert(false);
     setMuted([]);
     setClick(hasDrums ? 'nada' : 'auto');
     setFromBar(1);
@@ -330,9 +333,9 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const gameOptions = () => ({ speed: playSpeed, mode: playMode, loop, fromBar: Math.min(playFrom, playTo), toBar: Math.max(playFrom, playTo), freeStrings: !!profile?.freeStrings, timingScale: profile?.timingScale });
 
   // Un Concierto no se mezcla con otro modo: entrar o salir de él anula la partida en pausa.
-  function chooseGameMode(value: RiffGameMode) {
-    if (value !== gameMode && (value === 'concierto' || concert)) stopGame();
-    setGameMode(value);
+  function toggleConcert() {
+    stopGame();
+    setConcert(!concert);
   }
 
   function start() {
@@ -361,12 +364,12 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     chart: activeChart, loadError,
     speed: playSpeed, setSpeed,
     mode: playMode, setMode,
-    gameMode, chooseGameMode, concert,
+    gameMode, concert, toggleConcert,
     click, setClick,
     muted, toggleMuted,
     fitsLevel,
     hostWidth,
-    loop,
+    loop, setLoop,
     fromBar: playFrom, setFromBar, toBar: playTo, setToBar, maxBar,
     previewTime,
     narrow,

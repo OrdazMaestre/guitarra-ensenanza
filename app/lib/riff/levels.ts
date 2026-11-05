@@ -5,7 +5,13 @@
 
 // Ids internos: los del modo trastes sin sufijo; los del modo cuerdas que repiten nombre, con
 // '-cuerdas' (los dos modos tienen un "Medio" y un "Avanzado", decisión del usuario).
-export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'experto';
+export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto';
+
+// Cuerdas de una mitad de las notas: en cuáles puede ir y en cuáles predomina (ver `pitchHalves`).
+export interface PitchHalf {
+  strings: number[];
+  main: number[];
+}
 
 export interface LevelProfile {
   label: string;
@@ -44,6 +50,9 @@ export interface LevelProfile {
   // Hueco mínimo de la rejilla en segundos reales: donde una semicorchea dura menos, la rejilla
   // pasa a corcheas (ver gridSlots en reduce.ts).
   minSlotSeconds?: number;
+  // Reparto por alturas: cada nota, según su altura REAL (corte de `octaveSplit` en reduce.ts), solo
+  // puede ir en las cuerdas de su mitad, y predomina en las principales.
+  pitchHalves?: { low: PitchHalf; high: PitchHalf };
   // Traste máximo de cada cuerda, si no es el mismo para todas (modo cuerdas: lo que alcanza el
   // teclado físico, ver FRETBOARD_KEYMAP -- Mi hasta el 10, La hasta el 11, Re y Sol hasta el 12).
   maxFretByString?: Record<number, number>;
@@ -100,6 +109,10 @@ export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = 
   // Modo cuerdas Difícil: Mi + La + Re + Sol (las cuatro en cuartas exactas), mismo motor, densidad y
   // límites que Medio y Avanzado cuerdas (2026-10-28).
   dificil: { label: 'Difícil', available: true, strings: [3, 4, 5, 6], minFret: 0, maxFret: 12, maxFretByString: KEYBOARD_MAX_FRET, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
+  // Híbrido (petición del usuario, 2026-11-05): pocos trastes, como el modo trastes, pero cuenta la
+  // cuerda, como el modo cuerdas. Agudas en Sol, Re y La (sobre todo Sol y Re); graves en Re, La y Mi
+  // (sobre todo La y Mi). Densidad de Difícil.
+  hibrido: { label: 'Híbrido', available: true, strings: [3, 4, 5, 6], minFret: 0, maxFret: 6, pitchHalves: { low: { strings: [4, 5, 6], main: [5, 6] }, high: { strings: [3, 4, 5], main: [3, 4] } }, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
 };
 
 // Dos modos de juego (decisión del usuario), cada uno con sus niveles de menos a más:
@@ -112,10 +125,13 @@ export const RIFF_LEVEL_GROUPS: Array<{ id: RiffLevelGroup; label: string; level
   { id: 'cuerdas', label: 'Modo cuerdas', levels: ['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'experto'] },
 ];
 
-export const RIFF_LEVEL_ORDER: RiffLevel[] = RIFF_LEVEL_GROUPS.flatMap((g) => g.levels);
+// Nivel que va debajo de las dos columnas: no es de ningún modo.
+export const RIFF_HYBRID_LEVEL: RiffLevel = 'hibrido';
+
+export const RIFF_LEVEL_ORDER: RiffLevel[] = [...RIFF_LEVEL_GROUPS.flatMap((g) => g.levels), RIFF_HYBRID_LEVEL];
 
 export function levelGroup(level: RiffLevel): RiffLevelGroup {
-  return RIFF_LEVEL_GROUPS.find((g) => g.levels.includes(level))!.id;
+  return RIFF_LEVEL_GROUPS.find((g) => g.levels.includes(level))?.id ?? 'cuerdas';
 }
 
 export function levelLabel(level: RiffLevel) {

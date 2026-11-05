@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
-import { buildChart, type Chart } from '../app/lib/riff/chart';
+import { buildChart, listGuitarTracks, type Chart } from '../app/lib/riff/chart';
 import { RIFF_LEVELS } from '../app/lib/riff/levels';
 import { OPEN_MIDI, octaveSplit, outsideHandBox, pitchRange, placeSequence, reduceChart } from '../app/lib/riff/reduce';
 import { buildRemix, REMIX_GAP_QUARTERS } from '../app/lib/riff/remix';
@@ -843,4 +843,60 @@ test('vueltas iguales: un compás repetido sale igual aunque le acompañen compa
     expect(drawing(2), level).toBe(drawing(0));
     expect(drawing(4), level).toBe(drawing(0));
   }
+});
+
+// Nivel Híbrido: trastes 0-6 en Mi, La, Re y Sol. Cada nota, según su altura real, en las 3 cuerdas de
+// su mitad (agudas: Sol, Re y La; graves: Re, La y Mi), predominando las 2 de su lado.
+const HIBRIDO_SONGS: Array<[string, string, number]> = [
+  ['Master of Puppets', 'prueba-master-of-puppets.gp', 1],
+  ['Iron Rain', 'iron-rain.gp', 0],
+  ['Electric Warlock', 'electric-warlock.gp', 0],
+  ['Black Gilmur', 'black-gilmur.gp', 0],
+  ['Thunderstruck', 'thunderstruck.gp', 0],
+  ['Carol of the Bells', 'carol-of-the-bells.gp', 0],
+];
+
+function hibrido(file: string, track: number) {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+  const guitars = listGuitarTracks(score);
+  const range = pitchRange(guitars.map((guitar) => buildChart(at, score, guitar.index, 24)));
+  const real = buildChart(at, score, guitars[track].index, 24);
+  return { chart: reduceChart(real, RIFF_LEVELS.hibrido, { range }), split: octaveSplit(range) };
+}
+
+for (const [name, file, track] of HIBRIDO_SONGS) {
+  test(`Híbrido (${name}): cuerdas y trastes del nivel, cada nota en su mitad y predominan las de su lado`, () => {
+    const { chart, split } = hibrido(file, track);
+    const { low, high } = RIFF_LEVELS.hibrido.pitchHalves!;
+    const count = { low: 0, lowMain: 0, high: 0, highMain: 0 };
+    for (const note of chart.notes) {
+      expect([3, 4, 5, 6]).toContain(note.string);
+      expect(note.fret).toBeLessThanOrEqual(6);
+      // La altura real de esa nota: alguna de las que suenan en ese instante.
+      const real = (chart.sourceNotes ?? []).filter((source) => Math.abs(source.t - note.t) < 0.005);
+      const fitsLow = real.some((source) => source.midi < split) && low.strings.includes(note.string);
+      const fitsHigh = real.some((source) => source.midi >= split) && high.strings.includes(note.string);
+      expect(fitsLow || fitsHigh, `${note.string}/${note.fret} en ${note.t}`).toBe(true);
+      if (real.every((source) => source.midi < split)) {
+        count.low++;
+        if (low.main.includes(note.string)) count.lowMain++;
+      } else if (real.every((source) => source.midi >= split)) {
+        count.high++;
+        if (high.main.includes(note.string)) count.highMain++;
+      }
+    }
+    if (count.low >= 10) expect(count.lowMain / count.low).toBeGreaterThan(0.6);
+    if (count.high >= 10) expect(count.highMain / count.high).toBeGreaterThan(0.6);
+  });
+}
+
+test('Híbrido: las notas repetidas no se mueven y el resultado no cambia entre dos cálculos', () => {
+  const { chart } = hibrido('prueba-master-of-puppets.gp', 1);
+  // Dos notas iguales seguidas, en el mismo sitio (hace falta para mantener pulsado).
+  const notes = chart.notes;
+  for (let k = 1; k < notes.length; k++) {
+    if (notes[k].midi === notes[k - 1].midi) expect([notes[k].string, notes[k].fret]).toEqual([notes[k - 1].string, notes[k - 1].fret]);
+  }
+  // El mismo chart en el mismo nivel da lo mismo dos veces.
+  expect(hibrido('prueba-master-of-puppets.gp', 1).chart.notes).toEqual(notes);
 });

@@ -553,9 +553,9 @@ test('mantener: el compás 42 entero con el traste 0 pulsado -- la primera segú
       session.autoHold([{ string: 5, fret: first.fret }]);
     }
     expect(session.hitAt.size).toBe(9);
-    // Corcheas +2; la última llega a una semicorchea, +1.
-    expect([...session.scoreOf.values()].map((s) => s.points)).toEqual([4, 2, 2, 2, 2, 2, 2, 2, 1]);
-    expect(session.totalScore).toBe(19);
+    // Al 50 %: las corcheas llegan a 0,28 s reales, +3; la última, a una semicorchea, a 0,14 s, +4.
+    expect([...session.scoreOf.values()].map((s) => s.points)).toEqual([4, 3, 3, 3, 3, 3, 3, 3, 4]);
+    expect(session.totalScore).toBe(29);
   }
 });
 
@@ -576,9 +576,25 @@ test('mantener: al soltar, las siguientes ya no cuentan solas (hay que volver a 
   expect(session.hitAt.size).toBe(4);
 });
 
-test('mantener: puntos según el hueco con la anterior (decisión del usuario)', () => {
-  // semicorchea (o menos) +1, corchea +2, negra +1, blanca o más +½; lo intermedio, al valor más largo.
-  expect([0.125, 0.25, 1 / 3, 0.5, 0.75, 1, 1.5, 2, 4, 8].map(holdPoints)).toEqual([1, 1, 2, 2, 1, 1, 0.5, 0.5, 0.5, 0.5]);
+test('mantener: +3, o +4 a menos de 0,2 s de la anterior (decisión del usuario)', () => {
+  expect([0.05, 0.1, 0.19, 0.2, 0.3, 1, 8].map(holdPoints)).toEqual([4, 4, 4, 3, 3, 3, 3]);
+});
+
+test('mantener: la distancia se mide en tiempo real, también a menos velocidad', () => {
+  const note = (id: number, t: number) => ({ id, t, dur: 0.05, string: 6, fret: 0, midi: 40, palmMute: false, tech: [] });
+  const chart: Chart = { ...twoBarChart(), notes: [note(0, 0), note(1, 0.15), note(2, 0.3)] };
+  const pointsAt = (speed: number) => {
+    const s = new RiffSession(chart, { ...ritmo, speed, toBar: 2 }, 0, NADA);
+    const start = 4 / speed;
+    s.judge({ string: 6, fret: 0, kind: 'pluck' }, start);
+    for (let real = start; real <= start + 1.5; real += 0.025) {
+      s.advance(real);
+      s.autoHold([{ string: 6, fret: 0 }]);
+    }
+    return s.scoreOf.get(1)?.points;
+  };
+  expect(pointsAt(1)).toBe(4);
+  expect(pointsAt(0.5)).toBe(3);
 });
 
 test('mantener: cuenta siempre, quede lo que quede; una nota distinta por medio corta la cadena', () => {
@@ -591,19 +607,19 @@ test('mantener: cuenta siempre, quede lo que quede; una nota distinta por medio 
     s.advance(real);
     s.autoHold([{ string: 6, fret: 0 }]);
   }
-  // Nota 1 a una negra: +1. Nota 2 a una blanca: +½.
-  expect(s.scoreOf.get(1)?.points).toBe(1);
-  expect(s.scoreOf.get(2)?.points).toBe(0.5);
+  // Notas 1 y 2, lejos de la anterior: +3.
+  expect(s.scoreOf.get(1)?.points).toBe(3);
+  expect(s.scoreOf.get(2)?.points).toBe(3);
   // La nota 3 (traste 3) va por medio: la 4 ya no cuenta sola, aunque se siga pulsando el 0.
   expect(s.hitAt.has(3)).toBe(false);
   expect(s.hitAt.has(4)).toBe(false);
-  // Se vuelve a pulsar en la 4 y se mantiene: la 5, a una semicorchea, +1.
+  // Se vuelve a pulsar en la 4 y se mantiene: la 5, a 0,25 s, +3.
   s.judge({ string: 6, fret: 0, kind: 'pluck' }, 7.75);
   for (let real = 7.75; real <= 8.1; real += 0.025) {
     s.advance(real);
     s.autoHold([{ string: 6, fret: 0 }]);
   }
-  expect(s.scoreOf.get(5)?.points).toBe(1);
+  expect(s.scoreOf.get(5)?.points).toBe(3);
 });
 
 test('mantener: en paso a paso también avanza solo (sin puntos)', () => {
