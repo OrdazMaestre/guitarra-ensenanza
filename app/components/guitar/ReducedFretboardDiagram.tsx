@@ -121,7 +121,7 @@ interface ReducedFretboardDiagramProps {
   // Modo "Practicar ejercicio" (opt-in): un botón por ejercicio, ver useFretboardPractice.ts.
   practiceExercises?: PracticeExercise[];
   // Juego tipo Rocksmith (opt-in): añade "JUGAR" a la barra de controles, que despliega los ajustes
-  // y "Empezar"/"Parar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
+  // y "Empezar", y muestra la autopista de notas encima del mástil. Ver app/lib/riff.
   // `songs`: las canciones que se pueden elegir con el botón del disco (la primera a la izquierda del
   // panel); `initialSong`: id de la que sale al cargar (si falta, la primera).
   riffGame?: { songs: SongEntry[]; initialSong?: string };
@@ -187,6 +187,9 @@ function getSvgCoords(
 // Hueco mínimo (px) entre los números de traste y el botón KEYBOARD para poner "Usa teclado" + la flecha.
 const KB_HINT_MIN_GAP = 34;
 
+const BASE_BOARD_HEIGHT = 158;
+const TALL_NECK_MAX_WIDTH = 600;
+
 export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
   // partida en sí la arranca "Empezar". El mástil ocupa siempre lo mismo en pantalla; en los niveles
@@ -235,7 +238,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const boardX = gameLayout ? GAME_EDGE + fretWidth : 42 + (pegsShown ? PEG_AREA_WIDTH : 0);
   // Borde izquierdo del tablero dibujado (con la casilla del 0 en el juego).
   const boardLeftEdge = boardX - (openWidth ?? 0);
-  const boardHeight = 158;
+  // Móvil en vertical con un nivel de 6 trastes (0-5): el mástil mide el doble de alto, porque con
+  // ese ancho las casillas quedan muy bajas para tocarlas con el dedo (petición del usuario,
+  // 2026-11-05). Solo cambia la altura: cuerdas, carriles y toque salen de `stringGap`.
+  const tallNeck = gameLayout && fretCount === 5 && riff.hostWidth !== null && riff.hostWidth < TALL_NECK_MAX_WIDTH;
+  const boardHeight = tallNeck ? 2 * BASE_BOARD_HEIGHT : BASE_BOARD_HEIGHT;
   const stringGap = boardHeight / 5;
   // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda
   // (eje Y) nunca cambia de orden. `drawX` es la única función que conoce la inversión: toda
@@ -821,6 +828,13 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     placeOnStartRef.current = false;
     requestAnimationFrame(() => requestAnimationFrame(placeGame));
   }, [riff.playing]);
+  // Al entrar en pantalla completa (bloqueo del giro) cambia la altura de la ventana.
+  useEffect(() => {
+    if (!riff.playing) return;
+    const replace = () => requestAnimationFrame(() => requestAnimationFrame(placeGame));
+    document.addEventListener('fullscreenchange', replace);
+    return () => document.removeEventListener('fullscreenchange', replace);
+  }, [riff.playing]);
 
 
   function interactionOverlay() {
@@ -889,6 +903,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       className={riffGame ? `riff-stage${riffInGame ? ' riff-live' : ''}` : undefined}
       data-hits={riffGame && gameOpen ? riff.game.hitCount : undefined}
       data-score={riffGame && gameOpen ? riff.game.score : undefined}
+      data-game-mode={riffGame && gameOpen ? riff.gameMode : undefined}
       data-status={riffGame && gameOpen ? riff.game.status : undefined}
       data-tutorial={riffGame && gameOpen && riff.tutorialOn ? riff.tutorialCard ?? 'playing' : undefined}
       data-repetition={riffGame && gameOpen && riff.game.repetition ? riff.game.repetition : undefined}
@@ -1073,9 +1088,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           pulsado 1 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
       <HoldGuard active={!!riffGame && gameOpen && riff.playing}>
       {riffGame && (
-        // Con el juego abierto, el mismo botón es PARAR: cierra panel y autopista y para la partida.
+        // Con el juego abierto, el mismo botón es SALIR: cierra panel y autopista y para la partida.
         <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">
-          {gameOpen ? 'PARAR' : 'JUGAR'}
+          {gameOpen ? 'SALIR' : 'JUGAR'}
         </button>
       )}
       {/* PAUSA, junto a JUGAR mientras hay partida: la para y despliega los ajustes delante del
@@ -1084,6 +1099,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         <button
           aria-pressed={riff.paused}
           className="riff-pause-toggle"
+          disabled={riff.paused && !riff.canContinue}
           onClick={() => (riff.paused ? riff.resume() : riff.pause())}
           type="button"
         >

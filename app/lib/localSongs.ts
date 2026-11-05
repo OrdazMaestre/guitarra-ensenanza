@@ -2,14 +2,14 @@
 // del usuario, 2026-10-31). Sin React: un almacén mínimo para useSyncExternalStore, como
 // gameInProgress.ts.
 //
-// Qué se guarda y dónde (decisión del usuario: lo mínimo, y nada en nuestra web):
-// - La lista de canciones encontradas: solo en la memoria de la pestaña (nombre + referencia al
-//   archivo, nunca su contenido). Se pierde al recargar.
-// - El contenido de la canción que se toca: una URL `blob:` en memoria (`createLocalOpener`), que se
-//   BORRA (revokeObjectURL) al cambiar de canción. Nada se sube, se descarga ni se copia.
+// Qué se guarda y dónde (nada sale del dispositivo, el servidor no guarda nada):
+// - Una COPIA de cada canción encontrada, en IndexedDB del propio navegador (decisión del usuario,
+//   2026-11-05: en móvil había que elegirlas en cada visita). Vuelven solas al abrir la web, hasta
+//   `MAX_SAVED_BYTES`; "Borrar canciones guardadas" las quita. Los archivos originales no se tocan.
+// - La canción que se toca: una URL `blob:` en memoria (`createLocalOpener`), que se BORRA
+//   (revokeObjectURL) al cambiar de canción.
 // - Solo en Chrome/Edge de ordenador: la "llave" de la carpeta elegida (FileSystemDirectoryHandle,
-//   < 1 KB, no es la ruta en texto) en IndexedDB del propio navegador, para volver a buscar en ella
-//   en la siguiente visita. El servidor no guarda nada.
+//   < 1 KB, no es la ruta en texto), para encontrar canciones nuevas en ella.
 //
 // Ninguna web puede escanear el dispositivo sola: el usuario elige una carpeta (o archivos) y aquí
 // se busca dentro lo que el juego sabe leer (los importadores de alphaTab 1.8.2; MIDI no).
@@ -17,6 +17,10 @@
 export const PLAYABLE_EXTENSIONS = ['.gp', '.gp3', '.gp4', '.gp5', '.gpx', '.musicxml', '.mxl', '.xml', '.capx'];
 export const LOCAL_SONG_ACCEPT = PLAYABLE_EXTENSIONS.join(',');
 export const MAX_LOCAL_SONG_BYTES = 5 * 1024 * 1024;
+// Carita y batería o guitarra tachadas ya medidas (songDifficulty.ts).
+export const SONG_TRAITS_STORAGE_KEY = 'riff-rasgos-canciones-v1';
+// Tope de todas las copias guardadas juntas.
+export const MAX_SAVED_BYTES = 200 * 1024 * 1024;
 // Límites del recorrido de una carpeta (una carpeta enorme no debe colgar la página).
 const MAX_DEPTH = 8;
 const MAX_ENTRIES = 20000;
@@ -38,10 +42,11 @@ export interface LocalSongsState {
   lastFound: number | null;
   // Carpeta recordada (Chrome/Edge): su nombre.
   rememberedFolder: string | null;
-  // ¿Ya se ha buscado en una carpeta en ESTA visita? La lista vive solo en memoria: al recargar se
-  // pierde aunque la carpeta se recuerde, y entonces hay que ofrecer "Buscar en «carpeta»" bien a
-  // la vista (bug real: el usuario veía "Ya me acuerdo de tu carpeta" pero ninguna canción).
+  // ¿Ya se ha buscado en una carpeta en ESTA visita? Si no hay canciones guardadas (el navegador
+  // pudo borrarlas) hay que ofrecer "Buscar en «carpeta»" bien a la vista.
   folderScanned: boolean;
+  // Alguna canción no cupo en lo guardado: sirve en esta visita, pero se olvidará.
+  savedFull: boolean;
 }
 
 function extensionOf(name: string) {
@@ -93,7 +98,8 @@ export function localSearchMode(): LocalSearchMode {
   return 'files';
 }
 
-let state: LocalSongsState = { songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false };
+const emptyState = (): LocalSongsState => ({ songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false, savedFull: false });
+let state = emptyState();
 const listeners = new Set<() => void>();
 
 function setState(patch: Partial<LocalSongsState>) {
@@ -112,15 +118,20 @@ export function getLocalSongs() {
   return state;
 }
 
-const SERVER_STATE: LocalSongsState = { songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false };
+const SERVER_STATE = emptyState();
 export function getServerLocalSongs() {
   return SERVER_STATE;
 }
 
 const keyOf = (file: File) => `${file.name}|${file.size}|${file.lastModified}`;
 
+function withSongs(added: LocalSong[]) {
+  return withDistinctTitles([...state.songs, ...added]).sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));
+}
+
 // Añade a la lista los archivos válidos de `files` (con su ruta relativa). Devuelve cuántos nuevos.
 export async function addLocalFiles(files: Array<{ file: File; path: string }>): Promise<number> {
+  await restoreSavedSongs();
   const known = new Set(state.songs.map((song) => keyOf(song.file)));
   const added: LocalSong[] = [];
   for (const { file, path } of files) {
@@ -132,8 +143,8 @@ export async function addLocalFiles(files: Array<{ file: File; path: string }>):
     added.push({ id: `local:${key}`, title: songTitle(file.name), path, file });
   }
   if (added.length > 0) {
-    const songs = withDistinctTitles([...state.songs, ...added]).sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));
-    setState({ songs });
+    setState({ songs: withSongs(added) });
+    await saveSongs(added);
   }
   return added.length;
 }
@@ -188,15 +199,26 @@ export async function scanLocalDirectory(root: DirectoryHandleLike): Promise<num
   }
 }
 
-// --- Carpeta recordada (solo Chrome/Edge: la API de carpetas). IndexedDB del propio navegador. ---
+// --- IndexedDB del propio navegador: la carpeta recordada y las copias de las canciones. ---
 const DB_NAME = 'guitarra-canciones-locales';
 const STORE = 'carpeta';
+const SONGS_STORE = 'canciones';
 const KEY = 'ultima';
+
+interface SavedSong {
+  key: string;
+  path: string;
+  file: File;
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      if (!db.objectStoreNames.contains(SONGS_STORE)) db.createObjectStore(SONGS_STORE, { keyPath: 'key' });
+    };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -222,6 +244,90 @@ async function loadFolder(): Promise<DirectoryHandleLike | null> {
   });
   db.close();
   return handle;
+}
+
+function writeTo(db: IDBDatabase, stores: string[], write: (tx: IDBTransaction) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(stores, 'readwrite');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+    write(tx);
+  });
+}
+
+let savedBytes = 0;
+let restoring: Promise<void> | null = null;
+
+// Guarda una copia real de los bytes: un archivo elegido en el móvil puede dejar de poder leerse
+// cuando acaba la visita. Lo que no cabe se queda solo para esta visita.
+async function saveSongs(songs: LocalSong[]) {
+  if (typeof indexedDB === 'undefined') return;
+  // Pide al navegador que no borre estos datos cuando le falte espacio. Puede decir que no.
+  void navigator.storage?.persist?.().catch(() => {});
+  let full = false;
+  try {
+    const db = await openDb();
+    for (const { file, path } of songs) {
+      if (savedBytes + file.size > MAX_SAVED_BYTES) {
+        full = true;
+        continue;
+      }
+      try {
+        const copy = new File([await file.arrayBuffer()], file.name, { lastModified: file.lastModified, type: file.type });
+        const saved: SavedSong = { key: keyOf(file), path, file: copy };
+        await writeTo(db, [SONGS_STORE], (tx) => tx.objectStore(SONGS_STORE).put(saved));
+        savedBytes += file.size;
+      } catch {
+        full = true;
+      }
+    }
+    db.close();
+  } catch {
+    full = true;
+  }
+  if (full) setState({ savedFull: true });
+}
+
+// Devuelve a la lista las canciones guardadas, una vez por visita.
+export function restoreSavedSongs(): Promise<void> {
+  restoring ??= (async () => {
+    if (typeof indexedDB === 'undefined') return;
+    try {
+      const db = await openDb();
+      const saved = await new Promise<SavedSong[]>((resolve, reject) => {
+        const request = db.transaction(SONGS_STORE, 'readonly').objectStore(SONGS_STORE).getAll();
+        request.onsuccess = () => resolve(request.result as SavedSong[]);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      savedBytes = saved.reduce((sum, song) => sum + song.file.size, 0);
+      if (saved.length > 0) setState({ songs: withSongs(saved.map(({ key, path, file }) => ({ id: `local:${key}`, title: songTitle(file.name), path, file }))) });
+    } catch {
+      // Sin IndexedDB (modo privado...): se eligen a mano, como antes.
+    }
+  })();
+  return restoring;
+}
+
+// Olvida las copias y la carpeta. Los archivos originales del usuario no se tocan.
+export async function clearSavedSongs() {
+  if (typeof indexedDB !== 'undefined') {
+    const db = await openDb();
+    await writeTo(db, [SONGS_STORE, STORE], (tx) => {
+      tx.objectStore(SONGS_STORE).clear();
+      tx.objectStore(STORE).clear();
+    });
+    db.close();
+  }
+  try {
+    window.localStorage.removeItem(SONG_TRAITS_STORAGE_KEY);
+  } catch {
+    // Sin almacenamiento: no había nada.
+  }
+  savedBytes = 0;
+  rememberedHandle = null;
+  setState(emptyState());
 }
 
 let rememberedHandle: DirectoryHandleLike | null = null;
@@ -296,7 +402,9 @@ export function createLocalOpener(onRelease?: (url: string) => void) {
 
 // Solo para tests: vuelve al estado inicial.
 export function resetLocalSongsForTests() {
-  state = { songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false };
+  state = emptyState();
   rememberedHandle = null;
   autoScanned = false;
+  savedBytes = 0;
+  restoring = null;
 }

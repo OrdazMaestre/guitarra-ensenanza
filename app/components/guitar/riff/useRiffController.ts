@@ -1,5 +1,5 @@
 'use client';
-import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildChart, listGuitarTracks, listPlayableTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
 import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
@@ -7,6 +7,7 @@ import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
+import { lockGameScreen, releaseGameScreen, unlockGameOrientation } from '@/app/lib/orientationLock';
 import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
@@ -18,7 +19,30 @@ import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 const MIN_PX_PER_FRET = 44;
 const SIDE_MARGIN_PX = 60;
 
-const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as RiffMode, loop: false };
+const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as RiffMode };
+
+// Modos de juego (petición del usuario, 2026-11-05):
+// - Práctica: el tramo elegido en bucle, sin sumar puntos.
+// - Ensayo: la partida normal; tras pausar se continúa conservando los puntos.
+// - Concierto: canción entera al 100 % y con ritmo, con esos ajustes bloqueados; al pausar ya no se
+//   continúa. Es la partida comparable, la que servirá para futuros rankings.
+export type RiffGameMode = 'practica' | 'ensayo' | 'concierto';
+
+// Última dificultad elegida, en este navegador (petición del usuario, 2026-11-05). Puede fallar en
+// modo privado: entonces el juego empieza en el nivel de base.
+const LEVEL_STORAGE_KEY = 'riff-ultimo-nivel';
+
+const neverChanges = () => () => {};
+const noSavedLevel = () => null;
+
+function savedLevel(): RiffLevel | null {
+  try {
+    const value = window.localStorage.getItem(LEVEL_STORAGE_KEY);
+    return value && value in RIFF_LEVELS ? (value as RiffLevel) : null;
+  } catch {
+    return null;
+  }
+}
 
 interface Options {
   source?: string;
@@ -49,13 +73,27 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   const [muted, setMuted] = useState<number[]>([]);
   const backing: RiffBacking = useMemo(() => ({ click, muted }), [click, muted]);
   const toggleMuted = (index: number) => setMuted((current) => (current.includes(index) ? current.filter((value) => value !== index) : [...current, index]));
-  const [loop, setLoop] = useState(DEFAULTS.loop);
+  const [gameMode, setGameMode] = useState<RiffGameMode>('ensayo');
+  const concert = gameMode === 'concierto';
+  const loop = gameMode === 'practica';
   const [fromBar, setFromBar] = useState(1);
   const [toBar, setToBar] = useState(1);
   // Ancho real del mástil (null hasta medirlo): de él sale qué niveles caben (ver `fitsFrets`).
   const [hostWidth, setHostWidth] = useState<number | null>(null);
   // Principiante..Difícil = chart TRADUCIDO (reduce.ts); Experto = la tablatura real.
-  const [level, setLevel] = useState<RiffLevel>(DEFAULTS.level);
+  // El nivel de esta visita manda; si aún no hay, el guardado (el servidor no conoce este navegador).
+  const [visitLevel, setLevel] = useState<RiffLevel | null>(null);
+  const storedLevel = useSyncExternalStore(neverChanges, savedLevel, noSavedLevel);
+  const level = visitLevel ?? storedLevel ?? DEFAULTS.level;
+  // Solo guarda lo que elige el usuario: el Tutorial, que vuelve a la base, no lo cambia.
+  function chooseLevel(value: RiffLevel) {
+    setLevel(value);
+    try {
+      window.localStorage.setItem(LEVEL_STORAGE_KEY, value);
+    } catch {
+      // Sin almacenamiento: el nivel vale para esta visita.
+    }
+  }
   // Partida tutorial (riffTutorial.ts): su canción remix sustituye al chart mientras dura, y sus
   // paradas automáticas (`breaks`) separan las partes. `tutorialOn` = tutorial abierto.
   // Con pantalla estrecha no hay juego: el tutorial queda apagado (y al ensancharse, vuelve a su
@@ -83,6 +121,14 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.
   const playing = game.status === 'countin' || game.status === 'playing';
   const paused = game.status === 'paused';
+  const canContinue = paused && !concert;
+  // Giro bloqueado mientras se juega: se pide en los toques de empezar y continuar (ver
+  // orientationLock.ts) y se suelta aquí al pausar, salir o acabar.
+  useEffect(() => {
+    if (game.status === 'paused') unlockGameOrientation();
+    else if (game.status === 'idle' || game.status === 'finished') releaseGameScreen();
+  }, [game.status]);
+  useEffect(() => releaseGameScreen, []);
   // Tras la primera partida, "Empezar" pasa a llamarse "Volver a empezar".
   const [hasStarted, setHasStarted] = useState(false);
   // Cambiar la DIFICULTAD (o la canción) anula la partida: ya solo se puede volver a empezar. El
@@ -176,10 +222,15 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   }, [source, trackIndex, endFret, level, leader]);
 
   const maxBar = useMemo(() => (chart ? Math.max(1, ...chart.bars.map((bar) => bar.number)) : 1), [chart]);
+  // Lo que vale de verdad: Concierto impone sus ajustes sin borrar los elegidos para otros modos.
+  const playSpeed = concert ? 1 : speed;
+  const playMode = concert ? 'ritmo' : mode;
+  const playFrom = concert ? 1 : fromBar;
+  const playTo = concert ? maxBar : toBar;
   const previewTime = useMemo(() => {
-    const bar = tutorialRemix ? tutorialRemix.chart.bars[0] : chart?.bars.find((b) => b.number >= fromBar);
+    const bar = tutorialRemix ? tutorialRemix.chart.bars[0] : chart?.bars.find((b) => b.number >= playFrom);
     return (bar?.t ?? 0) - 0.4;
-  }, [chart, fromBar, tutorialRemix]);
+  }, [chart, playFrom, tutorialRemix]);
 
   // Aviso de pantalla estrecha: se mide el ancho REAL del mástil (cubre móvil vertical, pantallas
   // pequeñas y ventanas estrechas por igual), no el tipo de dispositivo; cada nivel cabe o no según
@@ -247,6 +298,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // "¡A tocar!": la primera vez arranca la canción; en una parada, sigue desde el silencio.
   function playTutorial() {
     if (!tutorialRemix) return;
+    void lockGameScreen();
     if (game.status === 'paused') {
       game.resume();
       return;
@@ -268,16 +320,23 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     setLevel(DEFAULTS.level);
     setSpeed(DEFAULTS.speed);
     setMode(DEFAULTS.mode);
-    setLoop(DEFAULTS.loop);
+    setGameMode('ensayo');
     setMuted([]);
     setClick(hasDrums ? 'nada' : 'auto');
     setFromBar(1);
     setToBar(maxBar);
   }
 
-  const gameOptions = () => ({ speed, mode, loop, fromBar: Math.min(fromBar, toBar), toBar: Math.max(fromBar, toBar), freeStrings: !!profile?.freeStrings, timingScale: profile?.timingScale });
+  const gameOptions = () => ({ speed: playSpeed, mode: playMode, loop, fromBar: Math.min(playFrom, playTo), toBar: Math.max(playFrom, playTo), freeStrings: !!profile?.freeStrings, timingScale: profile?.timingScale });
+
+  // Un Concierto no se mezcla con otro modo: entrar o salir de él anula la partida en pausa.
+  function chooseGameMode(value: RiffGameMode) {
+    if (value !== gameMode && (value === 'concierto' || concert)) stopGame();
+    setGameMode(value);
+  }
 
   function start() {
+    void lockGameScreen();
     setHasStarted(true);
     sessionLevelRef.current = level;
     game.start(gameOptions(), backing);
@@ -286,6 +345,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // Continuar (botón del panel o PAUSA otra vez): con los ajustes de AHORA, aunque se hayan cambiado
   // en la pausa (otra pista, otra velocidad...). En la partida de prueba, tal cual.
   function resume() {
+    if (!canContinue) return;
+    void lockGameScreen();
     if (tutorialRemix || !chart) {
       game.resume();
       return;
@@ -295,21 +356,24 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   }
 
   return {
-    level, setLevel, profile,
+    level, chooseLevel, profile,
     tracks, trackIndex, setTrackIndex,
     chart: activeChart, loadError,
-    speed, setSpeed,
-    mode, setMode,
+    speed: playSpeed, setSpeed,
+    mode: playMode, setMode,
+    gameMode, chooseGameMode, concert,
     click, setClick,
     muted, toggleMuted,
     fitsLevel,
-    loop, setLoop,
-    fromBar, setFromBar, toBar, setToBar, maxBar,
+    hostWidth,
+    loop,
+    fromBar: playFrom, setFromBar, toBar: playTo, setToBar, maxBar,
     previewTime,
     narrow,
     game,
     playing,
     paused,
+    canContinue,
     hasStarted,
     canStart: !!chart && !narrow && !playing,
     pause: game.pause,

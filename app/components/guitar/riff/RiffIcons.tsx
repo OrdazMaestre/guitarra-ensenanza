@@ -237,6 +237,19 @@ export function ModeIcon({ mode }: { mode: RiffMode }) {
 }
 
 // Bucle: flechas en círculo; tachado si no se repite.
+// Modos de juego (decisión del usuario, 2026-11-05): metrónomo (Práctica), batería (Ensayo) y
+// micrófono (Concierto).
+export function GameModeIcon({ mode }: { mode: 'practica' | 'ensayo' | 'concierto' }) {
+  if (mode === 'practica') return <MetronomeIcon on />;
+  if (mode === 'ensayo') return <DrumIcon />;
+  return (
+    <Icon>
+      <rect height="12" rx="3" width="6" x="9" y="2" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" />
+    </Icon>
+  );
+}
+
 export function LoopIcon({ loop }: { loop: boolean }) {
   return (
     <Icon>

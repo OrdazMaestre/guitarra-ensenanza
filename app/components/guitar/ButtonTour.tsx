@@ -61,7 +61,8 @@ export const RIFF_PANEL_TOUR: TourStep[] = [
   { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
   { title: 'Metrónomo', lines: ['Metrónomo o batería automática.', 'Para canciones sin batería.'], find: ddToggle('metronomo') },
   { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
-  { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
+  { title: 'Compases', lines: ['Elige qué trozo tocar.'], find: ddToggle('compases') },
+  { title: 'Modo', lines: ['Elige cómo quieres jugar.', 'Práctica repite un trozo. Ensayo es la partida normal.', 'Concierto es toda la canción, ¡sin parar!'], find: ddToggle('modo') },
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
   { title: 'Partida de prueba', lines: ['Aprende tres trucos jugando:', 'mantener pulsado, tapping y deslizar.'], find: (root) => root.querySelector('.tour-launch') },
 ];

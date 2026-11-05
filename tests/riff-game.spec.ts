@@ -90,13 +90,13 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pill.locator('button').first()).toHaveText('JUGAR');
 
   await openGame(page);
-  // Abierto, el mismo botón es PARAR.
-  await expect(pill.locator('button').first()).toHaveText('PARAR');
+  // Abierto, el mismo botón es SALIR.
+  await expect(pill.locator('button').first()).toHaveText('SALIR');
   // Orden del panel (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/], { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/, /Modo/], { timeout: 10000 });
   // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle; con
   // batería en la canción, el metrónomo apagado.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/]);
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /ModoEnsayo/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -214,12 +214,166 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
   await expect(tuning).toBeVisible();
 
-  // PARAR (JUGAR con el juego abierto) quita el panel y la autopista y para la partida.
+  // SALIR (JUGAR con el juego abierto) quita el panel y la autopista y para la partida.
   await page.getByRole('button', { name: 'Volver a empezar' }).click();
-  await hold(page, page.getByRole('button', { name: 'PARAR', exact: true }));
+  await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
   await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect(page.getByTestId('riff-highway')).toHaveCount(0);
   await expect(pause).toHaveCount(0);
+});
+
+test('móvil en vertical: con 6 trastes el mástil mide el doble de alto y se puede tocar', async ({ page }) => {
+  const board = page.locator('.test-room-fretboard .reduced-board-bg');
+  const height = async () => (await board.boundingBox())!.height;
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(URL);
+  await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+  const plain = await height();
+  await openGame(page);
+  expect(await height()).toBeGreaterThanOrEqual(plain * 1.98);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+
+  // Una nota en su traste cuenta en el mástil alto.
+  const [first] = jamesChart('practica').notes;
+  await choose(page, 'Pistas', 'Guitarra rítmica');
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+  await tap(page, 6, first.fret, 3.5);
+  await expect(stage).toHaveAttribute('data-hits', '1');
+  await expect(page.locator(SVG)).toBeInViewport({ ratio: 0.9 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+});
+
+test('el mástil no crece fuera del móvil en vertical: móvil en horizontal y ordenador', async ({ page }) => {
+  const board = page.locator('.test-room-fretboard .reduced-board-bg');
+  const ratio = async () => {
+    const box = (await board.boundingBox())!;
+    return box.height / box.width;
+  };
+  await page.setViewportSize({ width: 760, height: 420 });
+  await page.goto(URL);
+  await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+  const plain = await ratio();
+  await openGame(page);
+  expect(await ratio()).toBeLessThan(plain * 1.2);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(ratio).toBeLessThan(plain * 1.2);
+});
+
+// Bloqueo del giro (app/lib/orientationLock.ts). El navegador de los tests no gira: se simula el del
+// móvil, que solo deja bloquear en pantalla completa.
+function fakeOrientation() {
+  const w = window as unknown as { __screen: string[]; __fullscreen: Element | null };
+  w.__screen = [];
+  w.__fullscreen = null;
+  const proto = ScreenOrientation.prototype as unknown as Record<string, unknown>;
+  proto.lock = async (direction: string) => {
+    if (!w.__fullscreen) {
+      w.__screen.push('rechazado');
+      throw new DOMException('Hace falta pantalla completa', 'SecurityError');
+    }
+    w.__screen.push(`bloqueo:${direction}`);
+  };
+  proto.unlock = () => {
+    w.__screen.push('suelta');
+  };
+  Object.defineProperty(document, 'fullscreenElement', { configurable: true, get: () => w.__fullscreen });
+  Element.prototype.requestFullscreen = async function requestFullscreen(this: Element) {
+    w.__fullscreen = this;
+    w.__screen.push('pantalla completa');
+  };
+  document.exitFullscreen = async () => {
+    w.__fullscreen = null;
+    w.__screen.push('sale de pantalla completa');
+  };
+}
+const screenCalls = (page: Page) => page.evaluate(() => (window as unknown as { __screen: string[] }).__screen);
+
+test.describe('giro bloqueado en móvil', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  async function startGame(page: Page) {
+    await page.addInitScript(fakeOrientation);
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 10000 });
+  }
+
+  test('en vertical: bloquea al empezar, suelta al pausar, vuelve al continuar y salir lo deja todo', async ({ page }) => {
+    await page.setViewportSize({ width: 400, height: 800 });
+    await startGame(page);
+    const stage = page.locator('.test-room-fretboard .riff-stage');
+    await expect.poll(() => screenCalls(page)).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait']);
+
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+    await expect(stage).toHaveAttribute('data-status', 'paused');
+    await expect.poll(() => screenCalls(page)).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait', 'suelta']);
+
+    await page.getByRole('button', { name: 'Continuar' }).click();
+    await expect(stage).toHaveAttribute('data-status', /countin|playing/);
+    await expect.poll(() => (screenCalls(page))).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait', 'suelta', 'bloqueo:portrait']);
+
+    await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
+    await expect.poll(() => screenCalls(page)).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait', 'suelta', 'bloqueo:portrait', 'suelta', 'sale de pantalla completa']);
+  });
+
+  test('en horizontal: bloquea en horizontal', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 400 });
+    await startGame(page);
+    await expect.poll(() => screenCalls(page)).toContain('bloqueo:landscape');
+  });
+
+  test('sin bloqueo en el navegador (iPhone): la partida sigue igual', async ({ page }) => {
+    await page.addInitScript(() => {
+      delete (ScreenOrientation.prototype as unknown as Record<string, unknown>).lock;
+    });
+    await page.setViewportSize({ width: 400, height: 800 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 10000 });
+  });
+});
+
+test('en ordenador no se bloquea el giro ni entra en pantalla completa', async ({ page }) => {
+  await page.addInitScript(fakeOrientation);
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 10000 });
+  expect(await screenCalls(page)).toEqual([]);
+});
+
+test('recuerda la última dificultad elegida; el Tutorial no la cambia', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const nivel = page.locator('.riff-dd-toggle', { hasText: 'Nivel' });
+  await expect(nivel).toContainText('Principiante');
+  await choose(page, 'Nivel', 'Fácil');
+  await page.reload();
+  await openGame(page);
+  await expect(nivel).toContainText('Fácil');
+  // El Tutorial vuelve a la base en pantalla, pero no toca lo guardado.
+  await page.locator('.riff-panel .tour-launch').click();
+  await page.keyboard.press('Escape');
+  await expect(nivel).toContainText('Principiante');
+  await page.reload();
+  await openGame(page);
+  await expect(nivel).toContainText('Fácil');
+  // Un valor que ya no existe se ignora.
+  await page.evaluate(() => window.localStorage.setItem('riff-ultimo-nivel', 'nivel-antiguo'));
+  await page.reload();
+  await openGame(page);
+  await expect(nivel).toContainText('Principiante');
 });
 
 for (const [level, label] of [['experto', 'Experto'], ['practica', 'Principiante'], ['facil', 'Fácil'], ['medio', 'Medio'], ['avanzado', 'Avanzado'], ['medio-cuerdas', 'Medio cuerdas'], ['avanzado-cuerdas', 'Avanzado cuerdas'], ['dificil', 'Difícil']] as const) {
@@ -339,7 +493,7 @@ test('MAIkael no se abre mientras se juega (sí en pausa)', async ({ page }) => 
 
 // Bucle = "modo práctica" (petición del usuario): no puntúa y deja cambiar la DIFICULTAD en pausa
 // y continuar. Sin bucle, cambiar la dificultad sí anula la partida.
-test('con bucle no se puntúa y se puede cambiar la dificultad en pausa y continuar', async ({ page }) => {
+test('modo Práctica: no se puntúa y se puede cambiar la dificultad en pausa y continuar', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
@@ -347,8 +501,8 @@ test('con bucle no se puntúa y se puede cambiar la dificultad en pausa y contin
   await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
   await page.getByLabel('Desde el compás').fill('9');
   await page.getByLabel('Hasta el compás').fill('12');
-  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
   await page.keyboard.press('Escape');
+  await choose(page, 'Modo', 'Práctica');
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
@@ -363,13 +517,61 @@ test('con bucle no se puntúa y se puede cambiar la dificultad en pausa y contin
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toContainText('9–12');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  // Quitar el bucle con otra dificultad que la de la partida en pausa sí la anula.
+  // Salir de Práctica con otra dificultad que la de la partida en pausa sí la anula.
   await hold(page, pause);
   await choose(page, 'Nivel', 'Avanzado cuerdas');
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
-  await page.getByRole('button', { name: /Repetir en bucle/ }).click();
-  await page.keyboard.press('Escape');
+  await choose(page, 'Modo', 'Ensayo');
   await expect(stage).toHaveAttribute('data-status', 'idle');
+});
+
+test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continuar al pausar', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  const toggle = (name: string) => page.locator('.riff-dd-toggle', { hasText: name });
+  await choose(page, 'Velocidad', '50%');
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await toggle('Compases').click();
+  await page.getByLabel('Desde el compás').fill('9');
+  await page.getByLabel('Hasta el compás').fill('12');
+  await page.keyboard.press('Escape');
+
+  // Entrar en Concierto con una partida de Ensayo en pausa la anula.
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+  const pause = page.getByRole('button', { name: 'PAUSA' });
+  await hold(page, pause);
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await choose(page, 'Modo', 'Concierto');
+  await expect(stage).toHaveAttribute('data-status', 'idle');
+  await expect(stage).toHaveAttribute('data-game-mode', 'concierto');
+
+  await expect(toggle('Velocidad')).toContainText('100%');
+  await expect(toggle('Ritmo')).toContainText('Con ritmo');
+  await expect(toggle('Compases')).toHaveText(/^Compases1–\d+▾$/);
+  for (const name of ['Velocidad', 'Ritmo', 'Compases']) {
+    await expect(toggle(name)).toBeDisabled();
+    await expect(toggle(name)).toHaveAttribute('title', 'En Concierto no se cambia');
+  }
+
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: /empezar/i }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+  await hold(page, pause);
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await expect(page.locator('.riff-panel')).toContainText('Esta partida no cuenta.');
+  await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
+  await expect(pause).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Volver a empezar' })).toBeEnabled();
+
+  // Salir de Concierto anula esa partida y devuelve los ajustes de antes.
+  await choose(page, 'Modo', 'Ensayo');
+  await expect(stage).toHaveAttribute('data-status', 'idle');
+  await expect(toggle('Velocidad')).toContainText('50%');
+  await expect(toggle('Ritmo')).toContainText('Paso a paso');
+  await expect(toggle('Compases')).toContainText('9–12');
 });
 
 test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
@@ -702,7 +904,7 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   await page.locator('.riff-tutorial-card').getByRole('button', { name: '¡A tocar!' }).click();
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  await hold(page, page.getByRole('button', { name: 'PARAR', exact: true }));
+  await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
   await expect(page.locator('.riff-panel')).toBeVisible();
@@ -810,7 +1012,7 @@ test.describe('canciones del dispositivo', () => {
     await openGame(page, 'Black Gilmur');
     await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
     await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
-    await expect(page.locator('.local-song-card')).toContainText('Elige la carpeta donde las guardas.');
+    await expect(page.locator('.local-song-card')).toContainText('Elige la carpeta de tus canciones.');
     await page.getByTestId('local-song-files').setInputFiles([
       { name: 'mi-cancion.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/electric-warlock.gp') },
       { name: 'roto.gp', mimeType: 'application/octet-stream', buffer: Buffer.from('esto no es una tablatura') },
@@ -895,9 +1097,8 @@ test.describe('canciones del dispositivo', () => {
     await expect(row('sin-bateria')).toHaveAttribute('title', 'sin-bateria (canción fácil) (sin batería)');
   });
 
-  test('carpeta recordada: tras recargar (el navegador pide permiso otra vez) hay un botón "Buscar en «carpeta»" a la vista', async ({ page }) => {
-    // Bug real: se recordaba la carpeta pero, al recargar, la lista (solo en memoria) estaba vacía y el
-    // botón para volver a buscar quedaba escondido. Carpeta REAL del navegador (OPFS) con un .gp.
+  test('carpeta recordada: tras recargar vuelven las guardadas; si el navegador las borró, "Buscar en «carpeta»" a la vista', async ({ page }) => {
+    // Carpeta REAL del navegador (OPFS) con un .gp.
     await page.setViewportSize({ width: 1366, height: 900 });
     await page.goto(URL);
     await page.evaluate(async () => {
@@ -926,11 +1127,117 @@ test.describe('canciones del dispositivo', () => {
     await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
     const menu = page.locator('.riff-dd-menu');
     const again = menu.getByRole('button', { name: 'Buscar en «Covers»', exact: true });
+    await expect(menu.getByRole('button', { name: 'Mi tema', exact: true })).toBeVisible();
+    await expect(again).toHaveCount(0);
+
+    // El navegador borra las copias (falta de espacio): la carpeta sigue, a un clic.
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      const open = indexedDB.open('guitarra-canciones-locales');
+      open.onsuccess = () => {
+        const tx = open.result.transaction('canciones', 'readwrite');
+        tx.objectStore('canciones').clear();
+        tx.oncomplete = () => { open.result.close(); resolve(); };
+      };
+    }));
+    await page.reload();
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
     await expect(again).toBeVisible();
     await expect(menu.getByRole('button', { name: 'Mi tema', exact: true })).toHaveCount(0);
     await again.click();
     await expect(menu.getByRole('button', { name: 'Mi tema', exact: true })).toBeVisible();
     await expect(again).toHaveCount(0);
+  });
+
+  test('canciones guardadas: vuelven solas al recargar, se pueden jugar y se pueden borrar', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    const disc = page.locator('.riff-dd-toggle', { hasText: 'Canción' });
+    await disc.click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'mi-cancion.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/electric-warlock.gp') },
+    ]);
+    await expect(page.locator('.local-song-card')).toContainText('He encontrado 1 canción nueva.');
+
+    // Otra visita: está en la lista sin elegir nada, y se lee entera desde la copia.
+    await page.reload();
+    await openGame(page, 'Black Gilmur');
+    await disc.click();
+    const menu = page.locator('.riff-dd-menu');
+    const song = menu.getByRole('button', { name: 'mi-cancion', exact: true });
+    await song.click();
+    await expect(disc).toContainText('mi-cancion');
+    await expect(page.locator('.riff-action-start')).toBeEnabled({ timeout: 15000 });
+
+    // Borrar pide un segundo toque.
+    await disc.click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByRole('button', { name: 'Borrar canciones guardadas', exact: true }).click();
+    await expect(song).toBeVisible();
+    await page.getByRole('button', { name: 'Sí, borrarlas', exact: true }).click();
+    await expect(song).toHaveCount(0);
+    await page.reload();
+    await openGame(page, 'Black Gilmur');
+    await disc.click();
+    await expect(page.getByRole('button', { name: 'Buscar mis canciones', exact: true })).toBeVisible();
+    await expect(song).toHaveCount(0);
+  });
+
+  test('canciones guardadas: recuerdan su carita y la batería tachada sin volver a medirlas', async ({ page }) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'sin-bateria.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/feliz-navidad.gp') },
+    ]);
+    const row = page.locator('.riff-song-list .riff-chip', { has: page.locator('.riff-song-title', { hasText: /^sin-bateria$/ }) });
+    await expect(row).toHaveAttribute('data-difficulty', 'facil', { timeout: 30000 });
+    await expect(row.getByTestId('song-lacks')).toHaveAttribute('data-lacks', 'sin batería');
+
+    // Se cambia lo recordado: si al volver sale ese valor, es que no se ha medido otra vez.
+    await page.evaluate(() => {
+      const key = 'riff-rasgos-canciones-v1';
+      const traits = JSON.parse(window.localStorage.getItem(key)!);
+      for (const id of Object.keys(traits)) traits[id].difficulty = 'dificil';
+      window.localStorage.setItem(key, JSON.stringify(traits));
+    });
+    await page.reload();
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await expect(row).toHaveAttribute('data-difficulty', 'dificil');
+    await expect(row.getByTestId('song-lacks')).toHaveAttribute('data-lacks', 'sin batería');
+
+    // Borrar las canciones olvida también lo medido.
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByRole('button', { name: 'Borrar canciones guardadas', exact: true }).click();
+    await page.getByRole('button', { name: 'Sí, borrarlas', exact: true }).click();
+    await expect(row).toHaveCount(0);
+    expect(await page.evaluate(() => window.localStorage.getItem('riff-rasgos-canciones-v1'))).toBeNull();
+  });
+
+  test('sin espacio para guardar: avisa, y la canción sirve en esta visita', async ({ page }) => {
+    await page.addInitScript(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function patched(this: IDBObjectStore, ...args: Parameters<typeof put>) {
+        if (this.name === 'canciones') throw new DOMException('Sin espacio', 'QuotaExceededError');
+        return put.apply(this, args);
+      };
+    });
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page, 'Black Gilmur');
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'mi-cancion.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/electric-warlock.gp') },
+    ]);
+    await expect(page.locator('.local-song-card')).toContainText('No caben más.');
+    await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'mi-cancion', exact: true })).toBeVisible();
   });
 
   test('Chrome/Edge: elegir carpeta busca dentro (subcarpetas incluidas)', async ({ page }) => {
@@ -954,7 +1261,7 @@ test.describe('canciones del dispositivo', () => {
     await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
     await page.getByRole('button', { name: 'Elegir carpeta', exact: true }).click();
     await expect(page.locator('.local-song-card')).toContainText('He encontrado 2 canciones nuevas.');
-    await expect(page.locator('.local-song-card')).toContainText('Ya me acuerdo de tu carpeta «Canciones».');
+    await expect(page.locator('.local-song-card')).toContainText('Buscar otra vez en «Canciones»');
     const menu = page.locator('.riff-dd-menu');
     await expect(menu.getByRole('button', { name: 'uno', exact: true })).toBeVisible();
     await expect(menu.getByRole('button', { name: 'dos', exact: true })).toBeVisible();

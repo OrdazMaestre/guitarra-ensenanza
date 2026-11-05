@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { forgetScore, isPlayableScore } from '@/app/lib/riff/chart';
 import {
   addLocalFileList,
+  clearSavedSongs,
   createLocalOpener,
   getLocalSongs,
   getServerLocalSongs,
@@ -10,6 +11,7 @@ import {
   localSearchMode,
   pickLocalFolder,
   rescanRememberedFolder,
+  restoreSavedSongs,
   searchRememberedFolder,
   subscribeLocalSongs,
 } from '@/app/lib/localSongs';
@@ -40,6 +42,9 @@ export function useSongChoice(webSongs: SongEntry[], initialSong?: string) {
   const [notice, setNotice] = useState<string | null>(null);
   const [opener] = useState(() => createLocalOpener(forgetScore));
   useEffect(() => () => opener.release(), [opener]);
+  useEffect(() => {
+    void restoreSavedSongs();
+  }, []);
 
   // Todas con su carita de dificultad (cuando ya está medida). Las de la web, en su orden; las del
   // dispositivo, de más fácil a más difícil (empate: por título) y las aún sin medir al final.
@@ -92,19 +97,8 @@ export function useSongChoice(webSongs: SongEntry[], initialSong?: string) {
 }
 
 const LINES = {
-  computer: [
-    '¿Tienes canciones en tu ordenador?',
-    'Elige la carpeta donde las guardas.',
-    'Yo busco dentro las que se pueden tocar.',
-    'Consejo: guarda todas tus canciones juntas en una carpeta fácil de encontrar.',
-    'Tus archivos no salen de tu ordenador.',
-  ],
-  mobile: [
-    '¿Tienes canciones en tu móvil?',
-    'Elige las que quieras tocar. Puedes marcar varias.',
-    'Consejo: guárdalas todas juntas en una carpeta fácil, como «Descargas».',
-    'Tus archivos no salen de tu móvil.',
-  ],
+  computer: ['Elige la carpeta de tus canciones.', 'Las recordaré aquí. No salen de tu ordenador.'],
+  mobile: ['Elige tus canciones.', 'Las recordaré aquí. No salen de tu móvil.'],
 };
 
 const PALETTES = {
@@ -118,8 +112,10 @@ const PALETTES = {
 // `onOpenChange`: el menú que la contiene se ensancha a dos columnas mientras la tarjeta está
 // abierta (petición del usuario: ver "Elegir carpeta" sin hacer scroll).
 export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (open: boolean) => void; variant: 'light' | 'dark' }) {
-  const { scanning, lastFound, rememberedFolder, folderScanned } = useLocalSongs();
+  const { songs, scanning, lastFound, rememberedFolder, folderScanned, savedFull } = useLocalSongs();
   const [open, setOpenState] = useState(false);
+  // Borrar pide un segundo toque: un dedo despistado no debe vaciar la lista.
+  const [confirmClear, setConfirmClear] = useState(false);
   const setOpen = (next: boolean) => {
     setOpenState(next);
     onOpenChange?.(next);
@@ -158,9 +154,9 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
 
   return (
     <div className="local-song-search" style={{ display: 'grid', gap: 6 }}>
-      {/* Carpeta recordada pero aún sin buscar en esta visita (el navegador pide permiso tras
-          recargar): un clic, bien a la vista. */}
-      {rememberedFolder && !folderScanned && mode === 'directory-api' && (
+      {/* Carpeta recordada, sin canciones guardadas (el navegador pudo borrarlas) y aún sin buscar
+          en esta visita: un clic, bien a la vista. */}
+      {rememberedFolder && !folderScanned && songs.length === 0 && mode === 'directory-api' && (
         <button disabled={scanning} onClick={() => void searchRememberedFolder()} style={buttonStyle(true)} type="button">
           {scanning ? 'Buscando…' : `Buscar en «${rememberedFolder}»`}
         </button>
@@ -176,7 +172,6 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
           style={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, color: colors.text, display: 'grid', fontSize: 13, fontWeight: 600, gap: 4, lineHeight: 1.35, maxWidth: 280, padding: 10, textAlign: 'left', whiteSpace: 'normal' }}
         >
           {(mode === 'files' ? LINES.mobile : LINES.computer).map((line) => <p key={line} style={{ margin: 0 }}>{line}</p>)}
-          {rememberedFolder && <p style={{ fontWeight: 800, margin: 0 }}>Ya me acuerdo de tu carpeta «{rememberedFolder}».</p>}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
             <button disabled={scanning} onClick={choose} style={buttonStyle(true)} type="button">
               {mode === 'files' ? 'Elegir canciones' : 'Elegir carpeta'}
@@ -184,6 +179,19 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
             {rememberedFolder && mode === 'directory-api' && (
               <button disabled={scanning} onClick={() => void searchRememberedFolder()} style={buttonStyle(false)} type="button">
                 Buscar otra vez en «{rememberedFolder}»
+              </button>
+            )}
+            {songs.length > 0 && (
+              <button
+                disabled={scanning}
+                onClick={() => {
+                  setConfirmClear(!confirmClear);
+                  if (confirmClear) void clearSavedSongs().catch(() => {});
+                }}
+                style={buttonStyle(false)}
+                type="button"
+              >
+                {confirmClear ? 'Sí, borrarlas' : 'Borrar canciones guardadas'}
               </button>
             )}
           </div>
@@ -196,6 +204,7 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
                   ? `He encontrado ${lastFound} ${lastFound === 1 ? 'canción nueva' : 'canciones nuevas'}.`
                   : 'No he encontrado canciones nuevas que se puedan tocar.'}
           </p>
+          {savedFull && <p style={{ margin: 0 }}>No caben más. Las nuevas se olvidarán al salir.</p>}
           {/* Selectores del propio dispositivo (ocultos: los abren los botones de arriba). */}
           <input
             accept={LOCAL_SONG_ACCEPT}
