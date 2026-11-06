@@ -108,8 +108,6 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // usuario, 2026-11-03: Principiante, Fácil y Medio de trastes también en el móvil en vertical).
   const levelFrets = (value: RiffLevel) => {
     const maxFret = value === 'experto' ? endFret : RIFF_LEVELS[value].maxFret;
-    // Híbrido (0-6) también se juega con el móvil en vertical: mismo ancho que los niveles 0-5.
-    if (value === 'hibrido') return RIFF_LEVELS.medio.maxFret;
     return startFret === 0 && maxFret < endFret ? maxFret : fullFretCount;
   };
   const fitsLevel = (value: RiffLevel) => fitsFrets(levelFrets(value));

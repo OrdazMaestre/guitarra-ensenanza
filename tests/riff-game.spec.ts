@@ -352,7 +352,7 @@ test('en ordenador no se bloquea el giro ni entra en pantalla completa', async (
   expect(await screenCalls(page)).toEqual([]);
 });
 
-test('nivel Híbrido: debajo de las dos columnas, cuenta la cuerda, se recuerda y usa 0-6', async ({ page }) => {
+test('nivel Híbrido: debajo de las dos columnas, cuenta la cuerda, se recuerda y usa 0-5', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
@@ -365,8 +365,8 @@ test('nivel Híbrido: debajo de las dos columnas, cuenta la cuerda, se recuerda 
   expect(box.y).toBeGreaterThanOrEqual(columns.y + columns.height);
   await chip.click();
   await expect(nivel).toContainText('Híbrido');
-  // Trastes 0-6, sin estirar más.
-  await expect(page.locator('.test-room-fretboard .reduced-fret-number')).toHaveCount(7);
+  // Trastes 0-5.
+  await expect(page.locator('.test-room-fretboard .reduced-fret-number')).toHaveCount(6);
   await page.reload();
   await openGame(page);
   await expect(nivel).toContainText('Híbrido');

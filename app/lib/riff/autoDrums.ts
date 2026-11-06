@@ -23,6 +23,9 @@ import type { Chart, DrumSound } from './chart';
 
 export type AutoRhythm = 'blast' | 'skank' | 'eighth' | 'triplet' | 'sixteenth';
 
+// Lo que suena de verdad en un compás: el ritmo del tramo o una variación de su escalera.
+type DrumPattern = AutoRhythm | 'doubleKick' | 'gallop';
+
 export interface AutoDrumHit {
   t: number;
   sound: DrumSound;
@@ -36,6 +39,8 @@ const SLOW_BPM = 100;
 const DENSE_DENSITY = 2.25;
 // El blast suena el doble de golpes que las corcheas: -3 dB para que no tape la guitarra.
 const BLAST_ACCENT = 0.7;
+// Doble bombo: el doble de bombos que el blast, así que más suaves; la caja de los tiempos 2 y 4 manda.
+const DOUBLE_KICK_ACCENT = 0.5;
 // Rejilla para juntar ataques simultáneos: 24 por negra (caben exactas fusas y tresillos; con 12, una
 // fusa se redondeaba a posición de tresillo).
 const ONSET_GRID = 24;
@@ -49,7 +54,7 @@ const TICK_TOLERANCE = 12;
 const CYMBAL_ACCENT = 0.3;
 const STRONG_CYMBAL_ACCENT = 0.45;
 const CHANGE_CYMBAL_ACCENT = 1;
-// Por encima, las semicorcheas del tercer escalón del skank pasarían de 12 golpes por segundo.
+// Por encima, las semicorcheas del último escalón del skank pasarían de 12 golpes por segundo.
 const SKANK_SIXTEENTHS_MAX_BPM = 180;
 // Detección de riffs: dos compases son del mismo riff si comparten el 60 % de su huella, mirando como
 // mucho 8 compases atrás. Un escalón dura al menos 4 compases, y un riff sin cambios sube cada 16.
@@ -60,11 +65,20 @@ const LONG_RIFF_BARS = 16;
 // Compases en silencio seguidos que cierran un tramo.
 const TRAMO_SILENCE_BARS = 2;
 
-const STEP: Record<AutoRhythm, number> = { blast: 0.25, skank: 0.5, eighth: 0.5, triplet: 1 / 3, sixteenth: 0.25 };
-const LADDER_STEPS: Record<AutoRhythm, number> = { blast: 3, skank: 3, eighth: 3, sixteenth: 2, triplet: 2 };
+const STEP: Record<DrumPattern, number> = { blast: 0.25, skank: 0.5, eighth: 0.5, triplet: 1 / 3, sixteenth: 0.25, doubleKick: 0.25, gallop: 0.25 };
+const LADDER_STEPS: Record<AutoRhythm, number> = { blast: 4, skank: 4, eighth: 3, sixteenth: 2, triplet: 2 };
 
 // Golpe `idx` (desde el inicio del compás) de cada patrón.
-function patternHit(rhythm: AutoRhythm, idx: number): { sound: DrumSound; accent: number } {
+function patternHit(rhythm: DrumPattern, idx: number): { sound: DrumSound; accent: number } | null {
+  // Caja en los tiempos 2 y 4 (negras impares contando desde 0).
+  const backbeat = idx % 8 === 4;
+  // Doble bombo: semicorcheas de bombo seguidas.
+  if (rhythm === 'doubleKick') return backbeat ? { sound: 'snare', accent: 1 } : { sound: 'kick', accent: DOUBLE_KICK_ACCENT };
+  // Galope: por negra, corchea y dos semicorcheas de bombo.
+  if (rhythm === 'gallop') {
+    if (backbeat) return { sound: 'snare', accent: 1 };
+    return idx % 4 === 1 ? null : { sound: 'kick', accent: DOUBLE_KICK_ACCENT };
+  }
   // El blast tradicional lo lidera el bombo, y así no salta de sitio al pasar del skank al blast.
   if (rhythm === 'blast') return { sound: idx % 2 === 0 ? 'kick' : 'snare', accent: BLAST_ACCENT };
   if (rhythm === 'skank') return { sound: idx % 2 === 0 ? 'kick' : 'snare', accent: 1 };
@@ -334,15 +348,17 @@ function barHits(rhythm: AutoRhythm, step: number, bar: BarInfo): BarHit[] {
   // 7/8 y parecidos: no se sabe cómo se agrupan, así que solo el ritmo, y plato en el 1 si lo lleva.
   const wholeQuarters = Math.abs(bar.lengthQ - Math.round(bar.lengthQ)) < 0.02;
   const level = wholeQuarters ? step : 0;
-  let base = rhythm;
+  let base: DrumPattern = rhythm;
   let cymbals: 'none' | 'quarters' | 'kicks' | 'all' = 'none';
   let fill = false;
   if (rhythm === 'blast') {
-    if (level === 2) base = 'skank';
-    cymbals = level === 1 ? 'kicks' : 'quarters';
+    if (level === 1) base = 'doubleKick';
+    if (level === 3) base = 'skank';
+    cymbals = level === 2 ? 'kicks' : 'quarters';
   } else if (rhythm === 'skank') {
     if (level === 1) cymbals = 'quarters';
-    if (level === 2) {
+    if (level === 2) base = 'gallop';
+    if (level === 3) {
       if (bar.bpm <= SKANK_SIXTEENTHS_MAX_BPM) fill = true;
       else cymbals = 'all';
     }
@@ -359,6 +375,7 @@ function barHits(rhythm: AutoRhythm, step: number, bar: BarInfo): BarHit[] {
   const hits: BarHit[] = [];
   for (let idx = 0; idx < count; idx++) {
     const hit = patternHit(base, idx);
+    if (!hit) continue;
     const accent = rhythm === 'sixteenth' && level === 1 && hit.sound === 'cymbal' ? STRONG_CYMBAL_ACCENT : hit.accent;
     hits.push({ q: idx * stepQ, sound: hit.sound, accent });
   }
@@ -366,7 +383,7 @@ function barHits(rhythm: AutoRhythm, step: number, bar: BarInfo): BarHit[] {
     if (rhythm === 'blast' || step > 0) hits.push({ q: 0, sound: 'cymbal', accent: CYMBAL_ACCENT });
     return hits;
   }
-  // Tercer escalón del skank: bombo, plato, caja, plato, con el bombo aún en el pulso.
+  // Último escalón del skank: bombo, plato, caja, plato, con el bombo aún en el pulso.
   if (fill) {
     for (let q = 0.25; q < bar.lengthQ; q += 0.5) hits.push({ q, sound: 'cymbal', accent: CYMBAL_ACCENT });
   }

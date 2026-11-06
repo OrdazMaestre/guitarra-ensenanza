@@ -52,6 +52,8 @@ test('4/4 rápido sin semicorcheas: skank, bombo en el pulso y caja a contratiem
 const OFFBEATS = [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75];
 const SHIFTED = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 0.25];
 const OTHER = [0, 0.25, 1, 1.25, 2, 2.25, 3, 3.25];
+const FIFTH = [0.125, 0.625, 1.125, 1.625, 2.125, 2.625, 3.125, 3.625];
+const SIXTH = [0.375, 0.875, 1.375, 1.875, 2.375, 2.875, 3.375, 3.875];
 const riffs = (bpm: number, sections: Array<[number[], number]>) => synthChart(sections.flatMap(([onsets, bars]) => Array.from({ length: bars }, () => ({ quarters: 4, bpm, onsets }))));
 
 test('riffs: detecta el cambio, no un compás suelto, y un riff de varios compases sigue siendo uno', () => {
@@ -71,9 +73,9 @@ test('escalones: suben con cada riff nuevo; el que vuelve recupera el suyo', () 
   const steps = (chart: Chart) => autoDrumSteps(chart).steps;
   expect(steps(riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4]]))).toEqual([0, 0, 0, 0, 1, 1, 1, 1]);
   expect(steps(riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [EIGHTHS, 4]]))).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]);
-  // Tres riffs y la escalera de 3 vuelve al principio con el cuarto.
-  const many = steps(riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4], [SHIFTED, 4]]));
-  expect([many[0], many[4], many[8], many[12]]).toEqual([0, 1, 2, 0]);
+  // La escalera de 4 vuelve al principio con el quinto riff.
+  const many = steps(riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4], [FIFTH, 4], [SIXTH, 4]]));
+  expect([many[0], many[4], many[8], many[12], many[16]]).toEqual([0, 1, 2, 3, 0]);
   // Un riff largo: sube cada 16 compases, si quedan 4 o más.
   const long = (bars: number) => autoDrumSteps(riffs(150, [[EIGHTHS, bars]]));
   expect([...long(20).changes]).toEqual([16]);
@@ -95,25 +97,44 @@ test('escalones: dos riffs distintos seguidos nunca llevan la misma batería, y 
 
 test('escalera de cada ritmo: blast, skank y corcheas', () => {
   const soundsAt = (chart: Chart, bar: number) => soundsOfBar(chart, bar).join(' ');
-  // Skank a 150: normal, plato en cada negra, y bombo, plato, caja, plato.
-  const skank = riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4]]);
+  // Skank a 150: normal, plato en cada negra, galope, y bombo, plato, caja, plato.
+  const skank = riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4], [FIFTH, 4]]);
   expect(soundsOfBar(skank, 0).filter((sound) => sound === 'cymbal')).toHaveLength(0);
   expect(soundsOfBar(skank, 5).filter((sound) => sound === 'cymbal')).toHaveLength(4);
-  expect(soundsOfBar(skank, 9)).toHaveLength(16);
-  expect(soundsAt(skank, 9).startsWith('kick cymbal snare cymbal')).toBe(true);
+  // Galope: 3 golpes por negra, con la caja en los tiempos 2 y 4.
+  expect(soundsOfBar(skank, 9)).toEqual(['kick', 'kick', 'kick', 'snare', 'kick', 'kick', 'kick', 'kick', 'kick', 'snare', 'kick', 'kick']);
+  expect(soundsOfBar(skank, 13)).toHaveLength(16);
+  expect(soundsAt(skank, 13).startsWith('kick cymbal snare cymbal')).toBe(true);
   // Más rápido que 180: sin semicorcheas, plato en cada corchea.
-  const fast = riffs(200, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4]]);
-  expect(soundsOfBar(fast, 9).filter((sound) => sound !== 'cymbal')).toHaveLength(8);
-  expect(soundsOfBar(fast, 9).filter((sound) => sound === 'cymbal')).toHaveLength(8);
+  const fast = riffs(200, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4], [FIFTH, 4]]);
+  expect(soundsOfBar(fast, 13).filter((sound) => sound !== 'cymbal')).toHaveLength(8);
+  expect(soundsOfBar(fast, 13).filter((sound) => sound === 'cymbal')).toHaveLength(8);
   // Corcheas a 120: el tercer escalón son las semicorcheas del metrónomo.
   const mid = riffs(120, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4]]);
   expect(soundsOfBar(mid, 0)).toHaveLength(8);
   expect(soundsOfBar(mid, 9)).toEqual(Array.from({ length: 4 }, () => ['snare', 'cymbal', 'kick', 'cymbal']).flat());
-  // Blast: el tercer escalón baja a medio tiempo (skank con plato en cada negra).
+  // Blast: se alterna con el doble bombo y acaba en medio tiempo (skank con plato en cada negra).
   const moved = (by: number) => SIXTEENTHS.map((q) => q + by);
-  const blast = riffs(220, [[SIXTEENTHS, 4], [moved(0.125), 4], [moved(1 / 24), 4]]);
+  const fourth = [0.75, 1.75, 2.75, 3.75, 0.875, 1.875, 2.875, 3.875, 0.625, 1.625];
+  const blast = riffs(220, [[SIXTEENTHS, 4], [moved(0.125), 4], [moved(1 / 24), 4], [fourth, 4]]);
   expect(autoDrumPlan(blast).every((rhythm) => rhythm === 'blast')).toBe(true);
-  expect(soundsOfBar(blast, 9).filter((sound) => sound !== 'cymbal')).toHaveLength(8);
+  const doubleKick = soundsOfBar(blast, 5).filter((sound) => sound !== 'cymbal');
+  expect(doubleKick).toEqual(Array.from({ length: 16 }, (_, k) => (k === 4 || k === 12 ? 'snare' : 'kick')));
+  expect(soundsOfBar(blast, 5).filter((sound) => sound === 'cymbal')).toHaveLength(4);
+  // Tercer escalón: blast de nuevo, con plato en cada bombo.
+  expect(soundsOfBar(blast, 9).filter((sound) => sound === 'snare')).toHaveLength(8);
+  expect(soundsOfBar(blast, 9).filter((sound) => sound === 'cymbal')).toHaveLength(8);
+  expect(soundsOfBar(blast, 13).filter((sound) => sound !== 'cymbal')).toHaveLength(8);
+  // Los bombos del doble bombo van más suaves que la caja.
+  const inBar = autoDrums(blast).filter((hit) => hit.t >= blast.bars[5].t - 1e-6 && hit.t < blast.bars[5].end - 1e-6);
+  expect(Math.max(...inBar.filter((hit) => hit.sound === 'kick').map((hit) => hit.volume))).toBeLessThan(Math.min(...inBar.filter((hit) => hit.sound === 'snare').map((hit) => hit.volume)));
+});
+
+test('el galope no pasa de 12 golpes por segundo a 240 bpm', () => {
+  const chart = riffs(240, [[EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4]]);
+  const bar = chart.bars[9];
+  const instants = new Set(autoDrums(chart).filter((hit) => hit.t >= bar.t - 1e-6 && hit.t < bar.end - 1e-6).map((hit) => hit.t.toFixed(4)));
+  expect(instants.size / (bar.end - bar.t)).toBeLessThanOrEqual(12);
 });
 
 test('una melodía en fusas no se confunde con tresillos', () => {

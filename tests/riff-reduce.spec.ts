@@ -845,8 +845,7 @@ test('vueltas iguales: un compás repetido sale igual aunque le acompañen compa
   }
 });
 
-// Nivel Híbrido: trastes 0-6 en Mi, La, Re y Sol. Cada nota, según su altura real, en las 3 cuerdas de
-// su mitad (agudas: Sol, Re y La; graves: Re, La y Mi), predominando las 2 de su lado.
+// Nivel Híbrido: trastes 0-5 en Mi y La. Según su altura real, las graves en Mi y las agudas en La.
 const HIBRIDO_SONGS: Array<[string, string, number]> = [
   ['Master of Puppets', 'prueba-master-of-puppets.gp', 1],
   ['Iron Rain', 'iron-rain.gp', 0],
@@ -865,28 +864,18 @@ function hibrido(file: string, track: number) {
 }
 
 for (const [name, file, track] of HIBRIDO_SONGS) {
-  test(`Híbrido (${name}): cuerdas y trastes del nivel, cada nota en su mitad y predominan las de su lado`, () => {
+  test(`Híbrido (${name}): cuerdas y trastes del nivel, y cada nota en su mitad`, () => {
     const { chart, split } = hibrido(file, track);
     const { low, high } = RIFF_LEVELS.hibrido.pitchHalves!;
-    const count = { low: 0, lowMain: 0, high: 0, highMain: 0 };
     for (const note of chart.notes) {
-      expect([3, 4, 5, 6]).toContain(note.string);
-      expect(note.fret).toBeLessThanOrEqual(6);
+      expect([5, 6]).toContain(note.string);
+      expect(note.fret).toBeLessThanOrEqual(5);
       // La altura real de esa nota: alguna de las que suenan en ese instante.
       const real = (chart.sourceNotes ?? []).filter((source) => Math.abs(source.t - note.t) < 0.005);
-      const fitsLow = real.some((source) => source.midi < split) && low.strings.includes(note.string);
-      const fitsHigh = real.some((source) => source.midi >= split) && high.strings.includes(note.string);
+      const fitsLow = real.some((source) => source.midi < split) && low.includes(note.string);
+      const fitsHigh = real.some((source) => source.midi >= split) && high.includes(note.string);
       expect(fitsLow || fitsHigh, `${note.string}/${note.fret} en ${note.t}`).toBe(true);
-      if (real.every((source) => source.midi < split)) {
-        count.low++;
-        if (low.main.includes(note.string)) count.lowMain++;
-      } else if (real.every((source) => source.midi >= split)) {
-        count.high++;
-        if (high.main.includes(note.string)) count.highMain++;
-      }
     }
-    if (count.low >= 10) expect(count.lowMain / count.low).toBeGreaterThan(0.6);
-    if (count.high >= 10) expect(count.highMain / count.high).toBeGreaterThan(0.6);
   });
 }
 

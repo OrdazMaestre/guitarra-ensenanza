@@ -22,7 +22,7 @@
 // hasta la siguiente nota traducida: al acertarla, esas suenan fuerte (ver session.ts).
 
 import type { Chart, ChartNote } from './chart';
-import type { LevelProfile, PitchHalf } from './levels';
+import type { LevelProfile } from './levels';
 
 // Afinación estándar: altura de cada cuerda al aire (cuerda 1 = Mi agudo).
 export const OPEN_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
@@ -298,8 +298,6 @@ export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box:
 // Riffs compartidos con la guitarra que manda (ver `followPins`): ir a otro sitio cuesta esto por
 // nota, mucho más que cualquier otro término.
 const PIN_COST = 30;
-// Nivel Híbrido: lo que paga una nota por ir en la cuerda secundaria de su mitad.
-const HALF_SIDE_STRING_COST = 12;
 
 // La MISMA altura dos veces seguidas no cambia de sitio (así funciona "mantener pulsado").
 const SAME_PITCH_MOVE_COST = 50;
@@ -492,7 +490,7 @@ function placePhraseMulti(
   // Ventana de trastes [de, a] de cada grupo (pasaje rápido aislado en una cuerda); si no, todos.
   groupFrets: Array<[number, number]> = [],
   // Niveles con `pitchHalves`: la mitad de cada nota, que manda sobre las cuerdas del compás.
-  halfAt?: (index: number) => PitchHalf | undefined,
+  halfAt?: (index: number) => number[] | undefined,
 ): LanePosition[] {
   const maxFretOf = new Map<number, number>();
   for (const p of layout.positions) maxFretOf.set(p.string, Math.max(maxFretOf.get(p.string) ?? 0, p.fret));
@@ -529,7 +527,7 @@ function placePhraseMulti(
   let best: { path: LanePosition[]; cost: number } | null = null;
   const tryCombo = (combo: number[][]) => {
     const stringsOf = phrase.map((_, k) => {
-      const half = halfAt?.(k)?.strings;
+      const half = halfAt?.(k);
       if (!half) return combo[groupOf[k]];
       const shared = combo[groupOf[k]].filter((string) => half.includes(string));
       return shared.length > 0 ? shared : half;
@@ -541,7 +539,7 @@ function placePhraseMulti(
     // transporte la frase o la mueva a otras cuerdas sin necesidad paga `tab` por cada nota que se
     // aparta. (Antes solo pagaban los candidatos que conservaban la forma en la combinación probada,
     // y el resto se libraba entero: James salía 6/0 donde la tab dice 6/2, o el compás 33 en la Re.)
-    const fixedReal = start.map((p, k) => (reachable[groupOf[k]].has(p.string) && (halfAt?.(k)?.strings.includes(p.string) ?? true) && p.fret <= maxFretOf.get(p.string)! && p.fret >= minOf(groupOf[k]) && p.fret <= maxOf(groupOf[k])
+    const fixedReal = start.map((p, k) => (reachable[groupOf[k]].has(p.string) && (halfAt?.(k)?.includes(p.string) ?? true) && p.fret <= maxFretOf.get(p.string)! && p.fret >= minOf(groupOf[k]) && p.fret <= maxOf(groupOf[k])
       ? { string: p.string, fret: p.fret }
       : undefined));
     const pitchSets = new Map<string, Set<number>>();
@@ -696,11 +694,22 @@ function placePhraseMulti(
         }
         idx.forEach((k, j) => { out[k] = lanePitches[laneSeq[j]]; });
       }
-      // Con mitades, cada nota a la altura más cercana de sus propias cuerdas.
+      // Con mitades, cada una hace su contorno en sus propias cuerdas, como las zonas de Avanzado
+      // (si no, las notas de una mitad se aplastarían contra el borde de sus cuerdas).
       if (halfAt) {
-        out.forEach((pitch, k) => {
-          if (!fits(k, pitch)) out[k] = [...availableAt[k]].sort((a, b) => Math.abs(a - pitch) - Math.abs(b - pitch))[0];
-        });
+        const byHalf = new Map<Set<number>, number[]>();
+        availableAt.forEach((set, k) => byHalf.set(set, [...(byHalf.get(set) ?? []), k]));
+        for (const [set, indices] of byHalf) {
+          const lanePitches = [...set].sort((a, b) => a - b);
+          const seg = indices.map((k) => pitches[k]);
+          const lanes = contourLanes(seg, lanePitches.length);
+          const laneSeq = seg.map((p) => lanes.get(p)!);
+          for (let j = 1; j < laneSeq.length; j++) {
+            if (seg[j] === seg[j - 1]) laneSeq[j] = laneSeq[j - 1];
+            else if (laneSeq[j] === laneSeq[j - 1]) laneSeq[j] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[j] + Math.sign(seg[j] - seg[j - 1])));
+          }
+          indices.forEach((k, j) => { out[k] = lanePitches[laneSeq[j]]; });
+        }
       }
       candidates.push({ pitches: out, extra: CONTOUR_COST, shift: null });
     }
@@ -813,7 +822,7 @@ function registerMap(kept: Onset[], levelPitches: number[]) {
   return (pitch: number) => (pitch <= knee ? pitch : knee + Math.min(1, (pitch - knee) / (hi - knee)) * (levelHi - knee));
 }
 
-function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, halfAt: ((index: number) => PitchHalf | undefined) | undefined, pins: Array<LanePosition | null>): LanePosition[] {
+function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, halfAt: ((index: number) => number[] | undefined) | undefined, pins: Array<LanePosition | null>): LanePosition[] {
   const layout = laneLayout(profile);
   const zoneOf = zoneMap(kept, profile);
   const registerOf = registerMap(kept, laneLayout(profile).pitches);
@@ -831,11 +840,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
   // Una pasada: cada frase por su cuenta; una frase igual que otra anterior se copia tal cual. Las
   // notas ancladas a la guitarra que manda pagan PIN_COST si van a otro sitio.
   const pass = (unaryAt?: (index: number, place: LanePosition) => number) => {
-    const sideCost = (index: number, place: LanePosition) => {
-      const half = halfAt?.(index);
-      return half && !half.main.includes(place.string) ? HALF_SIDE_STRING_COST : 0;
-    };
-    const unary = (index: number, place: LanePosition) => (pins[index] && !samePlace(pins[index]!, place) ? PIN_COST : 0) + sideCost(index, place) + (unaryAt ? unaryAt(index, place) : 0);
+    const unary = (index: number, place: LanePosition) => (pins[index] && !samePlace(pins[index]!, place) ? PIN_COST : 0) + (unaryAt ? unaryAt(index, place) : 0);
     const placed: LanePosition[] = new Array(kept.length);
     const byKey = new Map<string, LanePosition[]>();
     // Cuerdas ya usadas en cada compás: un compás partido entre dos frases sigue con las mismas.
@@ -886,7 +891,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
   }
   const repeated = [...occurrences.values()].filter((starts) => starts.length >= 2);
   // (También las que se pasan por poco del máximo de su cuerda: bajan en ella, ver MAX_CLAMP_FRETS.)
-  const fitsAsTabbed = kept.map((onset, index) => profile.strings.includes(onset.lead.string) && (halfAt?.(index)?.strings.includes(onset.lead.string) ?? true) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret) + MAX_CLAMP_FRETS);
+  const fitsAsTabbed = kept.map((onset, index) => profile.strings.includes(onset.lead.string) && (halfAt?.(index)?.includes(onset.lead.string) ?? true) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret) + MAX_CLAMP_FRETS);
   const placeKey = (place: LanePosition) => `${place.string}/${place.fret}`;
   let placed = pass();
 
@@ -943,7 +948,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
     // Con mitades, el pasaje va en una cuerda de la mitad de la mayoría de sus notas.
     const ofLow = notes.filter((k) => halfAt?.(k) === profile.pitchHalves?.low).length;
     const passageHalf = profile.pitchHalves && (ofLow * 2 >= notes.length ? profile.pitchHalves.low : profile.pitchHalves.high);
-    const choice = (passageHalf?.main ?? [...capOf.keys()]).map((string) => windowOn(string, passageTarget)).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
+    const choice = (passageHalf ?? [...capOf.keys()]).map((string) => windowOn(string, passageTarget)).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
     // La CUERDA es la del pasaje entero; la ventana, la de cada TRAMO de compases de altura parecida. Con
     // una sola ventana por pasaje, el promedio igualaba pasajes largos (Kirk: 9-16 y 21-26) y el 21
     // quedaba tan arriba como el 13-14, lo más agudo. Compases casi iguales siguen en el mismo tramo: la

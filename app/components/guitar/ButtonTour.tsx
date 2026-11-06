@@ -55,7 +55,7 @@ const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.rif
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
   // Mismo orden que el panel (decisión del usuario, 2026-11-03).
-  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.', 'Híbrido: pocos trastes, cuatro cuerdas.'], find: ddToggle('nivel') },
+  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.', 'Híbrido: graves en una cuerda, agudas en otra.'], find: ddToggle('nivel') },
   { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
   { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
   { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
