@@ -22,7 +22,7 @@
 // hasta la siguiente nota traducida: al acertarla, esas suenan fuerte (ver session.ts).
 
 import type { Chart, ChartNote } from './chart';
-import type { LevelProfile } from './levels';
+import { RIFF_LEVELS, type LevelProfile } from './levels';
 
 // Afinación estándar: altura de cada cuerda al aire (cuerda 1 = Mi agudo).
 export const OPEN_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
@@ -489,8 +489,6 @@ function placePhraseMulti(
   unary?: (index: number, place: LanePosition) => number,
   // Ventana de trastes [de, a] de cada grupo (pasaje rápido aislado en una cuerda); si no, todos.
   groupFrets: Array<[number, number]> = [],
-  // Niveles con `pitchHalves`: la mitad de cada nota, que manda sobre las cuerdas del compás.
-  halfAt?: (index: number) => number[] | undefined,
 ): LanePosition[] {
   const maxFretOf = new Map<number, number>();
   for (const p of layout.positions) maxFretOf.set(p.string, Math.max(maxFretOf.get(p.string) ?? 0, p.fret));
@@ -526,12 +524,7 @@ function placePhraseMulti(
   const pitches = start.map((p) => OPEN_MIDI[p.string] + p.fret);
   let best: { path: LanePosition[]; cost: number } | null = null;
   const tryCombo = (combo: number[][]) => {
-    const stringsOf = phrase.map((_, k) => {
-      const half = halfAt?.(k);
-      if (!half) return combo[groupOf[k]];
-      const shared = combo[groupOf[k]].filter((string) => half.includes(string));
-      return shared.length > 0 ? shared : half;
-    });
+    const stringsOf = phrase.map((_, k) => combo[groupOf[k]]);
     const sets = stringsOf.map((strings) => new Set(strings));
     // FIDELIDAD (petición del usuario): si la posición real de la tab se puede usar en este compás
     // (su cuerda está en ALGUNA de las opciones de cuerdas del compás, dentro de su traste máximo),
@@ -539,7 +532,7 @@ function placePhraseMulti(
     // transporte la frase o la mueva a otras cuerdas sin necesidad paga `tab` por cada nota que se
     // aparta. (Antes solo pagaban los candidatos que conservaban la forma en la combinación probada,
     // y el resto se libraba entero: James salía 6/0 donde la tab dice 6/2, o el compás 33 en la Re.)
-    const fixedReal = start.map((p, k) => (reachable[groupOf[k]].has(p.string) && (halfAt?.(k)?.includes(p.string) ?? true) && p.fret <= maxFretOf.get(p.string)! && p.fret >= minOf(groupOf[k]) && p.fret <= maxOf(groupOf[k])
+    const fixedReal = start.map((p, k) => (reachable[groupOf[k]].has(p.string) && p.fret <= maxFretOf.get(p.string)! && p.fret >= minOf(groupOf[k]) && p.fret <= maxOf(groupOf[k])
       ? { string: p.string, fret: p.fret }
       : undefined));
     const pitchSets = new Map<string, Set<number>>();
@@ -669,8 +662,9 @@ function placePhraseMulti(
         const lanes = contourLanes(seg, lanePitches.length);
         let laneSeq = seg.map((p) => lanes.get(p)!);
         for (let k = 1; k < laneSeq.length; k++) {
-          if (seg[k] !== seg[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
-            laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k] + Math.sign(seg[k] - seg[k - 1])));
+          const dir = Math.sign(seg[k] - seg[k - 1]);
+          if (dir !== 0 && Math.sign(laneSeq[k] - laneSeq[k - 1]) !== dir) {
+            laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k - 1] + dir));
           }
           // La misma altura justo repetida, en el mismo sitio (para mantener pulsado): el ajuste de arriba
           // es por aparición y podía mover solo una de las dos (Kirk, con la ventana de 5 trastes).
@@ -693,23 +687,6 @@ function placePhraseMulti(
           }
         }
         idx.forEach((k, j) => { out[k] = lanePitches[laneSeq[j]]; });
-      }
-      // Con mitades, cada una hace su contorno en sus propias cuerdas, como las zonas de Avanzado
-      // (si no, las notas de una mitad se aplastarían contra el borde de sus cuerdas).
-      if (halfAt) {
-        const byHalf = new Map<Set<number>, number[]>();
-        availableAt.forEach((set, k) => byHalf.set(set, [...(byHalf.get(set) ?? []), k]));
-        for (const [set, indices] of byHalf) {
-          const lanePitches = [...set].sort((a, b) => a - b);
-          const seg = indices.map((k) => pitches[k]);
-          const lanes = contourLanes(seg, lanePitches.length);
-          const laneSeq = seg.map((p) => lanes.get(p)!);
-          for (let j = 1; j < laneSeq.length; j++) {
-            if (seg[j] === seg[j - 1]) laneSeq[j] = laneSeq[j - 1];
-            else if (laneSeq[j] === laneSeq[j - 1]) laneSeq[j] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[j] + Math.sign(seg[j] - seg[j - 1])));
-          }
-          indices.forEach((k, j) => { out[k] = lanePitches[laneSeq[j]]; });
-        }
       }
       candidates.push({ pitches: out, extra: CONTOUR_COST, shift: null });
     }
@@ -822,7 +799,7 @@ function registerMap(kept: Onset[], levelPitches: number[]) {
   return (pitch: number) => (pitch <= knee ? pitch : knee + Math.min(1, (pitch - knee) / (hi - knee)) * (levelHi - knee));
 }
 
-function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, halfAt: ((index: number) => number[] | undefined) | undefined, pins: Array<LanePosition | null>): LanePosition[] {
+function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, pins: Array<LanePosition | null>): LanePosition[] {
   const layout = laneLayout(profile);
   const zoneOf = zoneMap(kept, profile);
   const registerOf = registerMap(kept, laneLayout(profile).pitches);
@@ -863,7 +840,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
       const key = `${phraseKey(phrase)}|${groupOf.join(',')}|${JSON.stringify(groupOptions)}|${JSON.stringify(groupFrets)}|${pinKey}`;
       let path = byKey.get(key);
       if (!path) {
-        path = placePhraseMulti(phrase, layout, zoneOf, registerOf, groupOf, groupOptions, (index, place) => unary(i + index, place), groupFrets, halfAt && ((index) => halfAt(i + index)));
+        path = placePhraseMulti(phrase, layout, zoneOf, registerOf, groupOf, groupOptions, (index, place) => unary(i + index, place), groupFrets);
         byKey.set(key, path);
       }
       path.forEach((place, k) => {
@@ -891,7 +868,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
   }
   const repeated = [...occurrences.values()].filter((starts) => starts.length >= 2);
   // (También las que se pasan por poco del máximo de su cuerda: bajan en ella, ver MAX_CLAMP_FRETS.)
-  const fitsAsTabbed = kept.map((onset, index) => profile.strings.includes(onset.lead.string) && (halfAt?.(index)?.includes(onset.lead.string) ?? true) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret) + MAX_CLAMP_FRETS);
+  const fitsAsTabbed = kept.map((onset) => profile.strings.includes(onset.lead.string) && onset.lead.fret <= Math.min(profile.maxFret, profile.maxFretByString?.[onset.lead.string] ?? profile.maxFret) + MAX_CLAMP_FRETS);
   const placeKey = (place: LanePosition) => `${place.string}/${place.fret}`;
   let placed = pass();
 
@@ -945,10 +922,7 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
       return { string, frets: [from, from + size - 1] as [number, number], miss, votes: count.get(string) ?? 0 };
     };
     const passageTarget = registerTarget(notes);
-    // Con mitades, el pasaje va en una cuerda de la mitad de la mayoría de sus notas.
-    const ofLow = notes.filter((k) => halfAt?.(k) === profile.pitchHalves?.low).length;
-    const passageHalf = profile.pitchHalves && (ofLow * 2 >= notes.length ? profile.pitchHalves.low : profile.pitchHalves.high);
-    const choice = (passageHalf ?? [...capOf.keys()]).map((string) => windowOn(string, passageTarget)).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
+    const choice = [...capOf.keys()].map((string) => windowOn(string, passageTarget)).sort((a, b) => (Math.abs(a.miss - b.miss) > 0.5 ? a.miss - b.miss : b.votes - a.votes))[0];
     // La CUERDA es la del pasaje entero; la ventana, la de cada TRAMO de compases de altura parecida. Con
     // una sola ventana por pasaje, el promedio igualaba pasajes largos (Kirk: 9-16 y 21-26) y el 21
     // quedaba tan arriba como el 13-14, lo más agudo. Compases casi iguales siguen en el mismo tramo: la
@@ -1048,12 +1022,63 @@ function barPrint(onsets: Onset[], bar: { t: number; end: number }) {
   return onsets.map((onset) => `${Math.round(((onset.t - bar.t) / (bar.end - bar.t)) * 96)}:${onset.lead.midi}`).join(' ');
 }
 
+// TROZOS REPETIDOS (petición del usuario, 2026-11-08: NILE - Papyrus, el compás 3 es la primera mitad
+// del 2 y salía con otras notas y saltos): el PRINCIPIO de un compás que repite un trozo de un compás
+// anterior (misma altura real y misma posición relativa, al menos SEGMENT_MIN_NOTES notas y un tiempo,
+// empezando en un tiempo de los dos) se trata como esa parte del anterior. Devuelve, para cada nota
+// del compás posterior, la nota de la primera aparición que copia. Los compases enteros iguales ya los
+// cubre `barPrint`.
+const SEGMENT_MIN_NOTES = 4;
+const SEGMENT_MIN_BEATS = 0.75;
+
+function repeatedSegments(list: Onset[], barIndex: (t: number) => number, barStartPos: (bar: number) => number): Map<number, number> {
+  const byBar = new Map<number, number[]>();
+  list.forEach((onset, k) => {
+    const bar = barIndex(onset.t);
+    const indices = byBar.get(bar);
+    if (indices) indices.push(k);
+    else byBar.set(bar, [k]);
+  });
+  const rel = (k: number) => list[k].pos - barStartPos(barIndex(list[k].t));
+  const onBeat = (value: number) => Math.abs(value - Math.round(value)) < 1e-3;
+  const source = new Map<number, number>();
+  const bars = [...byBar.keys()].sort((a, b) => a - b);
+  const prints = new Set<string>();
+  bars.forEach((bar, b) => {
+    const target = byBar.get(bar)!;
+    const print = target.map((k) => `${Math.round(rel(k) * 96)}:${list[k].lead.midi}`).join(' ');
+    const wholeRepeat = prints.has(print);
+    prints.add(print);
+    if (wholeRepeat || !onBeat(rel(target[0]))) return;
+    let best: { from: number[]; length: number } | null = null;
+    for (let a = 0; a < b; a++) {
+      const earlier = byBar.get(bars[a])!;
+      for (let s = 0; s < earlier.length; s++) {
+        if (!onBeat(rel(earlier[s]))) continue;
+        let m = 0;
+        while (
+          m < target.length && s + m < earlier.length
+          && list[target[m]].lead.midi === list[earlier[s + m]].lead.midi
+          && Math.abs((rel(target[m]) - rel(target[0])) - (rel(earlier[s + m]) - rel(earlier[s]))) < 1e-3
+        ) m++;
+        const span = m > 0 ? rel(target[m - 1]) - rel(target[0]) : 0;
+        if (m >= SEGMENT_MIN_NOTES && span >= SEGMENT_MIN_BEATS && (!best || m > best.length)) best = { from: earlier.slice(s, s + m), length: m };
+      }
+    }
+    if (best) best.from.forEach((k, j) => source.set(target[j], source.get(k) ?? k));
+  });
+  return source;
+}
+
 // Vueltas iguales, mismas notas (petición del usuario, 2026-11-04: Lucretia): los filtros de densidad
 // miran lo que viene justo antes, así que dos vueltas idénticas perdían notas distintas. Cada compás
 // repetido conserva las notas (por su sitio en el compás) que conservó su primera aparición, salvo
 // la que quedaría demasiado pegada a la anterior (la densidad del nivel manda en la unión).
-function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: number) => number, chart: Chart, profile: LevelProfile): Onset[] {
+function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: number) => number, chart: Chart, profile: LevelProfile, barStartPos: (bar: number) => number): Onset[] {
   const keptSet = new Set(kept);
+  // Trozo repetido: lo que decidió su primera aparición (ver repeatedSegments).
+  const segmentSource = repeatedSegments(onsets, barIndex, barStartPos);
+  const decided = new Set<Onset>();
   const byBar = new Map<number, Onset[]>();
   for (const onset of onsets) {
     const bar = barIndex(onset.t);
@@ -1066,20 +1091,25 @@ function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: n
   for (const [bar, barOnsets] of [...byBar].sort((a, b) => a[0] - b[0])) {
     const print = barPrint(barOnsets, chart.bars[bar]);
     const mask = firstKept.get(print);
-    if (!mask) firstKept.set(print, barOnsets.map((onset) => keptSet.has(onset)));
     barOnsets.forEach((onset, k) => {
-      if (!(mask ? mask[k] : keptSet.has(onset))) return;
+      const from = segmentSource.get(onsets.indexOf(onset));
+      const wanted = mask ? mask[k] : from !== undefined ? decided.has(onsets[from]) : keptSet.has(onset);
+      if (!wanted) return;
       const prev = out[out.length - 1];
       const gap = prev ? onset.t - prev.t : Number.POSITIVE_INFINITY;
       const tooClose = gap < profile.minGapSeconds - 1e-3 || (prev?.lead.midi === onset.lead.midi && gap < profile.repeatGapSeconds - 1e-3);
-      if (mask && !keptSet.has(onset) && tooClose) return;
+      if ((mask || from !== undefined) && !keptSet.has(onset) && tooClose) return;
       out.push(onset);
+      decided.add(onset);
     });
+    // La primera aparición guarda lo que se decidió de verdad (con sus trozos repetidos ya aplicados).
+    if (!mask) firstKept.set(print, barOnsets.map((onset) => decided.has(onset)));
   }
   return out;
 }
 
 export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions = {}): Chart {
+  if (profile.compose) return composeChart(chart, profile, { follow, range });
   const { pos, beatSeconds } = makeBeatPosition(chart);
   const onsets = groupOnsets(chart, pos);
   const barIndex = (t: number) => {
@@ -1092,7 +1122,8 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     }
     return lo;
   };
-  const kept = sameNotesInRepeatedBars(onsets, capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile), barIndex, chart, profile);
+  const barStartPos = (bar: number) => pos(chart.bars[bar].t);
+  const kept = sameNotesInRepeatedBars(onsets, capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile), barIndex, chart, profile, barStartPos);
   // Niveles de varias cuerdas: compás de cada golpe y cuántas cuerdas distintas usa la tab en cada
   // compás (notas guía), para el límite de cuerdas por compás (ver placePhraseMulti).
   let barInfo: { barOf: number[]; stringsUsed: Map<number, Set<number>> } | null = null;
@@ -1109,10 +1140,7 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   const phraseOf = splitPhrases(kept, profile, beatSeconds, barInfo?.barOf);
   const layout = laneLayout(profile);
   const pins = followPins(kept, follow);
-  const halves = profile.pitchHalves;
-  const halfSplit = halves ? octaveSplit(range ?? pitchRange([chart])) : 0;
-  const halfAt = halves ? (index: number) => (kept[index].lead.midi < halfSplit ? halves.low : halves.high) : undefined;
-  const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, halfAt, pins) : null;
+  const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, pins) : null;
 
 
   // Altura traducida de cada nota, frase a frase (con varias cuerdas ya va en multiPlaces):
@@ -1131,11 +1159,13 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     }
     const lanes = contourLanes(pitches, lanePitches.length);
     const laneSeq = pitches.map((p) => lanes.get(p)!);
-    // Si dos alturas distintas seguidas acabaron en el mismo botón, se separan en su dirección.
+    // Dos alturas distintas seguidas van en su dirección, mirando el botón YA corregido de la anterior
+    // (2026-11-08: separando solo los botones iguales, NILE - Papyrus subía donde la tab baja, 60 -> 59
+    // en el 3 -> 4). Si una línea larga llega al borde, se queda en él.
     for (let k = 1; k < laneSeq.length; k++) {
-      if (pitches[k] !== pitches[k - 1] && laneSeq[k] === laneSeq[k - 1]) {
-        const dir = Math.sign(pitches[k] - pitches[k - 1]);
-        laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k] + dir));
+      const dir = Math.sign(pitches[k] - pitches[k - 1]);
+      if (dir !== 0 && Math.sign(laneSeq[k] - laneSeq[k - 1]) !== dir) {
+        laneSeq[k] = Math.min(lanePitches.length - 1, Math.max(0, laneSeq[k - 1] + dir));
       }
     }
     indices.forEach((k, j) => { targetPitch[k] = lanePitches[laneSeq[j]]; });
@@ -1164,9 +1194,38 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   const seamOk = (i: number, a: LanePosition | undefined, j: number, b: LanePosition | undefined) => {
     if (!a || !b) return true;
     if (kept[i].lead.midi === kept[j].lead.midi) return a.string === b.string && a.fret === b.fret;
-    return phraseOf[i] !== phraseOf[j] || Math.abs(a.fret - b.fret) <= MAX_SEAM_LEAP;
+    // Un salto grande vale si la música también salta (una octava o más: NILE - Papyrus, 6/5 -> 3/8).
+    return phraseOf[i] !== phraseOf[j] || Math.abs(a.fret - b.fret) <= MAX_SEAM_LEAP || Math.abs(kept[i].lead.midi - kept[j].lead.midi) >= 12;
   };
+  // Trozos repetidos (antes que los compases enteros, que así ya copian la versión corregida): la misma
+  // colocación que su primera aparición, con las mismas condiciones que un
+  // compás entero (sin notas fijadas por la guitarra que manda y con uniones válidas).
+  const segmentSource = repeatedSegments(kept, barIndex, barStartPos);
+  // Copias hechas (índices de `kept`): la reparación de choques las vuelve a igualar al final.
+  const copiedFrom = new Map<number, number>();
+  const runs: number[][] = [];
+  for (const k of [...segmentSource.keys()].sort((a, b) => a - b)) {
+    const run = runs[runs.length - 1];
+    if (run && run[run.length - 1] === k - 1 && barIndex(kept[k].t) === barIndex(kept[run[0]].t)) run.push(k);
+    else runs.push([k]);
+  }
+  for (const run of runs) {
+    const first = run[0];
+    const last = run[run.length - 1];
+    if (multiPlaces) {
+      const copy = run.map((k) => multiPlaces[segmentSource.get(k)!]);
+      if (run.some((k) => pins[k]) || copy.some((place) => !place)) continue;
+      if (!seamOk(first - 1, multiPlaces[first - 1], first, copy[0]) || !seamOk(last, copy[copy.length - 1], last + 1, multiPlaces[last + 1])) continue;
+      run.forEach((k, j) => {
+        multiPlaces[k] = copy[j];
+        copiedFrom.set(k, segmentSource.get(k)!);
+      });
+    } else {
+      run.forEach((k) => { targetPitch[k] = targetPitch[segmentSource.get(k)!]; });
+    }
+  }
   const firstPlacing = new Map<string, Array<number | LanePosition>>();
+  const firstStart = new Map<string, number>();
   for (let k = 0; k < kept.length;) {
     const bar = barIndex(kept[k].t);
     let end = k + 1;
@@ -1175,11 +1234,17 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     const placing = firstPlacing.get(print);
     if (!placing) {
       firstPlacing.set(print, multiPlaces ? multiPlaces.slice(k, end) : targetPitch.slice(k, end));
+      firstStart.set(print, k);
     } else if (multiPlaces) {
       const copy = placing as LanePosition[];
       const pinned = pins.slice(k, end).some(Boolean);
       const fits = seamOk(k - 1, multiPlaces[k - 1], k, copy[0]) && seamOk(end - 1, copy[copy.length - 1], end, multiPlaces[end]);
-      if (!pinned && fits && copy.length === end - k) copy.forEach((place, j) => { multiPlaces[k + j] = place; });
+      if (!pinned && fits && copy.length === end - k) {
+        copy.forEach((place, j) => {
+          multiPlaces[k + j] = place;
+          copiedFrom.set(k + j, firstStart.get(print)! + j);
+        });
+      }
     } else {
       placing.forEach((target, j) => { targetPitch[k + j] = target as number; });
     }
@@ -1193,10 +1258,17 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   // siguen sonando con la canción (las anteriores son sus dueñas).
   const dropped = new Set<number>();
   if (multiPlaces) {
+    // Tiempos contados desde el principio de CADA compás: tras un compás de 2 tiempos y medio (NILE -
+    // Papyrus, c3) los siguientes empiezan a medio tiempo, y contando desde el principio de la canción
+    // cada vuelta de un mismo riff perdía notas distintas.
+    const beatKey = (k: number) => {
+      const bar = barIndex(kept[k].t);
+      return `${bar}:${Math.floor(kept[k].pos - barStartPos(bar) + 1e-6)}`;
+    };
     for (let i = 0; i < kept.length;) {
-      const beatIndex = Math.floor(kept[i].pos + 1e-6);
+      const beatIndex = barStartPos(barIndex(kept[i].t)) + Math.floor(kept[i].pos - barStartPos(barIndex(kept[i].t)) + 1e-6);
       let end = i + 1;
-      while (end < kept.length && Math.floor(kept[end].pos + 1e-6) === beatIndex) end++;
+      while (end < kept.length && beatKey(end) === beatKey(i)) end++;
       let fast = end - i >= 3;
       for (let k = i + 1; fast && k < end; k++) if (kept[k].t - kept[k - 1].t >= FAST_NOTE_SECONDS - 1e-6) fast = false;
       if (fast && outsideHandBox(multiPlaces.slice(i, end)) > 1) {
@@ -1209,6 +1281,12 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     }
   }
   const order = kept.map((_, k) => k).filter((k) => !dropped.has(k));
+  const noteIndexOf = new Map(order.map((k, j) => [k, j]));
+  const repeats: Array<[number, number]> = [...copiedFrom].flatMap(([copy, source]) => {
+    const a = noteIndexOf.get(copy);
+    const b = noteIndexOf.get(source);
+    return a === undefined || b === undefined ? [] : [[a, b] as [number, number]];
+  });
   const notes: ChartNote[] = order.map((k, j) => {
     const onset = kept[k];
     const next = kept[order[j + 1]];
@@ -1242,5 +1320,177 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
     };
   });
 
-  return { ...chart, notes, sourceNotes: chart.notes, movedAboveMaxFret: 0, skippedAboveMaxFret: 0 };
+  if (multiPlaces) {
+    const pinned = new Set(order.flatMap((k, j) => (pins[k] ? [j] : [])));
+    const caps = new Map<number, number>();
+    for (const position of layout.positions) caps.set(position.string, Math.max(caps.get(position.string) ?? 0, position.fret));
+    // Primero la misma altura en otra cuerda; si ninguna sirve, un traste al lado en su cuerda sin
+    // cambiar el sentido de la melodía (escalas que bajan a la cuerda grave, NILE - Papyrus c2).
+    avoidFretClashes(notes, chart.bars, pinned, (note, index) => {
+      const samePitch = [...caps].filter(([string]) => string !== note.string).map(([string, cap]) => ({ string, fret: note.midi - OPEN_MIDI[string], cap }))
+        .filter((place) => place.fret >= profile.minFret && place.fret <= place.cap)
+        .map(({ string, fret }) => ({ string, fret, midi: note.midi }));
+      const prev = notes[index - 1];
+      const next = notes[index + 1];
+      const nextFret = [note.fret - 1, note.fret + 1]
+        .filter((fret) => fret >= profile.minFret && fret <= (caps.get(note.string) ?? profile.maxFret))
+        .map((fret) => ({ string: note.string, fret, midi: OPEN_MIDI[note.string] + fret }))
+        .filter((place) => (!prev || Math.sign(place.midi - prev.midi) === Math.sign(note.midi - prev.midi)) && (!next || Math.sign(next.midi - place.midi) === Math.sign(next.midi - note.midi)));
+      return [...samePitch, ...nextFret.map((place) => ({ ...place, changesPitch: true }))];
+    }, repeats);
+  }
+
+  return { ...chart, notes, sourceNotes: chart.notes, repeats, movedAboveMaxFret: 0, skippedAboveMaxFret: 0 };
+}
+
+// CHOQUES (petición del usuario, 2026-11-07): el mismo traste en cuerdas distintas, muy cerca en el
+// tiempo, cae en la misma columna de la autopista; las gemas de la cuerda alta tapan a las de la baja
+// y no se sabe en qué orden llegan, y además cuesta pulsarlas en mitad de un dibujo. Puede pasar
+// suelto, pero no de forma recurrente: en un compás con CLASH_BAR_LIMIT choques o más, se cambia de
+// sitio una nota de cada choque (con sus repeticiones seguidas, que se mantienen pulsadas)
+// mientras queden más de CLASH_KEEP: en el modo cuerdas, la misma altura en otra cuerda; en Híbrido,
+// un traste al lado en su cuerda, sin cambiar el sentido de la melodía. Las notas ancladas a la
+// guitarra que manda no se tocan (riffs compartidos).
+const CLASH_SECONDS = 0.4;
+const CLASH_BAR_LIMIT = 3;
+const CLASH_KEEP = 1;
+const CLASH_MAX_LEAP = 5;
+
+// `changesPitch`: solo como último recurso (vale más mover la nota a otra cuerda a la misma altura).
+type NotePlace = { string: number; fret: number; midi: number; changesPitch?: boolean };
+
+function avoidFretClashes(notes: ChartNote[], bars: Chart['bars'], pinned: Set<number>, alternatives: (note: ChartNote, index: number) => NotePlace[], repeats: Array<[number, number]> = []) {
+  const clashes = (a: ChartNote, b: ChartNote) => a.string !== b.string && a.fret === b.fret && Math.abs(a.t - b.t) < CLASH_SECONDS;
+  const clashCount = (index: number, place: NotePlace = notes[index]) => {
+    let count = 0;
+    const probe = { ...notes[index], ...place };
+    for (let k = index - 1; k >= 0 && probe.t - notes[k].t < CLASH_SECONDS; k--) if (clashes(notes[k], probe)) count++;
+    for (let k = index + 1; k < notes.length && notes[k].t - probe.t < CLASH_SECONDS; k++) if (clashes(notes[k], probe)) count++;
+    return count;
+  };
+  // Repeticiones seguidas en el mismo sitio: se mueven juntas (para mantenerlas pulsadas).
+  const unitOf = (index: number) => {
+    let from = index;
+    let to = index;
+    const same = (a: ChartNote, b: ChartNote) => a.string === b.string && a.fret === b.fret && a.midi === b.midi;
+    while (from > 0 && same(notes[from - 1], notes[index])) from--;
+    while (to + 1 < notes.length && same(notes[to + 1], notes[index])) to++;
+    return { from, to };
+  };
+  const leapOk = (index: number, place: NotePlace) => {
+    const prev = notes[index - 1];
+    const next = notes[index + 1];
+    const near = (other?: ChartNote) => !other || other.phrase !== notes[index].phrase || Math.abs(other.fret - place.fret) <= CLASH_MAX_LEAP;
+    return near(prev) && near(next);
+  };
+  let bar = 0;
+  for (let start = 0; start < notes.length;) {
+    while (bar + 1 < bars.length && bars[bar + 1].t <= notes[start].t + 1e-6) bar++;
+    let end = start;
+    while (end < notes.length && notes[end].t < bars[bar].end - 1e-6) end++;
+    if (end === start) end = start + 1;
+    const barClashes = () => {
+      let count = 0;
+      for (let j = start; j < end; j++) for (let k = j - 1; k >= 0 && notes[j].t - notes[k].t < CLASH_SECONDS; k--) if (clashes(notes[k], notes[j])) count++;
+      return count;
+    };
+    if (barClashes() >= CLASH_BAR_LIMIT) {
+      for (let j = start; j < end && barClashes() > CLASH_KEEP; j++) {
+        if (pinned.has(j)) continue;
+        // Cualquiera de las dos notas del choque: si la posterior no tiene otro sitio (una escala que baja
+        // a la cuerda grave), se mueve la anterior.
+        if (clashCount(j) === 0) continue;
+        const { from, to } = unitOf(j);
+        if ([...Array(to - from + 1).keys()].some((d) => pinned.has(from + d))) continue;
+        const before = Array.from({ length: to - from + 1 }, (_, d) => clashCount(from + d)).reduce((a, b) => a + b, 0);
+        let best: { place: NotePlace; score: number } | null = null;
+        for (const place of alternatives(notes[j], j)) {
+          if (!leapOk(from, place) || !leapOk(to, place)) continue;
+          const after = Array.from({ length: to - from + 1 }, (_, d) => clashCount(from + d, place)).reduce((a, b) => a + b, 0);
+          const score = after * 100 + (place.changesPitch ? 50 : 0) + Math.abs(place.fret - notes[j].fret);
+          if (after < before && (!best || score < best.score)) best = { place, score };
+        }
+        if (best) {
+          const { string, fret, midi } = best.place;
+          for (let k = from; k <= to; k++) Object.assign(notes[k], { string, fret, midi });
+        }
+      }
+    }
+    start = end;
+  }
+  // La reparación mira lo que hay alrededor, así que pudo mover una nota en una vuelta y no en otra:
+  // las copias vuelven a ser iguales que su original, salvo si eso deja su compás con choques recurrentes.
+  const barOf = (t: number) => bars.findIndex((bar) => t >= bar.t - 1e-6 && t < bar.end - 1e-6);
+  const clashesInBar = (bar: number) => {
+    let count = 0;
+    for (let j = 0; j < notes.length; j++) {
+      if (barOf(notes[j].t) !== bar) continue;
+      for (let k = j - 1; k >= 0 && notes[j].t - notes[k].t < CLASH_SECONDS; k--) if (clashes(notes[k], notes[j])) count++;
+    }
+    return count;
+  };
+  for (const [copy, source] of [...repeats].sort((a, b) => a[0] - b[0])) {
+    const target = notes[copy];
+    const original = notes[source];
+    if (target.string === original.string && target.fret === original.fret && target.midi === original.midi) continue;
+    const before = { string: target.string, fret: target.fret, midi: target.midi };
+    Object.assign(target, { string: original.string, fret: original.fret, midi: original.midi });
+    if (clashesInBar(barOf(target.t)) >= CLASH_BAR_LIMIT) Object.assign(target, before);
+  }
+}
+
+// Nivel hecho de otros dos (`profile.compose`, Híbrido, petición del usuario, 2026-11-07): cada nota con
+// la CUERDA de un nivel y el TRASTE de otro, en el mismo instante. Con un solo traducido propio, Híbrido
+// usaba muy pocos trastes (NILE - Papyrus, intro: 3 frente a 6 en todos los demás niveles).
+function composeChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions): Chart {
+  const { strings: stringsLevel, frets: fretsLevel } = profile.compose!;
+  const byStrings = reduceChart(chart, RIFF_LEVELS[stringsLevel], { follow: follow?.parts?.strings, range });
+  const byFrets = reduceChart(chart, RIFF_LEVELS[fretsLevel], { follow: follow?.parts?.frets, range });
+  const fretTimes = byFrets.notes.map((note) => note.t);
+  const fretAt = (t: number) => {
+    let lo = 0;
+    let hi = fretTimes.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (fretTimes[mid] < t - 0.005) lo = mid + 1;
+      else hi = mid;
+    }
+    const near = [lo - 1, lo].filter((k) => k >= 0 && k < fretTimes.length).sort((a, b) => Math.abs(fretTimes[a] - t) - Math.abs(fretTimes[b] - t))[0];
+    return byFrets.notes[near]?.fret ?? profile.minFret;
+  };
+  const notes = byStrings.notes.map((note) => {
+    const fret = Math.min(profile.maxFret, Math.max(profile.minFret, fretAt(note.t)));
+    return { ...note, fret, midi: OPEN_MIDI[note.string] + fret };
+  });
+  // La pista que sigue a otra copia sus notas compartidas (las mismas dos partes), y esas no se tocan.
+  const pinned = new Set<number>();
+  if (follow) {
+    const key = (t: number) => Math.round(t * 1000);
+    const followed = new Map(follow.notes.map((note) => [key(note.t), note]));
+    notes.forEach((note, index) => {
+      const other = followed.get(key(note.t));
+      if (other && other.string === note.string && follow.parts) {
+        const partFret = follow.parts.frets.notes.find((n) => key(n.t) === key(note.t))?.fret;
+        if (partFret === note.fret) {
+          Object.assign(note, { fret: other.fret, midi: other.midi });
+          pinned.add(index);
+        }
+      }
+    });
+  }
+  // Híbrido: uno o dos trastes al lado en su cuerda, sin cambiar el sentido con la nota anterior y la
+  // siguiente (con solo 6 trastes por cuerda, uno no siempre basta: NILE - Papyrus).
+  avoidFretClashes(notes, chart.bars, pinned, (note, index) => {
+    const sameString = (step: number) => {
+      for (let k = index + step; k >= 0 && k < notes.length; k += step) if (notes[k].string === note.string) return notes[k];
+      return undefined;
+    };
+    const prev = sameString(-1);
+    const next = sameString(1);
+    return [note.fret - 1, note.fret + 1, note.fret - 2, note.fret + 2]
+      .filter((fret) => fret >= profile.minFret && fret <= profile.maxFret)
+      .filter((fret) => (!prev || Math.sign(fret - prev.fret) === Math.sign(note.fret - prev.fret)) && (!next || Math.sign(next.fret - fret) === Math.sign(next.fret - note.fret)))
+      .map((fret) => ({ string: note.string, fret, midi: OPEN_MIDI[note.string] + fret }));
+  }, byStrings.repeats);
+  return { ...byStrings, notes, parts: { strings: byStrings, frets: byFrets } };
 }

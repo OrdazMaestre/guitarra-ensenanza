@@ -1176,6 +1176,8 @@ test.describe('canciones del dispositivo', () => {
     await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
     await page.getByRole('button', { name: 'Elegir carpeta', exact: true }).click();
     await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Mi tema', exact: true })).toBeVisible();
+    // La lista se ve antes de terminar de guardar la copia; el aviso sale cuando ya está guardada.
+    await expect(page.locator('.local-song-card')).toContainText('He encontrado 1 canción nueva.');
 
     // Recargar: Chrome vuelve a preguntar ("prompt") hasta que el usuario pulse.
     await page.addInitScript(() => {

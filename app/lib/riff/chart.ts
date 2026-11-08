@@ -125,6 +125,12 @@ export interface Chart {
   // Solo en Experto, cuando el instrumento no tiene las 6 cuerdas de siempre: sus cuerdas, de la más
   // grave a la más aguda (ver `gameStrings`). El mástil del juego dibuja justo esas.
   strings?: number[];
+  // Solo en niveles hechos de otros dos (`compose`, Híbrido): esas dos traducciones, para que otra
+  // pista pueda seguir a esta parte por parte (riffs compartidos).
+  parts?: { strings: Chart; frets: Chart };
+  // Solo en charts traducidos: notas que son copia de otra (vueltas iguales y trozos repetidos), como
+  // pares [índice de la copia, índice de la original] en `notes`.
+  repeats?: Array<[number, number]>;
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).

@@ -845,7 +845,7 @@ test('vueltas iguales: un compás repetido sale igual aunque le acompañen compa
   }
 });
 
-// Nivel Híbrido: trastes 0-5 en Mi y La. Según su altura real, las graves en Mi y las agudas en La.
+// Nivel Híbrido: la cuerda de cada nota es la de Medio (cuerdas) y su traste el de Medio (trastes).
 const HIBRIDO_SONGS: Array<[string, string, number]> = [
   ['Master of Puppets', 'prueba-master-of-puppets.gp', 1],
   ['Iron Rain', 'iron-rain.gp', 0],
@@ -864,17 +864,53 @@ function hibrido(file: string, track: number) {
 }
 
 for (const [name, file, track] of HIBRIDO_SONGS) {
-  test(`Híbrido (${name}): cuerdas y trastes del nivel, y cada nota en su mitad`, () => {
-    const { chart, split } = hibrido(file, track);
-    const { low, high } = RIFF_LEVELS.hibrido.pitchHalves!;
+  test(`Híbrido (${name}): cuerdas de Medio cuerdas y trastes de Medio trastes`, () => {
+    const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+    const guitars = listGuitarTracks(score);
+    const range = pitchRange(guitars.map((guitar) => buildChart(at, score, guitar.index, 24)));
+    const real = buildChart(at, score, guitars[track].index, 24);
+    const { chart } = hibrido(file, track);
+    const byStrings = reduceChart(real, RIFF_LEVELS['medio-cuerdas'], { range });
+    const byFrets = reduceChart(real, RIFF_LEVELS.medio, { range });
+    const key = (t: number) => Math.round(t * 1000);
+    const fretAt = new Map(byFrets.notes.map((note) => [key(note.t), note.fret]));
+    expect(chart.notes.map((note) => [note.t, note.string])).toEqual(byStrings.notes.map((note) => [note.t, note.string]));
+    let same = 0;
     for (const note of chart.notes) {
-      expect([5, 6]).toContain(note.string);
+      expect(note.fret).toBeGreaterThanOrEqual(0);
       expect(note.fret).toBeLessThanOrEqual(5);
-      // La altura real de esa nota: alguna de las que suenan en ese instante.
-      const real = (chart.sourceNotes ?? []).filter((source) => Math.abs(source.t - note.t) < 0.005);
-      const fitsLow = real.some((source) => source.midi < split) && low.includes(note.string);
-      const fitsHigh = real.some((source) => source.midi >= split) && high.includes(note.string);
-      expect(fitsLow || fitsHigh, `${note.string}/${note.fret} en ${note.t}`).toBe(true);
+      if (fretAt.get(key(note.t)) === note.fret) same++;
+    }
+    // Solo cambian las notas que se mueven para no chocar con el mismo traste en la otra cuerda.
+    expect(same / chart.notes.length).toBeGreaterThan(0.9);
+    // La intro usa tantos trastes como Medio (trastes), salvo uno como mucho.
+    const introEnd = real.bars[Math.min(8, real.bars.length - 1)].t;
+    const frets = (notes: Chart['notes']) => new Set(notes.filter((note) => note.t < introEnd).map((note) => note.fret)).size;
+    expect(frets(chart.notes)).toBeGreaterThanOrEqual(frets(byFrets.notes) - 1);
+  });
+}
+
+// CHOQUES (petición del usuario, 2026-11-07): el mismo traste en cuerdas distintas, a menos de 0,4 s,
+// cae en la misma columna de la autopista y las gemas se tapan. Suelto puede pasar; tres o más en un
+// mismo compás, nunca.
+for (const level of ['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'hibrido'] as const) {
+  test(`choques: en ${level} ningún compás tiene 3 o más notas en el mismo traste de otra cuerda`, () => {
+    for (const [, file, track] of HIBRIDO_SONGS) {
+      const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(`public/tabs/${file}`)), new at.Settings());
+      const guitars = listGuitarTracks(score);
+      const range = pitchRange(guitars.map((guitar) => buildChart(at, score, guitar.index, 24)));
+      const real = buildChart(at, score, guitars[track].index, 24);
+      const notes = reduceChart(real, RIFF_LEVELS[level], { range }).notes;
+      const perBar = new Map<number, number>();
+      for (let k = 0; k < notes.length; k++) {
+        for (let m = k + 1; m < notes.length && notes[m].t - notes[k].t < 0.4; m++) {
+          if (notes[m].fret !== notes[k].fret || notes[m].string === notes[k].string) continue;
+          const bar = real.bars.findIndex((b) => notes[m].t >= b.t - 1e-6 && notes[m].t < b.end - 1e-6);
+          perBar.set(bar, (perBar.get(bar) ?? 0) + 1);
+        }
+      }
+      const worst = Math.max(0, ...perBar.values());
+      expect(worst, `${file}`).toBeLessThan(3);
     }
   });
 }
@@ -888,4 +924,58 @@ test('Híbrido: las notas repetidas no se mueven y el resultado no cambia entre 
   }
   // El mismo chart en el mismo nivel da lo mismo dos veces.
   expect(hibrido('prueba-master-of-puppets.gp', 1).chart.notes).toEqual(notes);
+});
+
+// Chart sintético en semicorcheas a 120 bpm: cada compás, sus alturas en orden (y cuántas negras dura).
+function sixteenths(bars: Array<{ quarters: number; midis: number[] }>): Chart {
+  const spq = 0.5;
+  const notes: Chart['notes'] = [];
+  const chartBars: Chart['bars'] = [];
+  const beats: Chart['beats'] = [];
+  let t = 0;
+  let q = 0;
+  bars.forEach((bar, index) => {
+    const start = t;
+    for (let k = 0; k < bar.quarters; k++) beats.push({ t: t + k * spq, q: q + k, isBarStart: k === 0 });
+    bar.midis.forEach((midi, k) => {
+      const string = [6, 5, 4, 3, 2, 1].find((s) => midi - OPEN_MIDI[s] <= 9 && midi - OPEN_MIDI[s] >= 0) ?? 1;
+      notes.push({ id: notes.length, t: start + (k * spq) / 4, dur: spq / 4, string, fret: midi - OPEN_MIDI[string], midi, palmMute: false, tech: [] });
+    });
+    t += bar.quarters * spq;
+    q += bar.quarters;
+    chartBars.push({ number: index + 1, t: start, end: t, timeSig: [bar.quarters, 4] });
+  });
+  return { trackName: 'x', bpm: 120, duration: t, notes, bars: chartBars, beats, drums: [], movedAboveMaxFret: 0, skippedAboveMaxFret: 0 };
+}
+
+// TROZOS REPETIDOS (petición del usuario, 2026-11-08, NILE - Papyrus): un compás que repite la primera
+// mitad de otro, en otra frase, se dibuja igual que esa mitad.
+test('trozos repetidos: un compás que repite la mitad de otro se dibuja igual', () => {
+  const line = [63, 62, 60, 59, 56, 55, 56, 59, 56, 55, 54, 51, 50, 49, 46, 45];
+  const chart = sixteenths([
+    { quarters: 4, midis: [40, 43, 45, 47, 40, 43, 45, 47, 40, 43, 45, 47, 40, 43, 45, 47] },
+    { quarters: 4, midis: line },
+    { quarters: 2.5, midis: line.slice(0, 10) },
+    { quarters: 4, midis: [45, 47, 48, 50, 45, 47, 48, 50, 45, 47, 48, 50, 45, 47, 48, 50] },
+  ]);
+  for (const level of ['medio', 'medio-cuerdas', 'dificil', 'hibrido'] as const) {
+    const notes = reduceChart(chart, RIFF_LEVELS[level], { range: [40, 64] }).notes;
+    const inBar = (bar: number) => notes.filter((note) => note.t >= chart.bars[bar].t - 1e-6 && note.t < chart.bars[bar].end - 1e-6).map((note) => `${note.string}/${note.fret}`);
+    expect(inBar(2), level).toEqual(inBar(1).slice(0, 10));
+  }
+});
+
+// CONTORNO (2026-11-08): cuando una frase no cabe en los trastes del nivel, una nota que baja nunca sube.
+test('contorno: una línea que baja nunca sube en el modo trastes', () => {
+  const line = [63, 62, 60, 59, 56, 55, 56, 59, 56, 55, 54, 51, 50, 49, 46, 45];
+  const chart = sixteenths([{ quarters: 4, midis: line }, { quarters: 4, midis: line }]);
+  for (const level of ['facil', 'medio'] as const) {
+    const notes = reduceChart(chart, RIFF_LEVELS[level], { range: [40, 64] }).notes;
+    const real = (note: Chart['notes'][number]) => chart.notes.find((source) => Math.abs(source.t - note.t) < 0.005)!.midi;
+    for (let k = 1; k < notes.length; k++) {
+      const music = Math.sign(real(notes[k]) - real(notes[k - 1]));
+      const game = Math.sign(notes[k].fret - notes[k - 1].fret);
+      if (music !== 0 && game !== 0) expect(game, `${level} nota ${k}`).toBe(music);
+    }
+  }
 });
