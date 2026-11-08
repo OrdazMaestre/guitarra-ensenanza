@@ -744,15 +744,13 @@ test('motor: la banda suena siempre de fondo (haya batería o no), salvo sus pis
 
 // Altura de las notas por nivel (lanes.ts, decisión del usuario 2026-10-27): fuera de Experto, las
 // cuerdas se reparten centradas entre las filas de La (5) y Si (2); los Mi quedan para Experto.
-test('carriles: 1 cuerda al centro, 2 sobre los puntos del traste 12 (filas 5 y 2), 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
+test('carriles: 1 cuerda al centro, 2 en 4,25/2,75, 3 en 5/3,5/2, 4 separadas 1,2 filas', () => {
   expect([...laneRows([6])]).toEqual([[6, 3.5]]);
-  // Usuario: más separadas -- Medio junto a los dos puntos del traste 12 (filas 5 y 2), por dentro, con
-  // el borde de la cuerda (3 px) a 1 px del punto (radio 7, filas de 31,6): ~4,70 y ~2,30 (2026-11-02);
-  // más juntas que antes, pero mucho menos que dos cuerdas normales (1 fila). Difícil, 1,2 filas.
+  // Usuario (2026-11-08): 2 cuerdas, la misma separación que Avanzado cuerdas (1,5), centradas.
   const medio = laneRows([5, 6]);
-  expect(medio.get(6)!).toBeCloseTo(5 - 9.5 / 31.6, 6);
-  expect(medio.get(5)!).toBeCloseTo(2 + 9.5 / 31.6, 6);
-  expect(medio.get(6)! - medio.get(5)!).toBeGreaterThan(2);
+  expect(medio.get(6)!).toBe(4.25);
+  expect(medio.get(5)!).toBe(2.75);
+  expect(medio.get(6)! + medio.get(5)!).toBe(7);
   expect([...laneRows([4, 5, 6])]).toEqual([[6, 5], [5, 3.5], [4, 2]]);
   expect([...laneRows([3, 4, 5, 6])]).toEqual([[6, 5.3], [5, 4.1], [4, 2.9], [3, 1.7]]);
   for (const strings of [[6], [5, 6], [4, 5, 6], [3, 4, 5, 6]]) {
@@ -771,8 +769,8 @@ test('carriles: 1 cuerda al centro, 2 sobre los puntos del traste 12 (filas 5 y 
   expect(laneAt(laneRows([6]), 1)).toBe(6);
 });
 
-test('colores de cuerda de grave a aguda: rojo, verde, naranja, azul, amarillo, morado', () => {
-  expect([6, 5, 4, 3, 2, 1].map((s) => RIFF_STRING_COLORS[s])).toEqual(['#ef4444', '#22c55e', '#f97316', '#3b82f6', '#facc15', '#a855f7']);
+test('colores de cuerda de grave a aguda: rojo, verde, azul, amarillo, morado, naranja', () => {
+  expect([6, 5, 4, 3, 2, 1].map((s) => RIFF_STRING_COLORS[s])).toEqual(['#ef4444', '#22c55e', '#3b82f6', '#facc15', '#a855f7', '#f97316']);
 });
 
 test('afinación bajada: el chart va en posiciones estándar y suena en el tono real', () => {

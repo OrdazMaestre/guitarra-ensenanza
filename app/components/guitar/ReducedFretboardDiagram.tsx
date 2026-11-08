@@ -1032,6 +1032,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         activeStrings={riff.profile?.strings ?? riff.chart?.strings}
         chart={riff.chart}
         colorBy={riff.profile?.colorBy ?? 'string'}
+        fretCaps={Object.fromEntries((riff.profile?.strings ?? riff.chart?.strings ?? [1, 2, 3, 4, 5, 6]).map((string) => [string, riff.profile ? Math.min(riff.profile.maxFret, riff.profile.maxFretByString?.[string] ?? riff.profile.maxFret) : endFret]))}
         fretRange={riff.profile ? [riff.profile.minFret, riff.profile.maxFret] : undefined}
         freeStrings={!!riff.profile?.freeStrings}
         geometryRef={localGeometryRef}

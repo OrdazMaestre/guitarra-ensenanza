@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { laneLookaheadSeconds, stretchesLane } from '../app/lib/riff/levels';
 import type { ChartNote } from '../app/lib/riff/chart';
-import { barsAheadSeconds, FADE_IN_SECONDS, FADE_OUT_SECONDS, mirroredFadeInSeconds, notesOnString, STRING_MIN_ALPHA, stringAlpha, usageLevel } from '../app/lib/riff/visuals';
+import { RIFF_STRING_COLORS, stringFretColor } from '../app/lib/riff/colors';
+import { barsAheadSeconds, FADE_IN_SECONDS, FADE_OUT_SECONDS, mirroredFadeInSeconds, notesOnString, STRING_MIN_ALPHA, stringAlpha, usageLevel, ZONE_LOOKAHEAD_BARS } from '../app/lib/riff/visuals';
 
 // Transparencia de cuerdas / brillo de columnas del juego (app/lib/riff/visuals.ts): solo depende
 // del tiempo de canción, igual que las gemas, así que va siempre sincronizada con ellas.
@@ -98,4 +99,32 @@ test('columna de traste: la subida dura el doble de lo que tarda en irse tras ll
   expect(usageLevel(notes, 10 - 1.5, 0.5, 0, mirroredFadeInSeconds)).toBeCloseTo(0);
   // Por defecto (cuerdas), sin cambios: 1 s.
   expect(usageLevel(notes, 9.5, 1)).toBeCloseTo(0.5);
+});
+
+// Degradado de las gemas por traste en los niveles con cuerdas (petición del usuario, 2026-11-08).
+test('degradado: oscuro en el 0, el color de la cuerda a mitad de su tope y claro en el tope', () => {
+  const brightness = (hex: string) => [1, 3, 5].reduce((sum, j) => sum + parseInt(hex.slice(j, j + 2), 16), 0);
+  for (const [string, cap] of [[6, 10], [5, 11], [4, 12], [3, 12]] as const) {
+    expect(stringFretColor(string, cap / 2, cap)).toBe(RIFF_STRING_COLORS[string]);
+    const shades = Array.from({ length: cap + 1 }, (_, fret) => brightness(stringFretColor(string, fret, cap)));
+    for (let fret = 1; fret <= cap; fret++) expect(shades[fret]).toBeGreaterThanOrEqual(shades[fret - 1]);
+    // Suave (usuario, 2026-11-08): ni tan oscuro ni tan claro como para confundir cuerdas.
+    expect(shades[0]).toBeLessThan(brightness(RIFF_STRING_COLORS[string]) * 0.75);
+    expect(shades[0]).toBeGreaterThan(brightness(RIFF_STRING_COLORS[string]) * 0.55);
+    expect(shades[cap]).toBeGreaterThan(brightness(RIFF_STRING_COLORS[string]) * 1.1);
+  }
+  // Híbrido (tope 5): vivo en el 2-3.
+  const vivid = brightness(RIFF_STRING_COLORS[6]);
+  expect(Math.abs(brightness(stringFretColor(6, 2.5, 5)) - vivid)).toBe(0);
+  expect(brightness(stringFretColor(6, 3, 5))).toBeGreaterThan(vivid);
+});
+
+test('zonas de 2 cuerdas: se atenúan si van a pasar 2 compases sin usarse', () => {
+  expect(ZONE_LOOKAHEAD_BARS).toBe(2);
+  const bars = Array.from({ length: 8 }, (_, k) => ({ t: k * 2, end: (k + 1) * 2 }));
+  const ahead = barsAheadSeconds(bars, 0, ZONE_LOOKAHEAD_BARS, 4);
+  expect(ahead).toBeCloseTo(4, 6);
+  // Una nota dentro de 2 compases: encendida; a 3 compases (y más de 1 s de margen), atenuada.
+  expect(stringAlpha([note(0, 3.5, 0.2, 5)], 0, 1, ahead)).toBe(1);
+  expect(stringAlpha([note(0, 6.5, 0.2, 5)], 0, 1, ahead)).toBe(STRING_MIN_ALPHA);
 });

@@ -3,10 +3,10 @@ import { type MutableRefObject, type RefObject, useEffect, useRef } from 'react'
 import type { FretboardGeometry } from '../ReducedFretboardDiagram';
 import { getAudioCurrentTime } from '@/app/lib/guitarAudioEngine';
 import type { Chart, ChartNote } from '@/app/lib/riff/chart';
-import { fretColor, RIFF_STRING_COLORS } from '@/app/lib/riff/colors';
+import { fretColor, RIFF_STRING_COLORS, stringFretColor } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
 import { laneLookaheadSeconds } from '@/app/lib/riff/levels';
-import { barsAheadSeconds, mirroredFadeInSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel } from '@/app/lib/riff/visuals';
+import { barsAheadSeconds, mirroredFadeInSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel, ZONE_LOOKAHEAD_BARS } from '@/app/lib/riff/visuals';
 
 export { RIFF_STRING_COLORS };
 
@@ -59,6 +59,8 @@ interface Props {
   colorBy?: 'fret' | 'string';
   // Trastes del nivel (para repartir el arcoíris de colorBy 'fret').
   fretRange?: [number, number];
+  // Tope de traste de cada cuerda en el nivel: el degradado de colorBy 'string' (`stringFretColor`).
+  fretCaps?: Record<number, number>;
   // Cuerdas libres: cada gema ocupa la COLUMNA entera de su traste (vale cualquier cuerda).
   freeStrings?: boolean;
   geometryRef: MutableRefObject<FretboardGeometry | null>;
@@ -118,10 +120,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
+export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
   const [minFret, maxFret] = fretRange ?? [0, 5];
+  const capsKey = JSON.stringify(fretCaps ?? {});
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef(previewTime);
   useEffect(() => { previewRef.current = previewTime; }, [previewTime]);
@@ -318,6 +321,38 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         ctx.globalAlpha = 1;
       }
 
+      // Niveles de 2 cuerdas (petición del usuario, 2026-11-08: el paso del modo trastes a las cuerdas):
+      // el mástil en dos ZONAS, la mitad de arriba del color de la cuerda aguda y la de abajo de la grave.
+      // Cada zona se atenúa como su cuerda, mirando ZONE_LOOKAHEAD_BARS compases por delante, y la casilla
+      // del traste que llega se ilumina en su mitad como las columnas del modo trastes.
+      const zoneStrings = stringsKey.split(',').map(Number).sort((a, b) => a - b);
+      if (session && !freeStrings && zoneStrings.length === 2) {
+        const zoneAhead = barsAheadSeconds(chart.bars, songPos, ZONE_LOOKAHEAD_BARS, (ZONE_LOOKAHEAD_BARS * 4 * 60) / chart.bpm);
+        const fretsShown = Array.from({ length: maxFret - minFret + 1 }, (_, k) => minFret + k);
+        zoneStrings.forEach((string, half) => {
+          const color = RIFF_STRING_COLORS[string];
+          const onString = notesOnString(chart.notes, string);
+          const zoneAlpha = stringAlpha(onString, songPos, speed, zoneAhead);
+          for (const fret of fretsShown) {
+            const col = columnRect(fret);
+            if (!col) continue;
+            const cell = { x: col.x, y: col.y + (half * col.h) / 2, w: col.w, h: col.h / 2 };
+            ctx.globalAlpha = FREE_FRET_TINT_ALPHA * zoneAlpha;
+            ctx.fillStyle = color;
+            ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+            const level = usageLevel(onString.filter((note) => note.fret === fret), songPos, speed, 0, mirroredFadeInSeconds);
+            if (level <= 0.01) continue;
+            ctx.globalAlpha = level * 0.4;
+            ctx.fillRect(cell.x, cell.y, cell.w, cell.h);
+            ctx.globalAlpha = level;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(cell.x + 1.5, cell.y + 1.5, cell.w - 3, cell.h - 3);
+          }
+        });
+        ctx.globalAlpha = 1;
+      }
+
       // Cuerdas de colores sobre el mástil mientras se juega (las del <svg> se esconden con la clase
       // `riff-live`). En Experto, las que no se van a usar se vuelven transparentes y recuperan su
       // tono el segundo anterior a su próxima nota (`stringAlpha`, mismo reloj que las gemas). Con
@@ -407,7 +442,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         // (no vuelve a contar; petición del usuario), sin brillo ni guía de aterrizaje.
         const locked = !!session?.locked.has(note.id);
         const hitSongT = locked ? undefined : session?.hitAt.get(note.id);
-        const color = locked ? LOCKED_COLOR : (colorBy === 'fret' ? fretColor(note.fret, minFret, maxFret) : RIFF_STRING_COLORS[note.string]) ?? '#ffffff';
+        const color = locked ? LOCKED_COLOR : (colorBy === 'fret' ? fretColor(note.fret, minFret, maxFret) : stringFretColor(note.string, note.fret, fretCaps?.[note.string] ?? maxFret)) ?? '#ffffff';
 
         if (hitSongT !== undefined) {
           const elapsed = (songPos - hitSongT) / speed;
@@ -627,7 +662,9 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [chart, colorBy, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
+    // `capsKey` resume `fretCaps` (un objeto nuevo en cada render del padre).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart, colorBy, capsKey, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
 
   return <canvas aria-hidden="true" className="riff-highway" data-testid="riff-highway" ref={canvasRef} />;
 }

@@ -1011,6 +1011,49 @@ test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el má
   expect(pixel).toBeLessThan(140);
 });
 
+// Niveles de 2 cuerdas (petición del usuario, 2026-11-08): el mástil en dos zonas, la de arriba verde
+// (La) y la de abajo roja (Mi).
+test('2 cuerdas: la mitad de arriba del mástil es verde y la de abajo roja', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  for (const level of ['Medio cuerdas', 'Híbrido']) {
+    if (level === 'Híbrido') {
+      await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+      await page.locator('.riff-level-hybrid').getByRole('button', { name: 'Híbrido', exact: true }).click();
+    } else {
+      await choose(page, 'Nivel', level);
+    }
+    await choose(page, 'Ritmo', 'Paso a paso');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: /empezar/i }).click();
+    const stage = page.locator('.test-room-fretboard .riff-stage');
+    await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+    await page.waitForTimeout(300);
+    // Centro del penúltimo traste, en la fila 1,4 (zona de arriba) y en la 5,6 (zona de abajo): lejos
+    // de los carriles (filas 2,3 y 4,7) y de donde caen las gemas.
+    const sample = (row: number) => page.evaluate(({ selector, row }) => {
+      const svg = document.querySelector(selector) as SVGSVGElement;
+      const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
+      const pt = svg.createSVGPoint();
+      pt.x = (lines[lines.length - 2] + lines[lines.length - 1]) / 2;
+      const board = svg.querySelector('.reduced-board-bg') as SVGRectElement;
+      pt.y = Number(board.getAttribute('y')) + ((row - 1) * Number(board.getAttribute('height'))) / 5;
+      const r = pt.matrixTransform(svg.getScreenCTM()!);
+      const canvas = document.querySelector('canvas[data-testid="riff-highway"]') as HTMLCanvasElement;
+      const box = canvas.getBoundingClientRect();
+      const scale = canvas.width / box.width;
+      return [...canvas.getContext('2d')!.getImageData(Math.round((r.x - box.left) * scale), Math.round((r.y - box.top) * scale), 1, 1).data];
+    }, { selector: SVG, row });
+    const top = await sample(1.4);
+    const bottom = await sample(5.6);
+    expect(top[1], `${level} arriba ${top}`).toBeGreaterThan(top[0]);
+    expect(bottom[0], `${level} abajo ${bottom}`).toBeGreaterThan(bottom[1]);
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+    await expect(stage).toHaveAttribute('data-status', 'paused');
+  }
+});
+
 test('cambiar de canción con el disco: en el juego y en la tablatura de debajo (empiezan en Black Gilmur)', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);

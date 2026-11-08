@@ -13,10 +13,9 @@ export default function SalaDePruebasPage() {
       <header className="test-room-header">
         <p className="test-room-kicker">Zona aparte</p>
         <h1>Sala de pruebas</h1>
-        <p>Aquí no hay lección.</p>
+        <p>Aquí podrás ver un adelanto de lo que está por venir en la web.</p>
         <p>Es un espacio libre para probar cosas.</p>
-        <p>Tienes un mástil, un teclado y un trozo de tablatura.</p>
-        <p>El mástil puede sonar limpio o con overdrive.</p>
+        <p>Tienes un mástil, un teclado y un trozo de tablatura donde pruebo las ultimas novedades antes de sacarlas de esta sala.</p>
       </header>
 
       <section className="test-room-instruments">

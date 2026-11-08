@@ -19,6 +19,9 @@ export function mirroredFadeInSeconds(note: ChartNote, speed: number) {
 // Cuerdas: se quedan encendidas mientras tengan alguna nota en los próximos 4 compases (petición
 // del usuario: antes se encendían y apagaban demasiadas veces y demasiado rápido).
 export const STRING_LOOKAHEAD_BARS = 4;
+// Zonas de los niveles de 2 cuerdas (mitad del mástil de cada cuerda, petición del usuario,
+// 2026-11-08): se atenúan si van a pasar 2 compases sin usarse.
+export const ZONE_LOOKAHEAD_BARS = 2;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 
