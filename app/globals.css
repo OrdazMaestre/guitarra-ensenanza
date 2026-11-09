@@ -602,6 +602,9 @@ html[data-theme='dark'] .theme-toggle-icon-dark {
 .midi-instrument-host {
   min-width: 0;
   position: relative;
+  /* Sin el resaltado azul del móvil al tocar el instrumento o sus botones (repintaba el bloque
+     entero en cada nota corta). */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .midi-float-warning,

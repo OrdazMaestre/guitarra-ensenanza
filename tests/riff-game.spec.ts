@@ -1754,3 +1754,50 @@ for (const [label, tuning, count] of [['guitarra de 7', SEVEN, 7], ['bajo de 5',
     expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   });
 }
+
+// Toque corto en el móvil (usuario, 2026-11-09): cada toque daba un mini-lag y un destello azulado en el
+// mástil; mantener y tapear no. Era lo que el navegador añade SOLO a un toque: el resaltado de toque de
+// Android y el ratón emulado + clic fantasma. El mástil funciona con eventos de puntero y no los necesita.
+test.describe('pantalla táctil (toque)', () => {
+  test.use({ hasTouch: true });
+test('toque corto en el mástil: cuenta, sin clic fantasma ni resaltado azul', async ({ page }) => {
+  await page.addInitScript(() => {
+    const m = { click: 0, mousedown: 0 };
+    (window as unknown as { __ghost: typeof m }).__ghost = m;
+    document.addEventListener('click', () => { m.click++; }, true);
+    document.addEventListener('mousedown', () => { m.mousedown++; }, true);
+  });
+  const chart = jamesChart('practica');
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const panel = page.locator('.test-room-fretboard .riff-stage');
+  await choose(page, 'Nivel', 'Principiante');
+  await choose(page, 'Pistas', 'Guitarra rítmica');
+  await choose(page, 'Ritmo', 'Paso a paso');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(panel).toHaveAttribute('data-status', 'playing', { timeout: 5000 });
+  const highlight = await page.evaluate((selector) => [
+    getComputedStyle(document.querySelector('.test-room-fretboard .midi-instrument-host')!).getPropertyValue('-webkit-tap-highlight-color'),
+    getComputedStyle(document.querySelector(selector)!).getPropertyValue('-webkit-tap-highlight-color'),
+  ], SVG);
+  expect(highlight).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+  const before = await page.evaluate(() => ({ ...(window as unknown as { __ghost: { click: number; mousedown: number } }).__ghost }));
+  for (const [i, note] of chart.notes.slice(0, 3).entries()) {
+    const p = await page.evaluate(({ selector, fret }) => {
+      const svg = document.querySelector(selector) as SVGSVGElement;
+      const pt = svg.createSVGPoint();
+      const lines = [...svg.querySelectorAll('line.reduced-nut, line.reduced-fret')].map((l) => Number(l.getAttribute('x1')));
+      pt.x = fret === 0 ? lines[0] - 20 : (lines[fret - 1] + lines[fret]) / 2;
+      pt.y = 44 + 2 * (158 / 5);
+      const r = pt.matrixTransform(svg.getScreenCTM()!);
+      return { x: r.x, y: r.y };
+    }, { selector: SVG, fret: note.fret });
+    await page.touchscreen.tap(p.x, p.y);
+    await expect(panel).toHaveAttribute('data-hits', String(i + 1));
+  }
+  const after = await page.evaluate(() => ({ ...(window as unknown as { __ghost: { click: number; mousedown: number } }).__ghost }));
+  expect(after).toEqual(before);
+});
+});

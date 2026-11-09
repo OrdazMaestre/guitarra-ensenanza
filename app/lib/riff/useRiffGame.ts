@@ -1,5 +1,5 @@
 'use client';
-import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import type { Chart, ChartNote } from './chart';
@@ -36,10 +36,24 @@ export type HeldPositionsRef = MutableRefObject<() => { string: number; fret: nu
 export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   const sessionRef = useRef<RiffSession | null>(null);
   const [status, setStatus] = useState<RiffGameStatus>('idle');
-  // Solo para tests/depuración (atributos data-hits / data-score): la puntuación se VE en la
-  // autopista, que la lee de la sesión en cada frame.
-  const [hitCount, setHitCount] = useState(0);
-  const [score, setScore] = useState(0);
+  // Aciertos y puntos, FUERA del estado de React (usuario, 2026-11-09: en el móvil, cada nota daba un
+  // tirón): cambian con cada acierto y, como estado, redibujaban el mástil ENTERO. Se suscriben solo
+  // la línea de puntos y los atributos data-hits / data-score del escenario (ver `stats`).
+  const statsRef = useRef({ hits: 0, score: 0 });
+  const statsListenersRef = useRef(new Set<() => void>());
+  const setStats = useCallback((hits: number, score: number) => {
+    const current = statsRef.current;
+    if (current.hits === hits && current.score === score) return;
+    statsRef.current = { hits, score };
+    statsListenersRef.current.forEach((listener) => listener());
+  }, []);
+  const stats = useMemo(() => ({
+    subscribe(listener: () => void) {
+      statsListenersRef.current.add(listener);
+      return () => { statsListenersRef.current.delete(listener); };
+    },
+    get: () => statsRef.current,
+  }), []);
   // Vuelta del tramo en curso (con `repeats`, "2/6"); null sin partida.
   const [repetition, setRepetition] = useState<string | null>(null);
   // Parada automática en la que espera (RiffOptions.breaks), o null.
@@ -97,11 +111,10 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     silence();
     sessionRef.current = null;
     setStatus('idle');
-    setHitCount(0);
-    setScore(0);
+    setStats(0, 0);
     setRepetition(null);
     setAtBreak(null);
-  }, [clearTimer, silence]);
+  }, [clearTimer, setStats, silence]);
 
   // Al salir de la página con la partida en marcha: sin esto el temporizador seguía vivo (el
   // AudioContext es de toda la web) y la canción seguía sonando hasta el final.
@@ -160,13 +173,12 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
         if (entry.end < now - 1) handles.delete(id);
       }
       setStatus(session.status);
-      setHitCount(session.hitAt.size);
-      setScore(session.totalScore);
+      setStats(session.hitAt.size, session.totalScore);
       setRepetition(`${session.repetition}/${session.repeats}`);
       setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
     }, TICK_MS);
-  }, [applyHit, clearTimer, heldRef, onVoice]);
+  }, [applyHit, clearTimer, heldRef, onVoice, setStats]);
 
   // Todos los sonidos cargados ANTES de la cuenta de entrada: nada se carga a mitad de partida.
   const start = useCallback(async (options: RiffOptions, backing: RiffBacking) => {
@@ -200,14 +212,13 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       session.resume(now);
       setStatus(session.status);
       setAtBreak(session.stoppedAtBreak);
-      setHitCount(session.hitAt.size);
-      setScore(session.totalScore);
+      setStats(session.hitAt.size, session.totalScore);
       return;
     }
     const continued = new RiffSession(next.chart, next.options, now, next.backing);
     continued.continueFrom(session, now);
     run(continued);
-  }, [run]);
+  }, [run, setStats]);
 
   // Para el mástil: volumen relativo de su propia nota -- 0 mientras hay partida en curso (lo que
   // suena es la canción real; un acierto "abre" sus notas), 1 en pausa o terminada.
@@ -220,5 +231,5 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     return result.gain;
   }, [applyHit]);
 
-  return { sessionRef, status, hitCount, score, scoring, repetition, atBreak, start, stop, pause, resume, onNoteEvent };
+  return { sessionRef, status, stats, scoring, repetition, atBreak, start, stop, pause, resume, onNoteEvent };
 }

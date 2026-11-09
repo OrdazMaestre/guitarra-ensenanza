@@ -1,5 +1,5 @@
 'use client';
-import { type MutableRefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type MutableRefObject, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { type GuitarTone, playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -36,6 +36,28 @@ const OPEN_STRING_MIDI: Record<number, number> = {
   // Cuerdas graves de los instrumentos de más de 6 (Experto, ver `gameStrings` en chart.ts).
   7: 35, 8: 30, 9: 25,
 };
+
+type MarkPos = { string: number; fret: number };
+
+// Marca naranja de las notas pulsadas, con su PROPIO estado (usuario, 2026-11-09): pulsar y soltar una
+// nota corta redibujaban el mástil ENTERO dos veces, un tirón en cada nota en el móvil. Así solo se
+// redibuja esto. `render` es la de la última vez que se dibujó el mástil (la geometría no cambia al pulsar).
+function PressMarks({ render, setterRef }: { render: (list: MarkPos[]) => ReactNode; setterRef: MutableRefObject<((list: MarkPos[]) => void) | null> }) {
+  const [list, setList] = useState<MarkPos[]>([]);
+  useEffect(() => {
+    setterRef.current = setList;
+    return () => { setterRef.current = null; };
+  }, [setterRef]);
+  return <>{render(list)}</>;
+}
+
+type RiffStats = { subscribe: (listener: () => void) => () => void; get: () => { hits: number; score: number } };
+
+// Los puntos de la partida: solo esta línea se redibuja con cada acierto (ver `stats` en useRiffGame).
+function RiffScoreText({ show, stats }: { show: boolean; stats: RiffStats }) {
+  const score = useSyncExternalStore(stats.subscribe, () => stats.get().score, () => 0);
+  return <>{show ? `${formatScore(score)} puntos` : ''}</>;
+}
 
 const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -384,7 +406,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const scrollRef = useRef<HTMLDivElement>(null);
   const ptHeldRef = useRef(new Map<number, { string: number; fret: number; midi: number }>());
   const ptStringVoiceRef = useRef(new Map<number, { pid: number; voiceId: number }>());
-  const [ptPositions, setPtPositions] = useState<{ string: number; fret: number }[]>([]);
+  // Marcas de las notas pulsadas (ver PressMarks): con ratón/dedo y con el teclado.
+  const ptMarksRef = useRef<((list: MarkPos[]) => void) | null>(null);
+  const kbMarksRef = useRef<((list: MarkPos[]) => void) | null>(null);
   const [volume, setVolume] = useState(1.0);
   const [kbMode, setKbMode] = useState(false);
   const [kbRange, setKbRange] = useState<'lower' | 'upper'>('lower');
@@ -557,7 +581,6 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       return held;
     };
   }, []);
-  const [kbPositions, setKbPositions] = useState<{ string: number; fret: number }[]>([]);
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
@@ -604,7 +627,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         const entry = kbKeysHeldRef.current.get(code);
         if (entry) pos.push({ string: stringNum, fret: entry.fret });
       }
-      setKbPositions([...pos]);
+      kbMarksRef.current?.(pos);
       if (kbStringVoiceRef.current.size >= 3) setKbGhostWarn(false);
     }
     async function down(e: KeyboardEvent) {
@@ -669,7 +692,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
       kbStringVoiceRef.current.clear();
       kbKeysHeldRef.current.clear();
-      setKbPositions([]);
+      kbMarksRef.current?.([]);
       setKbGhostWarn(false);
     };
   }, [kbMode, kbRange, lefty, emitNoteEvent]);
@@ -725,7 +748,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       const entry = ptHeldRef.current.get(pid);
       if (entry) pos.push({ string: strNum, fret: entry.fret });
     }
-    setPtPositions([...pos]);
+    ptMarksRef.current?.(pos);
   }
   function getHighestOnPtString(stringNum: number) {
     let best: { pid: number; midi: number } | null = null;
@@ -947,8 +970,27 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   }, [riff.playing]);
 
 
-  function interactionOverlay() {
-    const posList = kbMode ? kbPositions : ptPositions;
+  // Aciertos y puntos en el escenario (para los tests), escritos al cambiar sin redibujar el mástil.
+  const riffStats = riff.game.stats;
+  const showStats = !!riffGame && gameOpen;
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (!showStats) {
+      delete stage.dataset.hits;
+      delete stage.dataset.score;
+      return;
+    }
+    const write = () => {
+      const { hits, score } = riffStats.get();
+      stage.dataset.hits = String(hits);
+      stage.dataset.score = String(score);
+    };
+    write();
+    return riffStats.subscribe(write);
+  }, [riffStats, showStats]);
+
+  function interactionOverlay(posList: MarkPos[]) {
     if (posList.length === 0) return null;
     return (
       <>
@@ -1012,7 +1054,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         salte al empezar. */}
     {riffGame && gameOpen && (
       <p aria-live="polite" className="riff-score" data-testid="riff-score">
-        {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
+        <RiffScoreText show={riff.game.status !== 'idle' && riff.game.scoring} stats={riff.game.stats} />
       </p>
     )}
     {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
@@ -1020,8 +1062,6 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     <div
       // `riff-live`: partida en curso o en pausa -> el mástil cambia de aspecto (ver RiffStyles).
       className={riffGame ? `riff-stage${riffInGame ? ' riff-live' : ''}` : undefined}
-      data-hits={riffGame && gameOpen ? riff.game.hitCount : undefined}
-      data-score={riffGame && gameOpen ? riff.game.score : undefined}
       data-game-mode={riffGame && gameOpen ? riff.gameMode : undefined}
       data-status={riffGame && gameOpen ? riff.game.status : undefined}
       data-tutorial={riffGame && gameOpen && riff.tutorialOn ? riff.tutorialCard ?? 'playing' : undefined}
@@ -1037,11 +1077,15 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none', maxWidth: `${svgWidthPercent}%`, width: `${svgWidthPercent}%` }}
+      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none', WebkitTapHighlightColor: 'transparent', maxWidth: `${svgWidthPercent}%`, width: `${svgWidthPercent}%` }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      // Un toque corto (no mantener ni tapear) hacía que el móvil pintara su resaltado azul y mandara
+      // ratón emulado + un clic fantasma: un tirón en cada nota durante la canción (usuario, 2026-11-09).
+      // El mástil solo usa eventos de puntero, que ya han llegado; esto anula lo demás.
+      onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); }}
     >
       <rect className="reduced-board-bg" x={boardLeftEdge} y={boardY} width={boardX + boardWidth - boardLeftEdge} height={boardHeight} />
       {Array.from({ length: 6 }, (_, index) => (
@@ -1142,7 +1186,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         />
       ))}
       <PracticeTargetMarker getX={fretX} getY={stringY} target={practice.target} />
-      {interactionOverlay()}
+      {kbMode
+        ? <PressMarks key="kb" render={interactionOverlay} setterRef={kbMarksRef} />
+        : <PressMarks key="pt" render={interactionOverlay} setterRef={ptMarksRef} />}
     </svg>
     </div>
     <PracticeFeedback feedback={practice.feedback} />
