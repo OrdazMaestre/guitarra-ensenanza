@@ -222,7 +222,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(pause).toHaveCount(0);
 });
 
-test('móvil en vertical: con 6 trastes el mástil mide el doble de alto y se puede tocar', async ({ page }) => {
+test('móvil en vertical: con 6 trastes el mástil mide el 40 % del alto de la pantalla y se puede tocar', async ({ page }) => {
   const board = page.locator('.test-room-fretboard .reduced-board-bg');
   const height = async () => (await board.boundingBox())!.height;
   await page.setViewportSize({ width: 360, height: 740 });
@@ -230,7 +230,9 @@ test('móvil en vertical: con 6 trastes el mástil mide el doble de alto y se pu
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
   const plain = await height();
   await openGame(page);
-  expect(await height()).toBeGreaterThanOrEqual(plain * 1.98);
+  expect(await height()).toBeGreaterThan(plain * 2);
+  // Responsive (usuario, 2026-11-09): la madera, el 40 % del alto de la ventana.
+  expect(Math.abs((await height()) - 0.4 * 740)).toBeLessThan(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
 
   // Una nota en su traste cuenta en el mástil alto.
@@ -245,6 +247,66 @@ test('móvil en vertical: con 6 trastes el mástil mide el doble de alto y se pu
   await expect(stage).toHaveAttribute('data-hits', '1');
   await expect(page.locator(SVG)).toBeInViewport({ ratio: 0.9 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+});
+
+// Pantallas táctiles (petición del usuario, 2026-11-09): con JUGAR abierto el mástil se sale de los
+// márgenes de la página hasta el borde que recorta; con ratón, solo en ventanas estrechas.
+test.describe('táctil', () => {
+  test.use({ hasTouch: true });
+  test('el mástil del juego llega casi a los bordes, en vertical y en horizontal', async ({ page }) => {
+    const svg = page.locator(SVG);
+    for (const [width, height] of [[360, 740], [800, 360]]) {
+      await page.setViewportSize({ width, height });
+      await page.goto(URL);
+      await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
+      const plain = (await svg.boundingBox())!;
+      await openGame(page);
+      await expect.poll(async () => (await svg.boundingBox())!.width).toBeGreaterThan(plain.width + 30);
+      const box = (await svg.boundingBox())!;
+      expect(box.x).toBeLessThanOrEqual(12);
+      expect(box.x + box.width).toBeGreaterThanOrEqual(width - 12);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+    }
+  });
+});
+
+// Vertical / ventana estrecha (usuario, 2026-11-09): sin números de traste, y al empezar SALIR y PAUSA
+// a 2 px del borde inferior. Y en cualquier pantalla, ESPACIO pausa al instante (sin KEYBOARD, sin
+// mantenerlo) y soltarlo no reanuda.
+test('ventana estrecha: sin números de traste, SALIR a 2 px del borde; ESPACIO pausa al instante', async ({ page }) => {
+  await page.setViewportSize({ width: 460, height: 780 });
+  await page.goto(URL);
+  await openGame(page);
+  await expect(page.locator('.test-room-fretboard .reduced-fret-number')).toHaveCount(0);
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
+  await page.waitForTimeout(600);
+  const exit = (await page.locator('.test-room-fretboard .riff-open-toggle').boundingBox())!;
+  expect(Math.abs(780 - (exit.y + exit.height) - 2)).toBeLessThanOrEqual(1);
+  await expect(page.locator('.test-room-fretboard .midi-kb-toggle')).not.toHaveAttribute('aria-pressed', 'true');
+  // Foco en PAUSA: el keyup del espacio no debe "pulsarla" (reanudaría).
+  await page.locator('.test-room-fretboard .riff-pause-toggle').focus();
+  await page.keyboard.down('Space');
+  await expect(stage).toHaveAttribute('data-status', 'paused', { timeout: 300 });
+  await page.keyboard.up('Space');
+  await page.waitForTimeout(500);
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+});
+
+test('con ratón: el mástil llega a los bordes en ventanas estrechas y no en las anchas', async ({ page }) => {
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await page.setViewportSize({ width: 600, height: 700 });
+  await page.goto(URL);
+  await openGame(page);
+  await expect.poll(async () => (await stage.boundingBox())!.x).toBeLessThanOrEqual(12);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  // Al ensanchar la ventana vuelve a los márgenes de la página.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const host = page.locator('.test-room-fretboard .midi-instrument-host');
+  await expect.poll(async () => Math.abs((await stage.boundingBox())!.x - (await host.boundingBox())!.x)).toBeLessThan(1);
+  expect(Math.abs((await stage.boundingBox())!.width - (await host.boundingBox())!.width)).toBeLessThan(1);
 });
 
 test('el mástil no crece fuera del móvil en vertical: móvil en horizontal y ordenador', async ({ page }) => {
@@ -387,7 +449,7 @@ test('nivel Híbrido: debajo de las dos columnas, cuenta la cuerda, se recuerda 
   await expect(stage).toHaveAttribute('data-hits', '1');
 });
 
-test('nivel Híbrido en móvil vertical: mástil doble de alto y sin desbordar', async ({ page }) => {
+test('nivel Híbrido en móvil vertical: mástil al 40 % del alto de la pantalla y sin desbordar', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   await page.goto(URL);
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
@@ -396,7 +458,8 @@ test('nivel Híbrido en móvil vertical: mástil doble de alto y sin desbordar',
   await openGame(page);
   await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
   await page.locator('.riff-level-hybrid').getByRole('button', { name: 'Híbrido', exact: true }).click();
-  await expect.poll(async () => (await board.boundingBox())!.height).toBeGreaterThanOrEqual(plain * 1.98);
+  await expect.poll(async () => Math.abs((await board.boundingBox())!.height - 0.4 * 740)).toBeLessThan(3);
+  expect((await board.boundingBox())!.height).toBeGreaterThan(plain * 2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   // Se puede jugar en vertical, sin pedir girar el móvil.
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 15000 });
@@ -525,7 +588,8 @@ for (const [name, width, height, pillVisible] of [['pantalla baja (móvil apaisa
 }
 
 test('MAIkael no se abre mientras se juega (sí en pausa)', async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 900 });
+  // Ventana estrecha: MAIkael (abajo a la derecha) se solapa con el escenario del juego.
+  await page.setViewportSize({ width: 700, height: 800 });
   await page.goto(URL);
   await openGame(page);
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
@@ -533,12 +597,16 @@ test('MAIkael no se abre mientras se juega (sí en pausa)', async ({ page }) => 
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
   const maikael = page.getByRole('button', { name: 'Abrir a MAIkael' });
   await expect(maikael).toHaveAttribute('aria-disabled', 'true');
+  // Y queda detrás del escenario del juego: recortado donde se solapa con él (2026-11-09).
+  const frame = page.locator('[data-maikael-frame]');
+  await expect.poll(() => frame.evaluate((el) => (el as HTMLElement).style.clipPath)).toContain('evenodd');
   await maikael.click({ force: true });
   await page.waitForTimeout(500);
   await expect(page.getByRole('button', { name: 'Cerrar a MAIkael' })).toHaveCount(0);
   await hold(page, page.getByRole('button', { name: 'PAUSA' }));
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'paused');
   await expect(maikael).not.toHaveAttribute('aria-disabled', 'true');
+  await expect.poll(() => frame.evaluate((el) => (el as HTMLElement).style.clipPath)).toBe('');
 });
 
 // Bucle = "modo práctica" (petición del usuario): no puntúa y deja cambiar la DIFICULTAD en pausa
@@ -692,7 +760,7 @@ test.describe('aviso en un móvil', () => {
   test.use({ hasTouch: true, isMobile: true });
   test('estrecho y táctil: "Gira el móvil"', async ({ page }) => {
     // Tan estrecho que ni el mástil 0-5 de Principiante cabe.
-    await page.setViewportSize({ width: 300, height: 700 });
+    await page.setViewportSize({ width: 280, height: 700 });
     await page.goto(URL);
     await openGame(page);
     await expect(page.locator('.riff-narrow-warning')).toHaveText('Gira el móvil');
@@ -971,7 +1039,7 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   await expect(page.locator('.riff-panel')).toBeVisible();
 });
 
-test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el mástil y la barra MIDI', async ({ page }) => {
+test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, encima del carril', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
@@ -981,12 +1049,10 @@ test('cuerdas libres: sin cuerdas, cada traste teñido; los puntos, entre el má
   await choose(page, 'Velocidad', '50%');
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(score).toHaveText('0 puntos', { timeout: 5000 });
-  // Entre el mástil y la barra de controles.
-  const svgBox = (await page.locator(SVG).boundingBox())!;
+  // Encima del carril de las notas (usuario, 2026-11-09; antes, entre el mástil y la barra).
+  const highwayBox = (await page.locator('.test-room-fretboard canvas[data-testid="riff-highway"]').boundingBox())!;
   const scoreBox = (await score.boundingBox())!;
-  const pillBox = (await page.locator('.test-room-fretboard .midi-float-pill').boundingBox())!;
-  expect(scoreBox.y).toBeGreaterThanOrEqual(svgBox.y + svgBox.height - 1);
-  expect(pillBox.y).toBeGreaterThanOrEqual(scoreBox.y + scoreBox.height - 1);
+  expect(scoreBox.y + scoreBox.height).toBeLessThanOrEqual(highwayBox.y + 1);
   // Rojo intenso con brillo amarillo.
   const style = await score.evaluate((el) => getComputedStyle(el));
   expect(style.color).toBe('rgb(220, 38, 38)');

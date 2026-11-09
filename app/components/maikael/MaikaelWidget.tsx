@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { computeMaikaelPose, PIECE_CANVAS, JOINTS, mirrorX, rotatePoint, type PlacedPiece, type Point } from '@/app/lib/maikaelRig';
 import {
   resolveFace,
@@ -337,6 +337,37 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   // Mientras se juega una partida del juego de tablatura, MAIkael no se abre (un toque sin querer
   // taparía el mástil); cerrarlo sí se puede. En pausa vuelve a funcionar.
   const gameLocked = useSyncExternalStore(subscribeGameInProgress, getGameInProgress, () => false);
+  // Con la partida corriendo, MAIkael queda DETRÁS del mástil y del carril (petición del usuario,
+  // 2026-11-09). No basta con capas (z-index): MAIkael vive fuera de .site-shell, que en modo oscuro
+  // lleva un filtro y forma su propio contexto. Así que se le recorta (clip-path con un agujero) justo
+  // donde está el escenario del juego (.riff-stage.riff-live), medido en cada fotograma; lo recortado
+  // tampoco recibe toques, que llegan al mástil.
+  const frameRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!gameLocked) return;
+    let raf = 0;
+    const clip = () => {
+      const frame = frameRef.current;
+      const stage = document.querySelector('.riff-stage.riff-live');
+      if (frame) {
+        const f = frame.getBoundingClientRect();
+        const s = stage?.getBoundingClientRect();
+        const x1 = s ? Math.max(0, s.left - f.left) : 0;
+        const y1 = s ? Math.max(0, s.top - f.top) : 0;
+        const x2 = s ? Math.min(f.width, s.right - f.left) : 0;
+        const y2 = s ? Math.min(f.height, s.bottom - f.top) : 0;
+        frame.style.clipPath = x2 > x1 && y2 > y1
+          ? `polygon(evenodd, 0 0, ${f.width}px 0, ${f.width}px ${f.height}px, 0 ${f.height}px, 0 0, ${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px, ${x1}px ${y1}px)`
+          : '';
+      }
+      raf = requestAnimationFrame(clip);
+    };
+    clip();
+    return () => {
+      cancelAnimationFrame(raf);
+      if (frameRef.current) frameRef.current.style.clipPath = '';
+    };
+  }, [gameLocked]);
 
   async function handleClick() {
     if (gameLocked && step === 'closed') return;
@@ -579,6 +610,8 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
           enorme, con mucho hueco transparente alrededor del personaje). El
           <button> real de abajo se ajusta a la silueta real. */}
       <div
+        data-maikael-frame=""
+        ref={frameRef}
         style={{
           position: 'fixed',
           right: WIDGET_RIGHT,

@@ -23,6 +23,8 @@ import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
 import { stretchesLane } from '@/app/lib/riff/levels';
+import { COUNTDOWN_PHRASES, EXPERTO_PHRASES } from '@/app/lib/riff/phrases';
+import { isTouchOnly } from '@/app/lib/localSongs';
 import { setGameInProgress } from '@/app/lib/gameInProgress';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
@@ -188,7 +190,9 @@ function getSvgCoords(
 const KB_HINT_MIN_GAP = 34;
 
 const BASE_BOARD_HEIGHT = 158;
-const TALL_NECK_MAX_WIDTH = 600;
+const TALL_NECK_SCREEN = 0.4;
+// Por debajo de este ancho de ventana el escenario del juego llega a los bordes también con ratón.
+const BLEED_MAX_VIEWPORT = 1000;
 
 export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
@@ -205,7 +209,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Canción del disco: las de la web + las del propio dispositivo (LocalSongSearch.tsx).
   const songChoice = useSongChoice(riffGame?.songs ?? NO_SONGS, riffGame?.initialSong);
   const song = riffGame ? songChoice.song : undefined;
-  const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: hostRef, heldRef: heldPositionsRef });
+  // Se mide el ESCENARIO del juego (no el host): con JUGAR abierto se estira hasta los bordes de la
+  // pantalla (`bleed`), y es ese ancho real el que decide qué niveles caben y el modo estrecho.
+  const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: stageRef, heldRef: heldPositionsRef });
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
   const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
@@ -238,11 +244,40 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const boardX = gameLayout ? GAME_EDGE + fretWidth : 42 + (pegsShown ? PEG_AREA_WIDTH : 0);
   // Borde izquierdo del tablero dibujado (con la casilla del 0 en el juego).
   const boardLeftEdge = boardX - (openWidth ?? 0);
-  // Móvil en vertical con un nivel de 6 trastes (0-5): el mástil mide el doble de alto, porque con
-  // ese ancho las casillas quedan muy bajas para tocarlas con el dedo (petición del usuario,
-  // 2026-11-05). Solo cambia la altura: cuerdas, carriles y toque salen de `stringGap`.
-  const tallNeck = gameLayout && fretCount === 5 && riff.hostWidth !== null && riff.hostWidth < TALL_NECK_MAX_WIDTH;
-  const boardHeight = tallNeck ? 2 * BASE_BOARD_HEIGHT : BASE_BOARD_HEIGHT;
+  // Márgenes laterales del escenario del juego (ver el efecto de `bleed` más abajo).
+  const [bleed, setBleed] = useState<{ left: number; right: number } | null>(null);
+  // Alto de la ventana para el mástil alto. En el móvil la barra del navegador cambia el alto al
+  // desplazarse: solo cuenta un cambio de más del 10 % o un cambio de ancho (girar el móvil).
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  useEffect(() => {
+    let width = 0;
+    const measure = () => {
+      const height = window.innerHeight;
+      setViewportHeight((old) => (old !== null && window.innerWidth === width && Math.abs(height - old) < old * 0.1 ? old : height));
+      width = window.innerWidth;
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  // Móvil en vertical (o ventana estrecha) con un nivel de 6 trastes (0-5): las casillas quedan muy
+  // bajas para tocarlas con el dedo, así que el mástil crece (petición del usuario, 2026-11-05: el
+  // doble; 2026-11-09: 4 veces, luego 3, y al final RESPONSIVE): su madera mide el TALL_NECK_SCREEN
+  // (40 %) del alto de la ventana, sin bajar del alto normal, y debajo siguen cabiendo SALIR y PAUSA.
+  // Solo cambia la altura: cuerdas, carriles y toque salen de `stringGap`.
+  // Modo estrecho = el mástil ENTERO no cabe (el mismo criterio que el aviso de pantalla pequeña;
+  // antes era un umbral propio de 600 px, y entre 588 y 600 salía el mástil alto aunque cabían todos
+  // los niveles, usuario 2026-11-09).
+  const narrowNeck = gameLayout && riff.hostWidth !== null && !riff.fitsFullNeck;
+  const tallNeck = narrowNeck && fretCount === 5;
+  const neckPixelWidth = riff.hostWidth ?? 0;
+  const boardHeight = tallNeck && viewportHeight !== null && neckPixelWidth > 0
+    ? Math.max(BASE_BOARD_HEIGHT, (TALL_NECK_SCREEN * viewportHeight * baseViewBoxWidth) / neckPixelWidth)
+    : BASE_BOARD_HEIGHT;
+  // Juego en vertical / ventana estrecha (el mismo umbral que el mástil alto, cualquier nivel;
+  // petición del usuario, 2026-11-09): sin números de traste bajo el mástil, mástil y barra MIDI más
+  // juntos, y al empezar SALIR/PAUSA quedan a 2 px del borde inferior de la pantalla (placeGame).
+  const compactGame = narrowNeck;
   const stringGap = boardHeight / 5;
   // Modo zurdo (opt-in vía `allowLeftHanded`): invierte el mástil SOLO en el eje X -- la cuerda
   // (eje Y) nunca cambia de orden. `drawX` es la única función que conoce la inversión: toda
@@ -260,7 +295,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const boardY = (fretLabelsAbove || romansGoAbove) ? 44 : 28;
   const boardWidth = fretCount * fretWidth;
   const bottomLabelY = boardY + boardHeight + 30;
-  const hasBottomLabels = !!fretLabels || (allRomanFrets.length > 0 && !romansGoAbove);
+  const showFretNumbers = !!fretLabels && !compactGame;
+  const hasBottomLabels = showFretNumbers || (allRomanFrets.length > 0 && !romansGoAbove);
   // `2 * boardX` (no `boardX + 42`) a propósito: el margen derecho debe ser SIMÉTRICO al
   // izquierdo para que nada se recorte al reflejar en modo zurdo (drawX refleja respecto al
   // centro del TABLERO, no del viewBox -- cualquier elemento a la izquierda de boardX, como las
@@ -284,7 +320,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // normal, o pantallas anchas), `HorizontalScrollbar` simplemente no se muestra (ya se comporta
   // así en el resto del sitio).
   const svgWidthPercent = (viewBoxWidth / baseViewBoxWidth) * 100;
-  const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + 20;
+  const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + (compactGame ? 6 : 20);
   const [cents, setCents] = useState<Record<number, number>>(zeroedCents());
   const centsRef = useRef(cents);
   useEffect(() => { centsRef.current = cents; }, [cents]);
@@ -386,6 +422,42 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const overlayRef = useRef<HTMLDivElement>(null);
   const [overlayTop, setOverlayTop] = useState<number | null>(null);
   const overlayOpen = !!riffGame && gameOpen && !riff.playing;
+  // Pantallas táctiles y ventanas estrechas (< BLEED_MAX_VIEWPORT, también con ratón) con JUGAR abierto
+  // (petición del usuario, 2026-11-09): el escenario (autopista + mástil) se sale de los márgenes de la
+  // página hasta donde lo permite el primer antepasado que recorta (overflow distinto de visible), así el
+  // mástil llega casi a los bordes de la pantalla, en vertical y en horizontal. Se mide el HOST (que no
+  // cambia con estos márgenes): sin bucles. Se decide en cada medida (al cambiar el tamaño de la ventana).
+  const bleedWanted = gameLayout;
+  useLayoutEffect(() => {
+    if (!bleedWanted) return;
+    const measure = () => {
+      const host = hostRef.current;
+      if (!host) return;
+      if (!isTouchOnly() && window.innerWidth >= BLEED_MAX_VIEWPORT) {
+        setBleed(null);
+        return;
+      }
+      const rect = host.getBoundingClientRect();
+      let left = 0;
+      let right = document.documentElement.clientWidth;
+      for (let el = host.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+        if (getComputedStyle(el).overflowX === 'visible') continue;
+        const box = el.getBoundingClientRect();
+        left = Math.max(left, box.left + el.clientLeft);
+        right = Math.min(right, box.left + el.clientLeft + el.clientWidth);
+      }
+      const next = { left: Math.max(0, Math.floor(rect.left - left)), right: Math.max(0, Math.floor(right - rect.right)) };
+      setBleed((old) => (old && old.left === next.left && old.right === next.right ? old : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (hostRef.current) observer.observe(hostRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [bleedWanted]);
   useLayoutEffect(() => {
     if (!overlayOpen) return;
     const place = () => {
@@ -814,9 +886,47 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     // autopista gana esa altura para ver antes las notas que caen (petición del usuario, 2026-11-03).
     const ctm = svg.getScreenCTM();
     const woodBottom = ctm ? ctm.d * (boardY + boardHeight) + ctm.f : neckBottom;
+    // En vertical / ventana estrecha, SIEMPRE con los botones SALIR y PAUSA a 2 px del borde inferior.
+    const exitButton = compactGame ? hostRef.current?.querySelector('.riff-open-toggle') : null;
+    if (exitButton) {
+      window.scrollTo({ top: window.scrollY + exitButton.getBoundingClientRect().bottom + 2 - window.innerHeight, behavior: 'instant' });
+      return;
+    }
     const bottom = pillBottom - top <= window.innerHeight ? pillBottom : woodBottom;
     window.scrollTo({ top: window.scrollY + bottom - window.innerHeight, behavior: 'instant' });
   }
+  // Teclado (usuario, 2026-11-09): ESPACIO pausa la partida AL INSTANTE, esté o no activado
+  // KEYBOARD y sin mantenerlo como los botones (HoldGuard). Se escucha en captura y se anula el
+  // keyup que le sigue: si el foco está en un botón, el navegador lo "pulsaría" al soltar (en PAUSA
+  // eso reanudaría la partida).
+  const pauseRef = useRef<(() => void) | null>(null);
+  const pauseNow = riffGame && gameOpen && riff.playing ? riff.pause : null;
+  useEffect(() => { pauseRef.current = pauseNow; }, [pauseNow]);
+  useEffect(() => {
+    if (!riffGame || !gameOpen) return;
+    let swallowKeyUp = false;
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return;
+      const pause = pauseRef.current;
+      if (!pause) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      swallowKeyUp = true;
+      if (!e.repeat) pause();
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || !swallowKeyUp) return;
+      swallowKeyUp = false;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+    };
+  }, [riffGame, gameOpen]);
   const placeOnStartRef = useRef(false);
   function scrollIntoGame() {
     placeOnStartRef.current = true;
@@ -895,7 +1005,16 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         <TutorialButton rootRef={hostRef} steps={FRETBOARD_TOUR} />
       </div>
     )}
-    <div className="midi-instrument-host" ref={hostRef}>
+    <div className={`midi-instrument-host${compactGame ? ' riff-compact' : ''}`} ref={hostRef}>
+    {/* Puntos de la partida ENCIMA del carril de las notas (usuario, 2026-11-09; antes, entre el mástil
+        y la barra): rojo intenso con brillo amarillo. Pegados arriba de la pantalla (sticky) cuando el
+        carril empieza por encima de ella. La fila existe mientras JUGAR está abierto, para que nada
+        salte al empezar. */}
+    {riffGame && gameOpen && (
+      <p aria-live="polite" className="riff-score" data-testid="riff-score">
+        {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
+      </p>
+    )}
     {/* Ancla del mensaje de práctica: solo el área del mástil, para que "OTRA VEZ"/"ENHORABUENA"
         salgan centrados DELANTE del mástil aunque la barra de controles vaya en flujo (móvil). */}
     <div
@@ -908,7 +1027,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       data-tutorial={riffGame && gameOpen && riff.tutorialOn ? riff.tutorialCard ?? 'playing' : undefined}
       data-repetition={riffGame && gameOpen && riff.game.repetition ? riff.game.repetition : undefined}
       ref={stageRef}
-      style={{ containerType: 'inline-size', minWidth: 0, position: 'relative' }}
+      style={{ containerType: 'inline-size', minWidth: 0, position: 'relative', ...(bleed && bleedWanted ? { marginLeft: -bleed.left, marginRight: -bleed.right } : null) }}
     >
     {showHighway && <div aria-hidden="true" className="riff-highway-space" />}
     <div className="reduced-fretboard-wrap" ref={scrollRef}>
@@ -993,7 +1112,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           {romanFretLabels[fret]}
         </text>
       ))}
-      {fretLabels && Array.from(
+      {showFretNumbers && Array.from(
         { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
         (_, index) => {
           const fret = startFret === 0 ? index : startFret + index;
@@ -1030,7 +1149,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     {showHighway && riff.chart && (
       <RiffHighway
         activeStrings={riff.profile?.strings ?? riff.chart?.strings}
+        ambientPhrases={riff.level === 'experto' && !riff.tutorialOn ? EXPERTO_PHRASES : undefined}
         chart={riff.chart}
+        countdownPhrase={riff.tutorialOn ? undefined : COUNTDOWN_PHRASES[riff.level]}
         colorBy={riff.profile?.colorBy ?? 'string'}
         fretCaps={Object.fromEntries((riff.profile?.strings ?? riff.chart?.strings ?? [1, 2, 3, 4, 5, 6]).map((string) => [string, riff.profile ? Math.min(riff.profile.maxFret, riff.profile.maxFretByString?.[string] ?? riff.profile.maxFret) : endFret]))}
         fretRange={riff.profile ? [riff.profile.minFret, riff.profile.maxFret] : undefined}
@@ -1061,14 +1182,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     )}
     </div>
     <HorizontalScrollbar targetRef={scrollRef} />
-    {/* Puntos de la partida, entre el mástil y la barra de controles (decisión del usuario): rojo
-        intenso con brillo amarillo. La fila existe mientras JUGAR está abierto, para que el mástil
-        no salte al empezar. */}
-    {riffGame && gameOpen && (
-      <p aria-live="polite" className="riff-score" data-testid="riff-score">
-        {riff.game.status !== 'idle' && riff.game.scoring ? `${formatScore(riff.game.score)} puntos` : ''}
-      </p>
-    )}
+    {/* Fuera del modo compacto, el hueco que ocupaban los puntos entre el mástil y la barra se
+        queda (vacío): ahí va el aviso "Usa teclado". En vertical / ventana estrecha, no. */}
+    {riffGame && gameOpen && !compactGame && <div aria-hidden="true" className="riff-score-space" />}
     {kbArrowWanted && kbArrow && (kbArrow.hint ? (
       <span aria-hidden="true" className="riff-kb-hint" data-testid="riff-kb-hint" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>
         <span className="riff-kb-hint-text">Usa teclado</span>

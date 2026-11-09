@@ -128,3 +128,28 @@ test('zonas de 2 cuerdas: se atenúan si van a pasar 2 compases sin usarse', () 
   expect(stringAlpha([note(0, 3.5, 0.2, 5)], 0, 1, ahead)).toBe(1);
   expect(stringAlpha([note(0, 6.5, 0.2, 5)], 0, 1, ahead)).toBe(STRING_MIN_ALPHA);
 });
+
+// Frases (petición del usuario, 2026-11-09).
+test('frases: una por nivel en la cuenta atrás; en Experto, al azar y sin repetirse seguidas', async () => {
+  const { COUNTDOWN_PHRASES, EXPERTO_PHRASES, ambientPhrase, PHRASE_PERIOD_SECONDS } = await import('../app/lib/riff/phrases');
+  expect(COUNTDOWN_PHRASES.practica).toBe('Practica');
+  expect(COUNTDOWN_PHRASES.hibrido).toBe('Ponte a prueba');
+  expect(COUNTDOWN_PHRASES.dificil).toBe('Estás loco');
+  expect(COUNTDOWN_PHRASES.experto).toBe('Se acabó el juego');
+  expect(EXPERTO_PHRASES).not.toContain('Se acabó el juego');
+  // Una frase por periodo, al centro de su ventana; misma semilla -> mismo orden; nunca dos iguales seguidas.
+  const seen: string[] = [];
+  for (let cycle = 0; cycle < EXPERTO_PHRASES.length * 3; cycle++) {
+    const phrase = ambientPhrase(EXPERTO_PHRASES, cycle * PHRASE_PERIOD_SECONDS + 5, 42);
+    expect(phrase!.alpha).toBe(1);
+    expect(phrase).not.toBeNull();
+    seen.push(phrase!.text);
+  }
+  for (let k = 1; k < seen.length; k++) expect(seen[k]).not.toBe(seen[k - 1]);
+  expect(new Set(seen.slice(0, EXPERTO_PHRASES.length)).size).toBe(EXPERTO_PHRASES.length);
+  expect(ambientPhrase(EXPERTO_PHRASES, 5, 42)!.text).toBe(seen[0]);
+  // Siempre visible: solo el fundido al cambiar de frase.
+  for (let t = 0.6; t < 3 * PHRASE_PERIOD_SECONDS; t += 0.5) expect(ambientPhrase(EXPERTO_PHRASES, t, 42)).not.toBeNull();
+  expect(ambientPhrase(EXPERTO_PHRASES, 0.3, 42)!.alpha).toBeCloseTo(0.5, 5);
+  expect(ambientPhrase(EXPERTO_PHRASES, PHRASE_PERIOD_SECONDS - 0.3, 42)!.alpha).toBeCloseTo(0.5, 5);
+});

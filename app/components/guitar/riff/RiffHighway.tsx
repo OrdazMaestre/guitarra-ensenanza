@@ -5,6 +5,16 @@ import { getAudioCurrentTime } from '@/app/lib/guitarAudioEngine';
 import type { Chart, ChartNote } from '@/app/lib/riff/chart';
 import { fretColor, RIFF_STRING_COLORS, stringFretColor } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
+import { ambientPhrase } from '@/app/lib/riff/phrases';
+
+// Frases de Experto: 40 % de transparencia (usuario, 2026-11-09).
+const EXPERTO_PHRASE_OPACITY = 0.6;
+// Semilla del orden de las frases de Experto: una al azar por partida (por sesión).
+const phraseSeeds = new WeakMap<RiffSession, number>();
+const phraseSeed = (session: RiffSession) => {
+  if (!phraseSeeds.has(session)) phraseSeeds.set(session, Math.floor(Math.random() * 1e9));
+  return phraseSeeds.get(session)!;
+};
 import { laneLookaheadSeconds } from '@/app/lib/riff/levels';
 import { barsAheadSeconds, mirroredFadeInSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel, ZONE_LOOKAHEAD_BARS } from '@/app/lib/riff/visuals';
 
@@ -53,6 +63,10 @@ const APPROACH_SECONDS = 0.6;
 const TECH_LABEL: Record<string, string> = { hammer: 'H', pull: 'P', slide: 'S', bend: 'B' };
 
 interface Props {
+  // Frase del nivel en la cuenta atrás, entre el número y el mástil (phrases.ts).
+  countdownPhrase?: string;
+  // Experto: frases que van apareciendo encima de las notas mientras se toca (phrases.ts).
+  ambientPhrases?: string[];
   // Cuerdas del nivel (se pintan de color en el mástil); por defecto, las 6.
   activeStrings?: number[];
   chart: Chart;
@@ -120,7 +134,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export default function RiffHighway({ activeStrings, chart, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
+export default function RiffHighway({ activeStrings, ambientPhrases, chart, countdownPhrase, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
   const [minFret, maxFret] = fretRange ?? [0, 5];
@@ -636,26 +650,78 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
         // (RiffScore en ReducedFretboardDiagram).
       }
 
-      // Cuenta atrás y fin.
+      // Cuenta atrás y fin. Se colocan en la parte VISIBLE de la autopista (en un móvil en horizontal
+      // su parte de arriba queda por encima de la pantalla al jugar): de `visTop` al mástil.
       if (session) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        const visTop = Math.min(y1 * 0.5, Math.max(0, -stageRect.top));
+        const span = y1 - visTop;
+        const at = (k: number) => visTop + span * k;
         if (session.status === 'countin') {
           const beat = 60 / chart.bpm;
           const left = Math.min(COUNT_IN_BEATS, Math.ceil((session.countInTarget - songPos) / beat));
           if (left > 0) {
-            ctx.font = `950 ${Math.max(40, y1 * 0.35)}px system-ui, sans-serif`;
+            const numberSize = Math.max(40, span * 0.35);
+            ctx.font = `950 ${numberSize}px system-ui, sans-serif`;
             ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            ctx.fillText(String(left), vpX, y1 * 0.45);
+            ctx.fillText(String(left), vpX, at(0.45));
+            // Frase del nivel (petición del usuario, 2026-11-09): en línea entre el número y el mástil.
+            if (countdownPhrase) {
+              const y = (at(0.45) + numberSize / 2 + y1) / 2;
+              const width = (boardRight - boardLeft) * 0.9;
+              let size = Math.max(16, span * 0.09);
+              ctx.font = `900 ${size}px system-ui, sans-serif`;
+              const measured = ctx.measureText(countdownPhrase).width;
+              if (measured > width) {
+                size = Math.max(12, (size * width) / measured);
+                ctx.font = `900 ${size}px system-ui, sans-serif`;
+              }
+              ctx.lineWidth = 4;
+              ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+              ctx.strokeText(countdownPhrase, vpX, y);
+              ctx.fillStyle = '#fde047';
+              ctx.fillText(countdownPhrase, vpX, y);
+            }
+          }
+        } else if (session.status === 'playing' && ambientPhrases?.length) {
+          // Experto (petición del usuario, 2026-11-09): siempre una frase DELANTE de las notas, cerca del
+          // mástil y al 60 % de opacidad. Depende del tiempo de la canción (se congela en pausa).
+          const phrase = ambientPhrase(ambientPhrases, songPos / speed, phraseSeed(session));
+          if (phrase) {
+            const y = y1 - span * 0.12;
+            const roadWidth = ((boardRight - boardLeft) * (y - vpY)) / (y1 - vpY);
+            let size = Math.max(15, span * 0.07);
+            ctx.font = `900 ${size}px system-ui, sans-serif`;
+            const measured = ctx.measureText(phrase.text).width;
+            if (measured > roadWidth * 0.95) {
+              size = Math.max(11, (size * roadWidth * 0.95) / measured);
+              ctx.font = `900 ${size}px system-ui, sans-serif`;
+            }
+            ctx.globalAlpha = phrase.alpha * EXPERTO_PHRASE_OPACITY;
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+            ctx.strokeText(phrase.text, vpX, y);
+            ctx.fillStyle = '#f3f4f6';
+            ctx.fillText(phrase.text, vpX, y);
+            ctx.globalAlpha = 1;
           }
         } else if (session.status === 'finished') {
-          ctx.font = `950 ${Math.max(28, y1 * 0.22)}px system-ui, sans-serif`;
+          // Ajustado al ancho del carril (en pantallas estrechas se salía por los lados).
+          const endWidth = (boardRight - boardLeft) * 0.92;
+          let endSize = Math.max(28, span * 0.22);
+          ctx.font = `950 ${endSize}px system-ui, sans-serif`;
+          const endMeasured = ctx.measureText('¡CANCIÓN TERMINADA!').width;
+          if (endMeasured > endWidth) {
+            endSize = (endSize * endWidth) / endMeasured;
+            ctx.font = `950 ${endSize}px system-ui, sans-serif`;
+          }
           ctx.fillStyle = '#86efac';
-          ctx.fillText('¡CANCIÓN TERMINADA!', vpX, y1 * 0.45);
+          ctx.fillText('¡CANCIÓN TERMINADA!', vpX, at(0.45));
           if (session.scoring) {
-            ctx.font = `900 ${Math.max(20, y1 * 0.12)}px system-ui, sans-serif`;
+            ctx.font = `900 ${Math.max(20, span * 0.12)}px system-ui, sans-serif`;
             ctx.fillStyle = '#fde047';
-            ctx.fillText(`${formatScore(session.totalScore)} / ${session.maxScore} puntos`, vpX, y1 * 0.45 + Math.max(36, y1 * 0.2));
+            ctx.fillText(`${formatScore(session.totalScore)} / ${session.maxScore} puntos`, vpX, at(0.45) + Math.max(36, span * 0.2));
           }
         }
       }
@@ -664,7 +730,7 @@ export default function RiffHighway({ activeStrings, chart, colorBy = 'string', 
     return () => cancelAnimationFrame(raf);
     // `capsKey` resume `fretCaps` (un objeto nuevo en cada render del padre).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, colorBy, capsKey, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
+  }, [ambientPhrases, chart, colorBy, capsKey, countdownPhrase, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
 
   return <canvas aria-hidden="true" className="riff-highway" data-testid="riff-highway" ref={canvasRef} />;
 }

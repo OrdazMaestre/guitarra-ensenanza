@@ -665,6 +665,9 @@ export function RiffStyles() {
       /* Puntos de la partida, bajo el mástil (ReducedFretboardDiagram): rojo intenso con brillo
          amarillo (decisión del usuario). Altura fija: la fila no cambia al aparecer el número. */
       .riff-score {
+        position: sticky;
+        top: 0;
+        z-index: 6;
         color: #dc2626;
         font-size: 22px;
         font-weight: 950;
@@ -674,6 +677,15 @@ export function RiffStyles() {
         min-height: 30px;
         text-align: center;
         text-shadow: 0 0 6px #facc15, 0 0 14px rgba(250, 204, 21, 0.85);
+      }
+
+      .riff-score-space {
+        height: 32px;
+      }
+
+      /* Juego en vertical / ventana estrecha: la barra MIDI, pegada al mástil. */
+      .riff-compact .midi-float-controls {
+        margin-top: 2px;
       }
 
       .riff-level-groups {
