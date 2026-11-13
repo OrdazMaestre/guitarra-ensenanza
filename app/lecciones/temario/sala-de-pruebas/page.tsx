@@ -4,6 +4,7 @@ import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import SongTabPlayer from '../../../components/guitar/SongTabPlayer';
 import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 import SpotlightCorners from './SpotlightCorners';
+import GamepadDetector from '../../../components/guitar/GamepadDetector';
 import { TEST_ROOM_SONGS } from './songs';
 
 export default function SalaDePruebasPage() {
@@ -49,6 +50,12 @@ export default function SalaDePruebasPage() {
         {/* Misma lista de canciones; el disco, a la izquierda de su barra. */}
         <SongTabPlayer initialSong="black-gilmur" minHeight={240} songs={TEST_ROOM_SONGS} />
       </section>
+
+      {/* Investigación (2026-11-13): guitarras de PC tipo Guitar Hero. Solo mira qué mueve cada mando. */}
+      <details className="test-room-gamepad">
+        <summary>Mandos y guitarras de PC (pruebas)</summary>
+        <GamepadDetector />
+      </details>
 
       <Link href="/lecciones/temario/pasos" className="test-room-back">
         Volver a Pasos
@@ -99,6 +106,16 @@ export default function SalaDePruebasPage() {
           margin: 12px 0 0;
         }
 
+        .test-room-gamepad {
+          margin: 24px auto 0;
+          max-width: 760px;
+          min-width: 0;
+        }
+        .test-room-gamepad summary {
+          cursor: pointer;
+          font-weight: 900;
+          margin-bottom: 8px;
+        }
         .test-room-tuning {
           margin: 0 auto clamp(36px, 6vw, 64px);
           max-width: 1080px;

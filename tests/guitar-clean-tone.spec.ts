@@ -64,8 +64,10 @@ test('clean tone: linear (no saturation), no brighter than before, safe peak', a
   for (const model of ['headphones', 'laptop', 'phone'] as const) {
     expect(result.clean[model].gap).toBeLessThanOrEqual(result.raw[model].gap + 0.25);
   }
-  // Headphones: registers stay close.
-  expect(Math.abs(result.clean.headphones.gap)).toBeLessThanOrEqual(3);
+  // Headphones: the high register sits BELOW the low one on purpose (user, 2026-11-13: lows +25 % up to E3,
+  // highs -25 % from B3 -> about 5.8 LU), never far from that.
+  expect(result.clean.headphones.gap).toBeGreaterThanOrEqual(-7);
+  expect(result.clean.headphones.gap).toBeLessThanOrEqual(-4.5);
   // Peak ceiling (-1.5 dBFS, inter-sample margin) and not above the old peak.
   expect(result.cleanPeak).toBeLessThanOrEqual(0.84);
   expect(result.cleanPeak).toBeLessThanOrEqual(result.rawPeak);

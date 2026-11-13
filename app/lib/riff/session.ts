@@ -139,6 +139,9 @@ export interface JudgeResult {
 }
 
 type Click = { t: number; sound: DrumSound; volume: number };
+// Bombo de la batería del juego (real y automática): +40 % (usuario, 2026-11-13). 0,8 × 1,4 = 1,12, dentro de
+// lo que el metrónomo ya admite sin saturar (hasta 2, tests/metronome-volume-safety.spec.ts).
+export const KICK_BOOST = 1.4;
 
 export interface NoteScore {
   points: number;
@@ -275,10 +278,12 @@ export class RiffSession {
     const inRange = (t: number) => t >= this.startT - 1e-6 && t < this.endT - 1e-6;
     // Metrónomo (si está encendido) y batería (si no está silenciada) pueden sonar a la vez.
     const drumTrack = chart.bandTracks?.find((track) => track.kind === 'drums');
+    // Bombo un 40 % más fuerte en las dos baterías, la real y la automática (usuario, 2026-11-13).
+    const boost = <T extends { sound: DrumSound; volume: number }>(hit: T): T => (hit.sound === 'kick' ? { ...hit, volume: hit.volume * KICK_BOOST } : hit);
     const songClicks: Click[] = [
-      ...(backing.click === 'auto' ? autoDrumsOf(chart).filter((hit) => inRange(hit.t)) : []),
+      ...(backing.click === 'auto' ? autoDrumsOf(chart).filter((hit) => inRange(hit.t)).map(boost) : []),
       ...(backing.click === 'metronomo' ? chart.beats.filter((beat) => inRange(beat.t)).map((beat) => ({ t: beat.t, sound: 'snare' as DrumSound, volume: beat.isBarStart ? 1 : 0.65 })) : []),
-      ...(drumTrack && muted.has(drumTrack.index) ? [] : chart.drums.filter((hit) => inRange(hit.t)).map((hit) => ({ t: hit.t, sound: hit.sound, volume: 0.8 }))),
+      ...(drumTrack && muted.has(drumTrack.index) ? [] : chart.drums.filter((hit) => inRange(hit.t)).map((hit) => boost({ t: hit.t, sound: hit.sound, volume: 0.8 }))),
     ].sort((a, b) => a.t - b.t);
     this.songClicks = songClicks;
     this.countInTarget = this.startT;

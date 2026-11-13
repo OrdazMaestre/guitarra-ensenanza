@@ -16,6 +16,12 @@ export interface TourStep {
   lines: string[];
   // Busca el botón dentro de la raíz del tutorial.
   find: (root: HTMLElement) => Element | null;
+  // Dibujo entre las frases y `after` (las dos manos sobre el teclado).
+  art?: 'keyboard-hands';
+  after?: string[];
+  // El botón resaltado SÍ se puede pulsar en este paso (el resto de la página sigue bloqueado):
+  // "Activa el teclado" es justo el momento de activarlo (usuario, 2026-11-13).
+  clickable?: boolean;
 }
 
 const byLabel = (label: string) => (root: HTMLElement) => root.querySelector(`[aria-label="${label}"]`);
@@ -55,7 +61,7 @@ const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.rif
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
   // Mismo orden que el panel (decisión del usuario, 2026-11-03).
-  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.', 'Híbrido: graves en una cuerda, agudas en otra.'], find: ddToggle('nivel') },
+  { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
   { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
   { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
   { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
@@ -63,6 +69,17 @@ export const RIFF_PANEL_TOUR: TourStep[] = [
   { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
   { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
   { title: 'Concierto', lines: ['Toda la canción, ¡sin parar!', 'Si pausas, vuelves a empezar.'], find: ddToggle('concierto') },
+  // Solo con teclado físico (en pantalla táctil el botón está oculto y el paso se salta solo; usuario,
+  // 2026-11-13): antes de la partida de prueba, cómo poner las manos. KEYBOARD vive en la barra del mástil,
+  // fuera del panel: se busca en su instrumento.
+  {
+    title: 'Activa el teclado',
+    lines: ['Pulsa el botón de abajo.'],
+    art: 'keyboard-hands',
+    after: ['Encuentra tu combinación.'],
+    clickable: true,
+    find: (root) => root.closest('.midi-instrument-host')?.querySelector('.midi-kb-toggle') ?? null,
+  },
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
   { title: 'Partida de prueba', lines: ['Aprende tres trucos jugando:', 'mantener pulsado, tapping y deslizar.'], find: (root) => root.querySelector('.tour-launch') },
 ];
@@ -94,11 +111,13 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const step = shown[index];
+  const targetRef = useRef<Element | null>(null);
 
   // El botón del paso, a la vista; y su rectángulo, seguido en cada frame (scroll, cambios...).
   useLayoutEffect(() => {
     const root = rootRef.current;
     const target = root && step ? step.find(root) : null;
+    targetRef.current = target;
     if (!target) return;
     target.scrollIntoView({ block: 'center', inline: 'nearest' });
     let raf = 0;
@@ -132,7 +151,7 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
   const width = Math.min(BUBBLE_WIDTH, vw - 32);
   const left = Math.min(vw - 16 - width, Math.max(16, rect.left + rect.width / 2 - width / 2));
   // Debajo del botón si cabe; si no, encima.
-  const below = rect.bottom + PAD + 190 < vh;
+  const below = rect.bottom + PAD + (step.art ? 345 : 190) < vh;
   const last = index === shown.length - 1;
 
   return createPortal(
@@ -143,6 +162,15 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
         className="tour-highlight"
         style={{ height: rect.height + PAD * 2, left: rect.left - PAD, top: rect.top - PAD, width: rect.width + PAD * 2 }}
       />
+      {/* Hueco por encima del bloqueo, justo sobre el botón resaltado, que le pasa el clic. */}
+      {step.clickable && (
+        <div
+          className="tour-hole"
+          data-testid="tour-hole"
+          onClick={() => (targetRef.current as HTMLElement | null)?.click()}
+          style={{ height: rect.height, left: rect.left, top: rect.top, width: rect.width }}
+        />
+      )}
       <div
         aria-label={`Tutorial: ${step.title}`}
         aria-modal="true"
@@ -152,6 +180,8 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
       >
         <h3 className="tour-title">{step.title}</h3>
         {step.lines.map((line) => <p className="tour-line" key={line}>{line}</p>)}
+        {step.art === 'keyboard-hands' && <KeyboardHandsArt />}
+        {step.after?.map((line) => <p className="tour-line" key={line}>{line}</p>)}
         <div className="tour-nav">
           <button className="tour-btn" disabled={index === 0} onClick={() => setIndex((i) => i - 1)} type="button">Atrás</button>
           {last && finish && <button className="tour-btn" onClick={onClose} type="button">Ahora no</button>}
@@ -224,6 +254,87 @@ export function InstrumentTutorial({ steps }: { steps: TourStep[] }) {
     <div className="instrument-tutorial-row" ref={rowRef}>
       <TutorialButton rootRef={rootRef} steps={steps} />
     </div>
+  );
+}
+
+// Las dos manos abiertas del emoji 👐, grandes (usuario, 2026-11-13), dibujadas en SVG como las caras de
+// los niveles (RiffIcons.tsx): el emoji de texto cambia de dibujo y tamaño según el sistema y las letras no
+// caerían sobre sus dedos. Solo llevan letra, delante del dedo, el anular, el corazón y el índice: izquierda
+// Z X C, derecha V B N (fila de abajo del teclado = cuerda 6, trastes 0-5); meñiques y pulgares, sin letra.
+// Mano izquierda dibujada; la derecha es su espejo (las letras se colocan aparte, sin reflejar).
+const HANDS_WIDTH = 280;
+// Dedos de la mano izquierda, de fuera (meñique) a dentro (índice): base, largo y giro.
+const HAND_FINGERS = [
+  { x: 24, length: 44, angle: -16 }, // meñique
+  { x: 50, length: 60, angle: -6 }, // anular
+  { x: 76, length: 66, angle: 2 }, // corazón
+  { x: 102, length: 58, angle: 10 }, // índice
+];
+const FINGER_BASE_Y = 96;
+const FINGER_WIDTH = 22;
+// Letras de la mano izquierda (anular, corazón, índice); la derecha, en espejo (índice, corazón, anular).
+const LEFT_KEYS: Array<[string, number]> = [['Z', 1], ['X', 2], ['C', 3]];
+const RIGHT_KEYS: Array<[string, number]> = [['V', 3], ['B', 2], ['N', 1]];
+
+// Punto del dedo a `along` (0 = base, 1 = punta), con su giro alrededor de la base.
+function fingerPoint(finger: number, along: number) {
+  const { x, length, angle } = HAND_FINGERS[finger];
+  const rad = (angle * Math.PI) / 180;
+  const d = length * along;
+  return { x: x + Math.sin(rad) * d, y: FINGER_BASE_Y - Math.cos(rad) * d };
+}
+
+// Contorno de una sola pieza (como el emoji): las formas se pintan dos veces, primero con un borde grueso
+// y encima solo el relleno, así no se ven las costuras entre dedos, pulgar y palma.
+function EmojiHand() {
+  return (
+    <>
+      <g className="tour-art-hand tour-art-hand-outline"><HandShapes /></g>
+      <g className="tour-art-hand"><HandShapes /></g>
+    </>
+  );
+}
+
+function HandShapes() {
+  return (
+    <>
+      {HAND_FINGERS.map(({ x, length, angle }, k) => (
+        <rect
+          height={length + FINGER_WIDTH / 2}
+          key={k}
+          rx={FINGER_WIDTH / 2}
+          transform={`rotate(${angle} ${x} ${FINGER_BASE_Y})`}
+          width={FINGER_WIDTH}
+          x={x - FINGER_WIDTH / 2}
+          y={FINGER_BASE_Y - length}
+        />
+      ))}
+      {/* Pulgar, hacia arriba y hacia el centro. */}
+      <rect height="42" rx="12" transform="rotate(38 112 122)" width="24" x="100" y="86" />
+      {/* Palma. */}
+      <path d="M12 92C10 84 16 80 24 80L108 80C118 80 122 88 120 100L114 140C112 150 104 156 92 156L40 156C26 156 18 148 16 136Z" />
+    </>
+  );
+}
+
+function KeyboardHandsArt() {
+  const letter = (key: string, finger: number, mirror: boolean) => {
+    const p = fingerPoint(finger, 0.62);
+    const x = mirror ? HANDS_WIDTH - p.x : p.x;
+    return (
+      <g data-key={key} key={key}>
+        <rect className="tour-art-key" height="24" rx="5" width="24" x={x - 12} y={p.y - 12} />
+        <text className="tour-art-letter" textAnchor="middle" x={x} y={p.y + 5.5}>{key}</text>
+      </g>
+    );
+  };
+  return (
+    <svg aria-label="Mano izquierda: Z, X y C. Mano derecha: V, B y N." className="tour-art" role="img" viewBox={`0 0 ${HANDS_WIDTH} 160`}>
+      <EmojiHand />
+      <g transform={`translate(${HANDS_WIDTH} 0) scale(-1 1)`}><EmojiHand /></g>
+      {LEFT_KEYS.map(([key, finger]) => letter(key, finger, false))}
+      {RIGHT_KEYS.map(([key, finger]) => letter(key, finger, true))}
+    </svg>
   );
 }
 
@@ -317,6 +428,11 @@ function TourStyles() {
         position: fixed;
       }
 
+      .tour-hole {
+        cursor: pointer;
+        position: fixed;
+      }
+
       .tour-highlight {
         border: 3px solid #facc15;
         border-radius: 10px;
@@ -341,6 +457,37 @@ function TourStyles() {
         font-weight: 950;
         margin: 0 0 6px;
         padding-right: 24px;
+      }
+
+      .tour-art {
+        display: block;
+        height: auto;
+        margin: 8px auto;
+        max-width: 100%;
+        width: 280px;
+      }
+
+      .tour-art-key {
+        fill: #ffffff;
+        stroke: #374151;
+        stroke-width: 1.6;
+      }
+
+      .tour-art-letter {
+        fill: #111827;
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      /* Amarillo del emoji 👐. */
+      .tour-art-hand {
+        fill: #ffcc4d;
+      }
+
+      .tour-art-hand-outline {
+        stroke: #e3a10c;
+        stroke-linejoin: round;
+        stroke-width: 4;
       }
 
       .tour-line {

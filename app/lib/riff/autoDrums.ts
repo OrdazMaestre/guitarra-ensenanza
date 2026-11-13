@@ -44,8 +44,16 @@ const DOUBLE_KICK_ACCENT = 0.5;
 // Rejilla para juntar ataques simultáneos: 24 por negra (caben exactas fusas y tresillos; con 12, una
 // fusa se redondeaba a posición de tresillo).
 const ONSET_GRID = 24;
-// Volumen: el de la batería real (0,8) por 0,7, para que acompañe sin tapar.
+// Volumen: el de la batería real (0,8) por 0,7, y encima un ajuste por ELEMENTO (usuario, 2026-11-13: al
+// silenciar la batería real y poner esta, se oía más baja; medido en 37 canciones con batería, la
+// automática iba por debajo: bombo 5,6 dB, caja 2,9 dB, plato 15,3 dB). Ningún golpe pasa del de la
+// batería real (`DRUM_HIT_MAX`), así que lo que queda (bombo 1,4 dB, plato 2,5 dB, mediana) es porque
+// da menos golpes que una batería de verdad. Con el tope, el plato que marca un cambio de escalón suena
+// como los demás (elección del usuario: volumen antes que ese acento).
 const AUTO_DRUM_GAIN = 0.8 * 0.7;
+const DRUM_HIT_MAX = 0.8;
+const ELEMENT_GAIN: Record<DrumSound, number> = { kick: 1.9, snare: 1.4, cymbal: 5.8 };
+const hitVolume = (sound: DrumSound, accent: number) => Math.min(DRUM_HIT_MAX, AUTO_DRUM_GAIN * ELEMENT_GAIN[sound] * accent);
 // Dentro de una negra (960 ticks): tresillo 320/640, semicorchea 240/720, corchea 480.
 const TICKS = 960;
 const TICK_TOLERANCE = 12;
@@ -408,7 +416,7 @@ export function autoDrums(chart: Chart): AutoDrumHit[] {
     const eighths = bar.lengthQ * 2;
     // Compás irregular (21/32...) o diminuto: solo la caja en el 1.
     if (Math.abs(eighths - Math.round(eighths)) > 0.02 || eighths < 2.98) {
-      hits.push({ t: bar.t, sound: 'snare', volume: AUTO_DRUM_GAIN });
+      hits.push({ t: bar.t, sound: 'snare', volume: hitVolume('snare', 1) });
       return;
     }
     const barList = barHits(rhythm, steps[i], bar);
@@ -418,7 +426,7 @@ export function autoDrums(chart: Chart): AutoDrumHit[] {
       if (first) first.accent = CHANGE_CYMBAL_ACCENT;
       else barList.push({ q: 0, sound: 'cymbal', accent: CHANGE_CYMBAL_ACCENT });
     }
-    for (const { q, sound, accent } of barList) hits.push({ t: clock.t(bar.q0 + q), sound, volume: AUTO_DRUM_GAIN * accent });
+    for (const { q, sound, accent } of barList) hits.push({ t: clock.t(bar.q0 + q), sound, volume: hitVolume(sound, accent) });
   });
   return hits.sort((a, b) => a.t - b.t);
 }

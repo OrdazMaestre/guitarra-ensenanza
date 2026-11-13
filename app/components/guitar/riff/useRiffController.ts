@@ -8,6 +8,7 @@ import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
 import { lockGameScreen, releaseGameScreen, unlockGameOrientation } from '@/app/lib/orientationLock';
+import { keepScreenOn } from '@/app/lib/screenWakeLock';
 import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
@@ -129,6 +130,11 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     else if (game.status === 'idle' || game.status === 'finished') releaseGameScreen();
   }, [game.status]);
   useEffect(() => releaseGameScreen, []);
+  // Pantalla encendida mientras se juega (screenWakeLock.ts); en pausa, al terminar y al salir, se suelta.
+  useEffect(() => {
+    keepScreenOn(playing);
+  }, [playing]);
+  useEffect(() => () => keepScreenOn(false), []);
   // Tras la primera partida, "Empezar" pasa a llamarse "Volver a empezar".
   const [hasStarted, setHasStarted] = useState(false);
   // Cambiar la DIFICULTAD (o la canción) anula la partida: ya solo se puede volver a empezar. El

@@ -86,12 +86,15 @@ test('escalones: suben con cada riff nuevo; el que vuelve recupera el suyo', () 
   expect([...long(8).changes]).toEqual([]);
 });
 
-test('escalones: dos riffs distintos seguidos nunca llevan la misma batería, y se oye un plato fuerte', () => {
+// Desde el 2026-11-13 (usuario: que suene tan fuerte como la batería de las tablaturas) ningún golpe pasa
+// de 0,8, el de la batería real, y el plato de cambio ya no destaca: lo que queda es que esté.
+test('escalones: dos riffs distintos seguidos nunca llevan la misma batería, y el cambio lleva plato', () => {
   const chart = riffs(150, [[EIGHTHS, 4], [OFFBEATS, 4], [EIGHTHS, 4], [OFFBEATS, 4], [OTHER, 4]]);
   const { steps } = autoDrumSteps(chart);
   for (const bar of [4, 8, 12, 16]) expect(steps[bar]).not.toBe(steps[bar - 1]);
-  const strong = autoDrums(chart).filter((hit) => hit.sound === 'cymbal' && hit.volume > 0.5).map((hit) => hit.t);
-  expect(strong).toEqual([4, 8, 12, 16].map((bar) => chart.bars[bar].t));
+  const hits = autoDrums(chart);
+  for (const bar of [4, 8, 12, 16]) expect(hits.some((hit) => hit.sound === 'cymbal' && Math.abs(hit.t - chart.bars[bar].t) < 1e-6), `compás ${bar}`).toBe(true);
+  expect(Math.max(...hits.map((hit) => hit.volume))).toBeLessThanOrEqual(0.8);
   expect(autoDrums(chart)).toEqual(autoDrums(chart));
 });
 
@@ -309,4 +312,19 @@ test('canciones reales sin batería: un ritmo razonable', () => {
     for (const rhythm of used) expect(allowed).toContain(rhythm);
     expect(autoDrums(chart).length).toBeGreaterThan(0);
   }
+});
+
+// Bombo +40 % en las dos baterías del juego (usuario, 2026-11-13), igual en la real y en la automática.
+test('bombo +40 % en la batería real y en la automática', async () => {
+  const { KICK_BOOST } = await import('../app/lib/riff/session');
+  expect(KICK_BOOST).toBe(1.4);
+  const chart = fourBars(110);
+  const real: Chart = { ...chart, drums: [{ t: chart.bars[0].t, sound: 'kick' }, { t: chart.bars[0].t + 0.25, sound: 'snare' }] };
+  const vols = (click: 'auto' | 'nada') => new RiffSession(real, { speed: 1, mode: 'ritmo', loop: false, fromBar: 1, toBar: 4 }, 0, { click, muted: [] })
+    .takeClicks(0, 60).slice(4);
+  const realHits = vols('nada');
+  expect(realHits.find((c) => c.sound === 'kick')!.volume).toBeCloseTo(0.8 * 1.4);
+  expect(realHits.find((c) => c.sound === 'snare')!.volume).toBeCloseTo(0.8);
+  const autoKick = Math.max(...vols('auto').filter((c) => c.sound === 'kick').map((c) => c.volume));
+  expect(autoKick).toBeCloseTo(0.8 * 1.4);
 });

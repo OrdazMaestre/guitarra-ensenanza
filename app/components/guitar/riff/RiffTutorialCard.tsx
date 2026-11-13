@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { isTouchOnly } from '@/app/lib/localSongs';
+import { SLIDE_STEP_MS, slideFrame, TAP_VARIANTS, type TapVariant } from './tutorialKeyFrames';
 import { RIFF_TUTORIAL, RIFF_TUTORIAL_END, type TutorialAnimation } from './riffTutorial';
 import type { RiffController } from './useRiffController';
 
@@ -47,58 +49,118 @@ export function RiffTutorialCard({ riff }: { riff: RiffController }) {
   );
 }
 
-// --- Animaciones (petición del usuario).
-// Cada "dedo" es un cursor de ratón o una mano (pantalla táctil). Tapping: dos, a izquierda y
-// derecha; cambian de aspecto al azar, pero NUNCA hay dos cursores a la vez (con un ratón solo se
-// puede pulsar un sitio): cursor+mano, mano+cursor o mano+mano. El de la izquierda (la nota
-// grave) MANTIENE el clic; el de la derecha pulsa una y otra vez. Slide: uno solo, que alterna cursor/mano en cada pasada
-// y va de izquierda a derecha y vuelve, siempre manteniendo el clic.
+// --- Animaciones (petición del usuario), SEGÚN EL DISPOSITIVO (2026-11-13; por capacidad, `isTouchOnly`):
+// - Pantalla táctil: solo dedos (mano). Mantener: un dedo quieto; tapear: dos manos, la izquierda (la nota
+//   grave) mantiene y la derecha pulsa una y otra vez; deslizar: una mano que va y vuelve sin soltar.
+// - PC: el teclado, con las letras Z X C V B N sobre sus trastes (0-5 de la cuerda 6, como FRETBOARD_KEYMAP)
+//   y la tecla pulsada iluminada. Mantener: Z mantenida; tapear, alternando y SIEMPRE empezando por las dos
+//   teclas: doble teclado Z <-> N, o Z mantenida + clic del ratón en el traste 5; deslizar: N V X Z y vuelta
+//   con las teclas (normal y luego con las graves mantenidas = pull-off/hammer-on) y después el cursor
+//   (tutorialKeyFrames.ts). Ya no se mezclan dedo y cursor: no se puede.
+// Casillas del trozo de mástil: el aire (antes de la cejuela) y los trastes 1-5.
 
 type Pointer = 'cursor' | 'hand';
-const TAPPING_FORMS: Array<[Pointer, Pointer]> = [['cursor', 'hand'], ['hand', 'cursor'], ['hand', 'hand']];
+const CELL_X = [26, 66, 106, 146, 186, 220];
+const KEY_LETTERS = ['Z', 'X', 'C', 'V', 'B', 'N'];
 
 function TutorialAnimationView({ kind }: { kind: TutorialAnimation }) {
+  const touch = isTouchOnly();
   return (
-    <svg aria-hidden="true" className="riff-tutorial-anim" data-animation={kind} viewBox="0 0 240 84">
+    <svg aria-hidden="true" className="riff-tutorial-anim" data-animation={kind} data-device={touch ? 'touch' : 'pc'} viewBox="0 0 240 84">
       {/* Un trozo de mástil: madera, trastes y una cuerda. */}
       <rect fill="#f5e6c8" height="44" rx="6" stroke="#d6b98a" width="228" x="6" y="18" />
       {[46, 86, 126, 166, 206].map((x) => <path d={`M${x} 18V62`} key={x} stroke="#9ca3af" strokeWidth="2.5" />)}
       <path d="M6 40H234" stroke="#6b7280" strokeWidth="2.5" />
-      {kind === 'tapping' ? <TappingPointers /> : <SlidePointer />}
+      {kind === 'hold' ? <HoldAnim touch={touch} /> : kind === 'tapping' ? <TappingAnim touch={touch} /> : <SlideAnim touch={touch} />}
     </svg>
   );
 }
 
-function TappingPointers() {
-  const [form, setForm] = useState(0);
-  useEffect(() => {
-    // Al azar, pero siempre distinto del anterior para que se note el cambio.
-    const id = window.setInterval(() => {
-      setForm((current) => (current + 1 + Math.floor(Math.random() * (TAPPING_FORMS.length - 1))) % TAPPING_FORMS.length);
-    }, 1400);
-    return () => window.clearInterval(id);
-  }, []);
-  const [left, right] = TAPPING_FORMS[form];
+// Letras del teclado sobre sus trastes; `lit` = mantenidas, `blink` = pulsadas una y otra vez.
+function KeyLetters({ blink = [], lit = [] }: { blink?: number[]; lit?: number[] }) {
+  return (
+    <g className="riff-anim-keys">
+      {KEY_LETTERS.map((letter, k) => {
+        const state = lit.includes(k) ? 'lit' : blink.includes(k) ? 'blink' : 'off';
+        return (
+          <g data-key={letter} data-state={state} key={letter}>
+            <rect className={`riff-anim-key riff-anim-key-${state}`} height="14" rx="3" width="14" x={CELL_X[k] - 7} y="64" />
+            <text className="riff-anim-key-letter" textAnchor="middle" x={CELL_X[k]} y="74.5">{letter}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function HoldAnim({ touch }: { touch: boolean }) {
   return (
     <>
-      {/* Izquierda: la nota grave, pulsación mantenida (círculo fijo), como en el mástil. */}
-      <circle className="riff-anim-held" cx="66" cy="40" r="10" />
-      <g transform="translate(66 40)"><PointerGlyph kind={left} /></g>
-      {/* Derecha: pulsa una y otra vez (onda en cada toque). */}
-      <circle className="riff-anim-ripple" cx="186" cy="40" r="10" />
-      <g transform="translate(186 40)">
-        <g className="riff-anim-tap"><PointerGlyph kind={right} /></g>
-      </g>
+      <circle className="riff-anim-held" cx={CELL_X[0]} cy="40" r="10" />
+      {touch ? <g transform={`translate(${CELL_X[0]} 40)`}><PointerGlyph kind="hand" /></g> : <KeyLetters lit={[0]} />}
     </>
   );
 }
 
-function SlidePointer() {
-  const [form, setForm] = useState<Pointer>('cursor');
+function TappingAnim({ touch }: { touch: boolean }) {
+  const [turn, setTurn] = useState(0);
+  const variant: TapVariant = TAP_VARIANTS[turn % TAP_VARIANTS.length];
+  useEffect(() => {
+    if (touch) return;
+    const id = window.setInterval(() => setTurn((t) => t + 1), 2800);
+    return () => window.clearInterval(id);
+  }, [touch]);
+  const right = CELL_X[5];
   return (
-    <g className="riff-anim-slide" onAnimationIteration={() => setForm((f) => (f === 'cursor' ? 'hand' : 'cursor'))}>
-      <circle className="riff-anim-held" cx="0" cy="40" r="10" />
-      <g transform="translate(0 40)"><PointerGlyph kind={form} /></g>
+    <g data-variant={touch ? 'hands' : variant}>
+      {/* Izquierda: la nota grave, pulsación mantenida (círculo fijo), como en el mástil. */}
+      <circle className="riff-anim-held" cx={CELL_X[0]} cy="40" r="10" />
+      {/* Derecha: pulsa una y otra vez (onda en cada toque). */}
+      <circle className="riff-anim-ripple" cx={right} cy="40" r="10" />
+      {touch ? (
+        <>
+          <g transform={`translate(${CELL_X[0]} 40)`}><PointerGlyph kind="hand" /></g>
+          <g transform={`translate(${right} 40)`}><g className="riff-anim-tap"><PointerGlyph kind="hand" /></g></g>
+        </>
+      ) : variant === 'mouse' ? (
+        <>
+          <KeyLetters lit={[0]} />
+          <g transform={`translate(${right} 40)`}><g className="riff-anim-tap"><PointerGlyph kind="cursor" /></g></g>
+        </>
+      ) : (
+        <KeyLetters blink={[5]} lit={[0]} />
+      )}
+    </g>
+  );
+}
+
+function SlideAnim({ touch }: { touch: boolean }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (touch) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), SLIDE_STEP_MS);
+    return () => window.clearInterval(id);
+  }, [touch]);
+  const frame = touch ? null : slideFrame(tick);
+  if (frame && frame.variant !== 'cursor') {
+    // Teclas: la que suena, con su círculo; las graves mantenidas (legato), con un círculo tenue.
+    return (
+      <g data-variant={frame.variant}>
+        {frame.held.filter((key) => key !== frame.sounding).map((key) => (
+          <circle className="riff-anim-held-low" cx={CELL_X[key]} cy="40" key={key} r="8" />
+        ))}
+        {frame.sounding !== null && <circle className="riff-anim-held" cx={CELL_X[frame.sounding]} cy="40" r="10" />}
+        <KeyLetters lit={frame.held} />
+      </g>
+    );
+  }
+  return (
+    <g data-variant={touch ? 'hand' : 'cursor'}>
+      {!touch && <KeyLetters />}
+      <g className="riff-anim-slide">
+        <circle className="riff-anim-held" cx="0" cy="40" r="10" />
+        <g transform="translate(0 40)"><PointerGlyph kind={touch ? 'hand' : 'cursor'} /></g>
+      </g>
     </g>
   );
 }
@@ -205,6 +267,13 @@ function TutorialCardStyles() {
         stroke-width: 2;
       }
 
+      .riff-anim-held-low {
+        fill: rgba(4, 120, 87, 0.15);
+        stroke: #047857;
+        stroke-dasharray: 3 2;
+        stroke-width: 1.5;
+      }
+
       .riff-anim-ripple {
         animation: riff-anim-ripple 0.7s ease-out infinite;
         fill: none;
@@ -221,6 +290,35 @@ function TutorialCardStyles() {
       /* Ida y vuelta (alternate): cada pasada va al lado contrario arrastrando, sin saltar atrás. */
       .riff-anim-slide {
         animation: riff-anim-slide 2.4s ease-in-out infinite alternate;
+      }
+
+      .riff-anim-key {
+        fill: #ffffff;
+        stroke: #9ca3af;
+        stroke-width: 1.2;
+      }
+
+      .riff-anim-key-lit {
+        fill: #fbbf24;
+        stroke: #b45309;
+      }
+
+      .riff-anim-key-blink {
+        animation: riff-anim-key-blink 0.7s ease-in-out infinite;
+        stroke: #b45309;
+      }
+
+      .riff-anim-key-letter {
+        fill: #1f2937;
+        font-size: 9.5px;
+        font-weight: 900;
+        pointer-events: none;
+      }
+
+      /* La tecla se ilumina justo cuando "pulsa" (a la vez que la onda de riff-anim-ripple). */
+      @keyframes riff-anim-key-blink {
+        0%, 40%, 100% { fill: #ffffff; }
+        45%, 65% { fill: #fbbf24; }
       }
 
       @keyframes riff-anim-tap {
@@ -242,7 +340,8 @@ function TutorialCardStyles() {
 
       @media (prefers-reduced-motion: reduce) {
         .riff-anim-tap,
-        .riff-anim-ripple {
+        .riff-anim-ripple,
+        .riff-anim-key-blink {
           animation: none;
         }
         .riff-anim-slide {

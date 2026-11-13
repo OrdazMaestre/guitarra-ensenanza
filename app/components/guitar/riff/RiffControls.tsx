@@ -8,7 +8,7 @@ import { trackRole } from '@/app/lib/riff/roles';
 import { BassIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, SpeakerIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
-import { LocalSongSearch } from '../LocalSongSearch';
+import { DeleteSongButton, LocalSongSearch } from '../LocalSongSearch';
 import { isTouchOnly } from '@/app/lib/localSongs';
 
 // Panel del juego tipo Rocksmith que se despliega desde el botón "JUGAR" de la barra de controles
@@ -77,6 +77,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
     riff.start();
     onStart?.();
   }
+
+  // "Continuar" (usuario, 2026-11-13): solo se ve si se puede continuar. Si ya estaba a la vista y deja de
+  // poder usarse (cambiar la dificultad en pausa), se queda apagado en vez de desaparecer de golpe. El panel
+  // se desmonta mientras se juega, así que esto vuelve a empezar en cada pausa o final.
+  const [continueShown, setContinueShown] = useState(false);
+  if (riff.canContinue && !continueShown) setContinueShown(true);
 
   function continueGame() {
     setOpenMenu(null);
@@ -147,13 +153,20 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
                 {songs.map((entry) => {
                   const lacks = [entry.noGuitar ? 'sin guitarra' : '', entry.noDrums ? 'sin batería' : ''].filter(Boolean).join(', ');
                   const name = [entry.title, entry.difficulty ? `(canción ${DIFFICULTY_LABEL[entry.difficulty]})` : '', lacks ? `(${lacks})` : ''].filter(Boolean).join(' ');
-                  return (
+                  const row = (
                     <button aria-pressed={song?.id === entry.id} className="riff-chip" data-difficulty={entry.difficulty} key={entry.id} onClick={() => pick(() => onSong?.(entry.id))} title={name} type="button">
                       <SongDifficultyIcon difficulty={entry.difficulty} pending={<DiscIcon />} />
                       <span className="riff-song-title">{entry.title}</span>
                       <SongLacksIcons noDrums={entry.noDrums} noGuitar={entry.noGuitar} />
                     </button>
                   );
+                  // Las del dispositivo llevan su papelera (las de la web, no).
+                  return entry.local ? (
+                    <div className="riff-song-row" key={entry.id}>
+                      {row}
+                      <DeleteSongButton id={entry.id} title={entry.title} variant="light" />
+                    </div>
+                  ) : row;
                 })}
                 <SongDifficultyLegend className="riff-song-legend" />
               </div>
@@ -252,7 +265,7 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
           {riff.hasStarted ? 'Volver a empezar' : 'Empezar'}
         </button>
         {/* Continuar: retoma la partida en pausa un compás antes, con cuenta de entrada. */}
-        {!riff.concert && <button className="riff-action riff-action-stop" disabled={!riff.canContinue} onClick={continueGame} type="button">Continuar</button>}
+        {!riff.concert && (riff.canContinue || continueShown) && <button className="riff-action riff-action-stop" disabled={!riff.canContinue} onClick={continueGame} type="button">Continuar</button>}
         {/* Tutorial del panel: antes, vuelve a la configuración de base (petición del usuario). */}
         {!riff.concert && (
           <TutorialButton
@@ -718,6 +731,18 @@ export function RiffStyles() {
         max-height: min(55vh, 380px);
         overflow-y: auto;
         overscroll-behavior: contain;
+      }
+
+      .riff-song-row {
+        align-items: center;
+        display: flex;
+        gap: 4px;
+        min-width: 0;
+      }
+
+      .riff-song-row > .riff-chip {
+        flex: 1;
+        min-width: 0;
       }
 
       .riff-song-list {

@@ -144,6 +144,13 @@ export function stretchesLane(level: RiffLevel) {
 // carril: con el factor (0,75 / speed) a secas, a 100 % ocupaba lo mismo que a 75 % (compases iguales,
 // el usuario no veía diferencia); al CUADRADO, a 100 % ocupa 4/3 (1,8 s reales en pantalla, caída
 // ×1,78). Hasta 75 %, igual que siempre.
-export function laneLookaheadSeconds(base: number, speed: number, stretch: boolean) {
-  return stretch && speed > STRETCH_LANE_SPEED ? base * (STRETCH_LANE_SPEED / speed) ** 2 : base;
+export function laneLookaheadSeconds(base: number, speed: number, stretch: boolean, laneSpeed = 1) {
+  return (stretch && speed > STRETCH_LANE_SPEED ? base * (STRETCH_LANE_SPEED / speed) ** 2 : base) / laneSpeed;
+}
+
+// Carril MÁS RÁPIDO (notas más separadas) en los niveles de varias cuerdas: un 25 % más a cualquier
+// velocidad, encima del estiramiento (usuario, 2026-11-13). Modo trastes, igual que siempre.
+export const MULTI_STRING_LANE_SPEED = 1.25;
+export function laneSpeedFactor(level: RiffLevel) {
+  return level === 'experto' || RIFF_LEVELS[level].strings.length > 1 ? MULTI_STRING_LANE_SPEED : 1;
 }

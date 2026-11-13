@@ -11,6 +11,7 @@ interface GuitarToneHelpers {
   bandShareDb(x: Float32Array, sr: number, lo?: number, hi?: number): number;
   kWeighting(sr: number): { shelf: number[]; rlb: number[] };
   guitarSampleTrim(file: string, midi: number): number;
+  overdriveRegisterTrim(midi: number): number;
   createCleanToneChain(ctx: BaseAudioContext, destination: AudioNode): { input: GainNode };
   createOverdriveChain(ctx: BaseAudioContext, destination: AudioNode): { input: GainNode; output: GainNode };
   renderNotes(midis: number[], tone: GuitarToneMode, opts?: { volume?: number; duration?: number }): Promise<Float32Array>;

@@ -91,3 +91,27 @@ test('abrir otra canción BORRA la anterior de la memoria; una que no vale no to
     URL.revokeObjectURL = original;
   }
 });
+
+// Borrar canciones del dispositivo (usuario, 2026-11-13): sale de la lista, se recuerda por nombre y, si una
+// búsqueda la vuelve a encontrar, no entra sin preguntar: UNA pregunta por búsqueda.
+test('borrar una canción: sale de la lista y, si se vuelve a encontrar, se pregunta', async () => {
+  const { removeLocalSong, answerDeletedFound } = await import('../app/lib/localSongs');
+  await addLocalFiles([{ file: gp(), path: 'black-gilmur.gp' }]);
+  const id = getLocalSongs().songs[0].id;
+  await removeLocalSong(id);
+  expect(getLocalSongs().songs).toHaveLength(0);
+  // Otra copia del mismo archivo (otra fecha, como al volver a descargarlo): no entra, se pregunta.
+  const again = () => new File([fs.readFileSync('public/tabs/black-gilmur.gp')], 'black-gilmur.gp', { lastModified: 2 });
+  expect(await addLocalFiles([{ file: again(), path: 'black-gilmur.gp' }])).toBe(0);
+  expect(getLocalSongs().deletedFound).toEqual(['black-gilmur']);
+  // "No": sigue fuera, también en la próxima búsqueda.
+  await answerDeletedFound(false);
+  expect(getLocalSongs().deletedFound).toBeNull();
+  expect(getLocalSongs().songs).toHaveLength(0);
+  expect(await addLocalFiles([{ file: again(), path: 'black-gilmur.gp' }])).toBe(0);
+  expect(getLocalSongs().deletedFound).toEqual(['black-gilmur']);
+  // "Sí": entra y deja de contar como borrada.
+  await answerDeletedFound(true);
+  expect(getLocalSongs().songs.map((song) => song.title)).toEqual(['black-gilmur']);
+  expect(getLocalSongs().deletedFound).toBeNull();
+});

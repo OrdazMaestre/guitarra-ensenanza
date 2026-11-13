@@ -19,6 +19,9 @@ export const LOCAL_SONG_ACCEPT = PLAYABLE_EXTENSIONS.join(',');
 export const MAX_LOCAL_SONG_BYTES = 5 * 1024 * 1024;
 // Carita y batería o guitarra tachadas ya medidas (songDifficulty.ts).
 export const SONG_TRAITS_STORAGE_KEY = 'riff-rasgos-canciones-v1';
+// Nombres de archivo de las canciones que el usuario BORRÓ de la lista (usuario, 2026-11-13): si una
+// búsqueda las vuelve a encontrar, se pregunta antes de añadirlas otra vez.
+export const DELETED_SONGS_STORAGE_KEY = 'riff-canciones-borradas-v1';
 // Tope de todas las copias guardadas juntas.
 export const MAX_SAVED_BYTES = 200 * 1024 * 1024;
 // Límites del recorrido de una carpeta (una carpeta enorme no debe colgar la página).
@@ -47,6 +50,9 @@ export interface LocalSongsState {
   folderScanned: boolean;
   // Alguna canción no cupo en lo guardado: sirve en esta visita, pero se olvidará.
   savedFull: boolean;
+  // La última búsqueda encontró canciones que el usuario había borrado: sus títulos, a la espera de
+  // la pregunta "¿Volver a añadirlas?" (`answerDeletedFound`). null si no hay pregunta.
+  deletedFound: string[] | null;
 }
 
 function extensionOf(name: string) {
@@ -98,7 +104,7 @@ export function localSearchMode(): LocalSearchMode {
   return 'files';
 }
 
-const emptyState = (): LocalSongsState => ({ songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false, savedFull: false });
+const emptyState = (): LocalSongsState => ({ songs: [], scanning: false, lastFound: null, rememberedFolder: null, folderScanned: false, savedFull: false, deletedFound: null });
 let state = emptyState();
 const listeners = new Set<() => void>();
 
@@ -129,18 +135,53 @@ function withSongs(added: LocalSong[]) {
   return withDistinctTitles([...state.songs, ...added]).sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));
 }
 
+// Canciones borradas por el usuario (por nombre de archivo): en el navegador, en `localStorage`; sin
+// él (Node, modo privado), solo en memoria.
+let deletedNames: Set<string> | null = null;
+function deletedSet(): Set<string> {
+  if (deletedNames) return deletedNames;
+  deletedNames = new Set();
+  try {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(DELETED_SONGS_STORAGE_KEY) : null;
+    if (stored) deletedNames = new Set(JSON.parse(stored) as string[]);
+  } catch {
+    // Datos rotos o sin almacenamiento: empieza vacía.
+  }
+  return deletedNames;
+}
+function saveDeleted() {
+  try {
+    if (typeof window !== 'undefined') window.localStorage.setItem(DELETED_SONGS_STORAGE_KEY, JSON.stringify([...deletedSet()]));
+  } catch {
+    // Sin sitio: vale para esta visita.
+  }
+}
+// Las borradas que encontró la última búsqueda, a la espera de la respuesta.
+let pendingRestore: Array<{ file: File; path: string }> = [];
+
 // Añade a la lista los archivos válidos de `files` (con su ruta relativa). Devuelve cuántos nuevos.
+// Las que el usuario había borrado no entran: se guardan para UNA pregunta por búsqueda.
 export async function addLocalFiles(files: Array<{ file: File; path: string }>): Promise<number> {
   await restoreSavedSongs();
   const known = new Set(state.songs.map((song) => keyOf(song.file)));
   const added: LocalSong[] = [];
+  const deleted = deletedSet();
+  const found: Array<{ file: File; path: string }> = [];
   for (const { file, path } of files) {
     if (!isPlayableName(file.name) || file.size > MAX_LOCAL_SONG_BYTES || file.size === 0) continue;
     const key = keyOf(file);
     if (known.has(key)) continue;
     if (extensionOf(file.name) === '.xml' && !looksLikeScoreXml(await file.slice(0, 2048).text())) continue;
     known.add(key);
+    if (deleted.has(file.name)) {
+      found.push({ file, path });
+      continue;
+    }
     added.push({ id: `local:${key}`, title: songTitle(file.name), path, file });
+  }
+  if (found.length > 0) {
+    pendingRestore = found;
+    setState({ deletedFound: found.map(({ file }) => songTitle(file.name)) });
   }
   if (added.length > 0) {
     setState({ songs: withSongs(added) });
@@ -310,6 +351,38 @@ export function restoreSavedSongs(): Promise<void> {
   return restoring;
 }
 
+// Quita una canción del dispositivo de la lista y su copia guardada, y recuerda que se borró. El
+// archivo original del usuario no se toca. (La carita medida la olvida songDifficulty.ts.)
+export async function removeLocalSong(id: string) {
+  const song = state.songs.find((entry) => entry.id === id);
+  if (!song) return;
+  setState({ songs: state.songs.filter((entry) => entry.id !== id) });
+  deletedSet().add(song.file.name);
+  saveDeleted();
+  if (typeof indexedDB === 'undefined') return;
+  try {
+    const db = await openDb();
+    await writeTo(db, [SONGS_STORE], (tx) => tx.objectStore(SONGS_STORE).delete(keyOf(song.file)));
+    db.close();
+    savedBytes = Math.max(0, savedBytes - song.file.size);
+  } catch {
+    // Si no se pudo borrar la copia, al menos ya no está en la lista de esta visita.
+  }
+}
+
+// Respuesta a "Ya borraste: … ¿Volver a añadirlas?". Sí: entran y dejan de contar como borradas.
+// No: siguen fuera, también en las próximas búsquedas.
+export async function answerDeletedFound(restore: boolean) {
+  const files = pendingRestore;
+  pendingRestore = [];
+  setState({ deletedFound: null });
+  if (!restore || files.length === 0) return;
+  for (const { file } of files) deletedSet().delete(file.name);
+  saveDeleted();
+  const added = await addLocalFiles(files);
+  setState({ lastFound: (state.lastFound ?? 0) + added });
+}
+
 // Olvida las copias y la carpeta. Los archivos originales del usuario no se tocan.
 export async function clearSavedSongs() {
   if (typeof indexedDB !== 'undefined') {
@@ -322,11 +395,14 @@ export async function clearSavedSongs() {
   }
   try {
     window.localStorage.removeItem(SONG_TRAITS_STORAGE_KEY);
+    window.localStorage.removeItem(DELETED_SONGS_STORAGE_KEY);
   } catch {
     // Sin almacenamiento: no había nada.
   }
   savedBytes = 0;
   rememberedHandle = null;
+  deletedNames = new Set();
+  pendingRestore = [];
   setState(emptyState());
 }
 
@@ -403,6 +479,8 @@ export function createLocalOpener(onRelease?: (url: string) => void) {
 // Solo para tests: vuelve al estado inicial.
 export function resetLocalSongsForTests() {
   state = emptyState();
+  deletedNames = null;
+  pendingRestore = [];
   rememberedHandle = null;
   autoScanned = false;
   savedBytes = 0;

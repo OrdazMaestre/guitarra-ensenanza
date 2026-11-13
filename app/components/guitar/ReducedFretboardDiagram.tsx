@@ -22,7 +22,8 @@ const NO_SONGS: SongEntry[] = [];
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
-import { stretchesLane } from '@/app/lib/riff/levels';
+import { laneSpeedFactor, stretchesLane } from '@/app/lib/riff/levels';
+import { RIFF_TUTORIAL } from './riff/riffTutorial';
 import { COUNTDOWN_PHRASES, EXPERTO_PHRASES } from '@/app/lib/riff/phrases';
 import { isTouchOnly } from '@/app/lib/localSongs';
 import { setGameInProgress } from '@/app/lib/gameInProgress';
@@ -36,6 +37,8 @@ const OPEN_STRING_MIDI: Record<number, number> = {
   // Cuerdas graves de los instrumentos de más de 6 (Experto, ver `gameStrings` en chart.ts).
   7: 35, 8: 30, 9: 25,
 };
+
+const TUTORIAL_LANE_SPEEDS = RIFF_TUTORIAL.map((part) => part.laneSpeed);
 
 type MarkPos = { string: number; fret: number };
 
@@ -1208,6 +1211,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         sessionRef={riff.game.sessionRef}
         stageRef={stageRef}
         stretch={stretchesLane(riff.level) && !riff.tutorialOn}
+        laneSpeed={riff.tutorialOn ? 1 : laneSpeedFactor(riff.level)}
+        sectionLaneSpeeds={riff.tutorialOn ? TUTORIAL_LANE_SPEEDS : undefined}
       />
     )}
     {riffGame && gameOpen && settingsOpen && (

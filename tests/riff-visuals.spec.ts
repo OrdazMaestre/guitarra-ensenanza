@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { laneLookaheadSeconds, stretchesLane } from '../app/lib/riff/levels';
+import { laneLookaheadSeconds, laneSpeedFactor, stretchesLane } from '../app/lib/riff/levels';
+import { RIFF_TUTORIAL } from '../app/components/guitar/riff/riffTutorial';
 import type { ChartNote } from '../app/lib/riff/chart';
 import { RIFF_STRING_COLORS, stringFretColor } from '../app/lib/riff/colors';
 import { barsAheadSeconds, FADE_IN_SECONDS, FADE_OUT_SECONDS, mirroredFadeInSeconds, notesOnString, STRING_MIN_ALPHA, stringAlpha, usageLevel, ZONE_LOOKAHEAD_BARS } from '../app/lib/riff/visuals';
@@ -152,4 +153,34 @@ test('frases: una por nivel en la cuenta atrás; en Experto, al azar y sin repet
   for (let t = 0.6; t < 3 * PHRASE_PERIOD_SECONDS; t += 0.5) expect(ambientPhrase(EXPERTO_PHRASES, t, 42)).not.toBeNull();
   expect(ambientPhrase(EXPERTO_PHRASES, 0.3, 42)!.alpha).toBeCloseTo(0.5, 5);
   expect(ambientPhrase(EXPERTO_PHRASES, PHRASE_PERIOD_SECONDS - 0.3, 42)!.alpha).toBeCloseTo(0.5, 5);
+});
+
+// Velocidad del carril (usuario, 2026-11-13): un 25 % más en los niveles de varias cuerdas (modo trastes
+// igual) y, en la partida tutorial, un 15 % más en cada paso de mecánicas: 100 %, 115 %, 132 %.
+test('velocidad del carril: varias cuerdas +25 %, tutorial +15 % por paso', () => {
+  for (const level of ['practica', 'facil', 'medio', 'avanzado'] as const) expect(laneSpeedFactor(level), level).toBe(1);
+  for (const level of ['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'hibrido', 'experto'] as const) expect(laneSpeedFactor(level), level).toBe(1.25);
+  expect(laneLookaheadSeconds(3.8, 0.5, true, 1.25)).toBeCloseTo(3.04);
+  expect(laneLookaheadSeconds(3.8, 1, true, 1.25)).toBeCloseTo(3.8 * 0.5625 / 1.25);
+  expect(RIFF_TUTORIAL.map((part) => part.laneSpeed)).toEqual([1, 1.15, 1.15 ** 2]);
+});
+
+// Tutorial en PC (usuario, 2026-11-13): tapear empieza por las dos teclas; deslizar, N V X Z y vuelta con
+// las teclas (normal y luego con las graves mantenidas) y después el cursor.
+test('tutorial en PC: fotogramas de teclado de tapear y deslizar', async () => {
+  const { slideFrame, SLIDE_CYCLE_STEPS, TAP_VARIANTS } = await import('../app/components/guitar/riff/tutorialKeyFrames');
+  expect(TAP_VARIANTS[0]).toBe('keys');
+  const frames = Array.from({ length: SLIDE_CYCLE_STEPS }, (_, tick) => slideFrame(tick));
+  const slide = frames.filter((f) => f.variant === 'keys-slide');
+  const legato = frames.filter((f) => f.variant === 'keys-legato');
+  // Recorrido N(5) V(3) X(1) Z(0) y vuelta, una tecla cada vez.
+  expect(slide.map((f) => f.sounding)).toEqual([5, 3, 1, 0, 1, 3, 5]);
+  expect(slide.every((f) => f.held.length === 1 && f.held[0] === f.sounding)).toBe(true);
+  // Con las graves mantenidas: bajar suelta las agudas (pull-off), subir las vuelve a pulsar (hammer-on).
+  expect(legato.map((f) => f.held)).toEqual([[0, 1, 3, 5], [0, 1, 3], [0, 1], [0], [0, 1], [0, 1, 3], [0, 1, 3, 5]]);
+  expect(legato.every((f) => f.sounding === Math.max(...f.held))).toBe(true);
+  // El orden: teclas, teclas con graves, cursor; y vuelve a empezar.
+  expect(frames[0].variant).toBe('keys-slide');
+  expect(frames[SLIDE_CYCLE_STEPS - 1].variant).toBe('cursor');
+  expect(slideFrame(SLIDE_CYCLE_STEPS).variant).toBe('keys-slide');
 });

@@ -77,7 +77,7 @@ test('tab player: overdrive about as loud as clean (LUFS)', async ({ page }) => 
         const od = G.createOverdriveChain(ctx, busIn);
         od.output.gain.value = VOLUME * 1.25; // TAB_OVERDRIVE_OUTPUT_TRIM
         dest = od.input;
-        voiceLevel = (level / VOLUME) * (0.52 / 0.58);
+        voiceLevel = (level / VOLUME) * (0.52 / 0.58) * G.overdriveRegisterTrim(midi);
       }
       const src = ctx.createBufferSource();
       src.buffer = buffer;

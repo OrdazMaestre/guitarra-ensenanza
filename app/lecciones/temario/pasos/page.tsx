@@ -9,6 +9,7 @@ import {
   SECONDARY_SOURCE_SLUG,
 } from '../temarioTree';
 import ConceptLinks from './ConceptLinks';
+import CoverBackdrop from '../CoverBackdrop';
 
 // Árbol del temario (datos en temarioTree.ts): tarjetas redondeadas, tronco con
 // puntos, ramas con codos curvos y flechas de esquinas suaves (ConceptLinks.tsx).
@@ -58,6 +59,8 @@ function MapExample() {
 export default function PasosPage() {
   return (
     <main className="cn-page">
+      <CoverBackdrop className="cn-backdrop" />
+
       <header className="cn-hero">
         <h1 className="cn-title">Temario</h1>
         <p className="cn-note">(Esta web está pendiente de ser ampliada)</p>
@@ -146,15 +149,31 @@ export default function PasosPage() {
           --cn-node-width: 760px;
           --cn-card-width: 600px;
           --cn-branch-width: 400px;
+          --cn-pad-top: clamp(76px, 9vw, 116px);
+          --cn-pad-x: clamp(16px, 6vw, 88px);
           background: #ffffff;
           color: #080808;
+          isolation: isolate;
           margin: 0;
           max-width: 100%;
           min-height: 100vh;
           overflow-x: clip;
-          padding: clamp(76px, 9vw, 116px) clamp(16px, 6vw, 88px) clamp(48px, 7vw, 84px);
+          padding: var(--cn-pad-top) var(--cn-pad-x) clamp(48px, 7vw, 84px);
           position: relative;
           width: 100%;
+        }
+
+        /* Fondo a lápiz de la portada (CoverBackdrop.tsx), fijo en la pantalla mientras se baja por el
+           árbol: una capa sticky de 100svh que no ocupa sitio (margen negativo) y se pinta detrás de
+           todo el contenido (z-index -1 dentro del isolation de .cn-page). Va de borde a borde
+           anulando el padding de la página. */
+        .cn-page .cn-backdrop {
+          height: 100svh;
+          inset: auto;
+          margin: calc(-1 * var(--cn-pad-top)) calc(-1 * var(--cn-pad-x)) calc(var(--cn-pad-top) - 100svh);
+          position: sticky;
+          top: 0;
+          z-index: -1;
         }
 
         /* ---------- Cabecera ---------- */
@@ -182,6 +201,7 @@ export default function PasosPage() {
           line-height: 0.92;
           margin: 0;
           overflow-wrap: break-word;
+          text-align: center;
           text-transform: uppercase;
         }
 
@@ -190,6 +210,7 @@ export default function PasosPage() {
           font-size: clamp(15px, 1.4vw, 18px);
           font-weight: 650;
           margin: 14px 0 0;
+          text-align: center;
         }
 
         .cn-guide {
@@ -200,7 +221,8 @@ export default function PasosPage() {
         }
 
         .cn-guide-card {
-          background: #fafafa;
+          /* 40 % transparente: deja asomar el fondo a lápiz (CoverBackdrop). */
+          background: rgba(250, 250, 250, 0.6);
           border: 1.5px solid #e4e4e7;
           border-radius: 20px;
           display: flex;

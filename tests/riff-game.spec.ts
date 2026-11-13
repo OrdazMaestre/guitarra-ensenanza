@@ -100,7 +100,8 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
-  await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
+  // Sin partida que continuar, "Continuar" no se enseña (usuario, 2026-11-13).
+  await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
   await expect(page.getByTestId('riff-highway')).toHaveCount(1);
 
   // El panel está DELANTE del juego y ENCIMA del mástil (centrado sobre sus cuerdas), compacto.
@@ -210,6 +211,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await hold(page, pause);
   await choose(page, 'Nivel', 'Fácil');
   await expect(stage).toHaveAttribute('data-status', 'idle');
+  // Ya estaba a la vista: se queda, apagado.
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await expect(pause).toHaveCount(0);
   await expect(tuning).toBeVisible();
@@ -1002,6 +1004,8 @@ test('partida de prueba: una sola canción con sus 3 partes, mensajes y animacio
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await expect(card).toContainText('TAPEA');
   await expect(card.locator('svg[data-animation="tapping"]')).toBeVisible();
+  // En PC empieza SIEMPRE por las dos teclas (Z mantenida, N una y otra vez) (usuario, 2026-11-13).
+  await expect(card.locator('svg[data-animation="tapping"] [data-variant]')).toHaveAttribute('data-variant', 'keys');
   for (let i = 0; i < 6; i++) {
     expect(await card.locator('svg[data-animation="tapping"] path[fill="#ffffff"]').count()).toBeLessThanOrEqual(1);
     await page.waitForTimeout(400);
@@ -1015,6 +1019,12 @@ test('partida de prueba: una sola canción con sus 3 partes, mensajes y animacio
   // Parada antes de la parte 3: deslizar.
   await expect(stage).toHaveAttribute('data-tutorial', 'section-2', { timeout: 60_000 });
   await expect(card.locator('svg[data-animation="slide"]')).toBeVisible();
+  // En PC: primero N V X Z y vuelta con las teclas, luego con las graves mantenidas, luego el cursor.
+  const slideVariant = card.locator('svg[data-animation="slide"] [data-variant]');
+  await expect(slideVariant).toHaveAttribute('data-variant', 'keys-slide');
+  await expect(slideVariant).toHaveAttribute('data-variant', 'keys-legato', { timeout: 5000 });
+  await card.screenshot({ path: 'test-results/tutorial-pc-legato.png' });
+  await expect(slideVariant).toHaveAttribute('data-variant', 'cursor', { timeout: 5000 });
   await card.getByRole('button', { name: '¡A tocar!' }).click();
 
   // Final: vuelve el panel de ajustes.
@@ -1800,4 +1810,140 @@ test('toque corto en el mástil: cuenta, sin clic fantasma ni resaltado azul', a
   const after = await page.evaluate(() => ({ ...(window as unknown as { __ghost: { click: number; mousedown: number } }).__ghost }));
   expect(after).toEqual(before);
 });
+});
+
+// Tutorial según el dispositivo (usuario, 2026-11-13): con teclado (PC), el paso "Activa el teclado" con las
+// dos manos antes de la partida de prueba y animaciones con las letras Z X C V B N sobre sus trastes; en
+// pantalla táctil, solo dedos y sin ese paso.
+test('tutorial en PC: paso "Activa el teclado" y animaciones de teclado', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  await page.locator('.riff-panel .tour-launch').click();
+  const bubble = page.locator('.tour-bubble');
+  const main = bubble.locator('.tour-btn-main');
+  const titles: string[] = [];
+  for (let i = 0; i < 20; i++) {
+    titles.push((await bubble.locator('.tour-title').textContent()) ?? '');
+    if ((await main.textContent()) !== 'Siguiente') break;
+    if (titles[titles.length - 1] === 'Activa el teclado') {
+      await expect(bubble.locator('.tour-art')).toBeVisible();
+      await expect(bubble.locator('.tour-art [data-key]')).toHaveCount(6);
+      // Manos del emoji 👐 con solo las letras, sin números de dedo (usuario, 2026-11-13).
+      expect(await bubble.locator('.tour-art text').allTextContents()).toEqual(['Z', 'X', 'C', 'V', 'B', 'N']);
+      await expect(bubble.locator('.tour-art .tour-art-hand')).toHaveCount(4);
+      // En este paso el botón KEYBOARD resaltado SÍ se puede pulsar (usuario, 2026-11-13): se activa el
+      // teclado (desaparece la flecha que lo señala) y el tutorial sigue abierto.
+      await expect(page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]')).toHaveCount(1);
+      await page.getByTestId('tour-hole').click();
+      await expect(page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]')).toHaveCount(0);
+      await expect(bubble.locator('.tour-title')).toHaveText('Activa el teclado');
+      await expect(bubble).toContainText('Encuentra tu combinación.');
+      await bubble.screenshot({ path: 'test-results/tour-activa-teclado.png' });
+    }
+    await main.click();
+  }
+  expect(titles.slice(-2)).toEqual(['Activa el teclado', 'Partida de prueba']);
+  await main.click();
+  const card = page.locator('.riff-tutorial-card');
+  const hold = card.locator('svg[data-animation="hold"]');
+  await expect(hold).toHaveAttribute('data-device', 'pc');
+  await expect(hold.locator('[data-key="Z"]')).toHaveAttribute('data-state', 'lit');
+  await expect(hold.locator('[data-key]')).toHaveCount(6);
+  await card.screenshot({ path: 'test-results/tutorial-pc-mantener.png' });
+});
+
+test.describe('pantalla táctil (tutorial)', () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test('tutorial en táctil: sin paso de teclado y solo dedos', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
+    await page.goto(URL);
+    await openGame(page);
+    await page.locator('.riff-panel .tour-launch').click();
+    const bubble = page.locator('.tour-bubble');
+    const main = bubble.locator('.tour-btn-main');
+    for (let i = 0; i < 20 && (await main.textContent()) === 'Siguiente'; i++) {
+      await expect(bubble.locator('.tour-title')).not.toHaveText('Activa el teclado');
+      await main.click();
+    }
+    await expect(bubble).toContainText('Partida de prueba');
+    await main.click();
+    const hold = page.locator('.riff-tutorial-card svg[data-animation="hold"]');
+    await expect(hold).toHaveAttribute('data-device', 'touch');
+    await expect(hold.locator('[data-key]')).toHaveCount(0);
+  });
+});
+
+// Papelera de las canciones del dispositivo (usuario, 2026-11-13), en el disco del juego y en el de la
+// tablatura; nunca en las de la web. Pide "¿Seguro?" y no cierra el menú.
+test('borrar canciones del dispositivo: papelera, ¿seguro? y pregunta si se vuelven a encontrar', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page, 'Black Gilmur');
+  const upload = async () => {
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([
+      { name: 'cumple.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/cumpleanos-feliz.gp') },
+    ]);
+  };
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  const menu = page.locator('.riff-dd-menu');
+  await upload();
+  await expect(menu.getByRole('button', { name: 'cumple', exact: true })).toBeVisible({ timeout: 10000 });
+  // Las de la web, sin papelera.
+  await expect(menu.getByRole('button', { name: 'Borrar Black Gilmur' })).toHaveCount(0);
+  await menu.getByRole('button', { name: 'Borrar cumple' }).click();
+  await expect(menu.getByRole('group', { name: '¿Borrar cumple?' })).toBeVisible();
+  await menu.getByRole('group', { name: '¿Borrar cumple?' }).getByRole('button', { name: 'Sí' }).click();
+  await expect(menu.getByRole('button', { name: 'cumple', exact: true })).toHaveCount(0);
+  await expect(menu).toBeVisible();
+  // Se vuelve a elegir el mismo archivo: no entra sin preguntar.
+  await page.getByTestId('local-song-files').setInputFiles([
+    { name: 'cumple.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/cumpleanos-feliz.gp') },
+  ]);
+  const ask = menu.getByRole('alertdialog', { name: 'Canciones borradas' });
+  await expect(ask).toContainText('Ya borraste: cumple.');
+  await ask.getByRole('button', { name: 'Sí' }).click();
+  await expect(menu.getByRole('button', { name: 'cumple', exact: true })).toBeVisible({ timeout: 10000 });
+  // En el disco de la tablatura, la misma lista con su papelera.
+  await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+  const tabDisc = page.locator('.test-room-tab').getByRole('button', { name: /^Canción:/ });
+  await tabDisc.scrollIntoViewIfNeeded();
+  await tabDisc.click();
+  await expect(page.locator('.test-room-tab').getByRole('button', { name: 'Borrar cumple' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+});
+
+// Pantalla encendida durante la partida (usuario, 2026-11-13): Wake Lock simulado. Se pide al jugar, se
+// suelta en pausa y al salir, y se vuelve a pedir al continuar.
+test('pantalla encendida: se pide al jugar y se suelta en pausa y al salir', async ({ page }) => {
+  await page.addInitScript(() => {
+    const log: string[] = [];
+    (window as unknown as { __wake: string[] }).__wake = log;
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: {
+        request: async () => {
+          log.push('pedida');
+          return { release: async () => { log.push('soltada'); }, addEventListener: () => {} };
+        },
+      },
+    });
+  });
+  const wake = () => page.evaluate(() => (window as unknown as { __wake: string[] }).__wake.join(','));
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Empezar' }).click();
+  await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 15000 });
+  await expect.poll(wake).toBe('pedida');
+  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  await expect(stage).toHaveAttribute('data-status', 'paused');
+  await expect.poll(wake).toBe('pedida,soltada');
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await expect.poll(wake).toBe('pedida,soltada,pedida');
+  await hold(page, page.locator('.riff-open-toggle'));
+  await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
 });

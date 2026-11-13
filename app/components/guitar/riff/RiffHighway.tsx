@@ -86,6 +86,10 @@ interface Props {
   stageRef: RefObject<HTMLDivElement | null>;
   // Carril estirado a velocidad 100 % (ver `stretchesLane` en levels.ts).
   stretch?: boolean;
+  // Velocidad del carril (ver `laneSpeedFactor` en levels.ts). Con `sectionLaneSpeeds` (partida
+  // tutorial), la de cada sección: la k-ésima tras pasar k silencios de `options.breaks`.
+  laneSpeed?: number;
+  sectionLaneSpeeds?: number[];
 }
 
 function firstIndexAtOrAfter(notes: ChartNote[], t: number) {
@@ -134,10 +138,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export default function RiffHighway({ activeStrings, ambientPhrases, chart, countdownPhrase, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
+export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeStrings, ambientPhrases, chart, countdownPhrase, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
   const [minFret, maxFret] = fretRange ?? [0, 5];
+  const sectionKey = sectionLaneSpeeds?.join(',') ?? '';
   const capsKey = JSON.stringify(fretCaps ?? {});
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef(previewTime);
@@ -209,7 +214,10 @@ export default function RiffHighway({ activeStrings, ambientPhrases, chart, coun
       const songPos = session ? session.songPos : previewRef.current;
 
       // Carril estirado (levels.ts, `stretchesLane`): a 100 % los compases son un 33 % más largos que a 75 %.
-      const lookahead = laneLookaheadSeconds(LOOKAHEAD_SECONDS, speed, stretch);
+      const passedBreaks = (session?.options.breaks ?? []).filter((t) => songPos >= t - 1e-6).length;
+      const sections = sectionKey ? sectionKey.split(',').map(Number) : null;
+      const sectionSpeed = sections?.[Math.min(passedBreaks, sections.length - 1)] ?? 1;
+      const lookahead = laneLookaheadSeconds(LOOKAHEAD_SECONDS, speed, stretch, laneSpeed * sectionSpeed);
 
       // Punto de fuga y escala.
       const vpX = (boardLeft + boardRight) / 2;
@@ -730,7 +738,7 @@ export default function RiffHighway({ activeStrings, ambientPhrases, chart, coun
     return () => cancelAnimationFrame(raf);
     // `capsKey` resume `fretCaps` (un objeto nuevo en cada render del padre).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ambientPhrases, chart, colorBy, capsKey, countdownPhrase, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
+  }, [ambientPhrases, chart, laneSpeed, sectionKey, colorBy, capsKey, countdownPhrase, freeStrings, geometryRef, maxFret, minFret, practice, sessionRef, stageRef, stretch, stringsKey]);
 
   return <canvas aria-hidden="true" className="riff-highway" data-testid="riff-highway" ref={canvasRef} />;
 }

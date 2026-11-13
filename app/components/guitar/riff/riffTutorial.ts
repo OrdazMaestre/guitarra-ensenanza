@@ -15,7 +15,7 @@ export const RIFF_TUTORIAL_SONG: { source: string; track: string; roles: Record<
   roles: { 'Rhythm Guitar (Kirk)': 'S', 'Rhythm Guitar (James)': 'R' },
 };
 
-export type TutorialAnimation = 'tapping' | 'slide';
+export type TutorialAnimation = 'hold' | 'tapping' | 'slide';
 
 export interface TutorialSection {
   title: string;
@@ -26,7 +26,12 @@ export interface TutorialSection {
   fromBar: number;
   toBar: number;
   repeats: number;
+  // Velocidad del carril (notas más separadas): cada paso de mecánicas, un 15 % más que el anterior
+  // (usuario, 2026-11-13: 100 %, 115 %, 132 %).
+  laneSpeed: number;
 }
+
+export const TUTORIAL_LANE_STEP = 1.15;
 
 export const RIFF_TUTORIAL: TutorialSection[] = [
   {
@@ -35,10 +40,12 @@ export const RIFF_TUTORIAL: TutorialSection[] = [
       'Sin puntuacion alta pero mejor que no pulsar.',
       'Pulsa cada nota si quieres más puntos.',
     ],
+    animation: 'hold',
     level: 'facil',
     fromBar: 42,
     toBar: 42,
     repeats: 6,
+    laneSpeed: 1,
   },
   {
     title: 'TAPEA',
@@ -48,6 +55,7 @@ export const RIFF_TUTORIAL: TutorialSection[] = [
     fromBar: 9,
     toBar: 12,
     repeats: 2,
+    laneSpeed: TUTORIAL_LANE_STEP,
   },
   {
     title: 'DESLIZA',
@@ -57,6 +65,7 @@ export const RIFF_TUTORIAL: TutorialSection[] = [
     fromBar: 9,
     toBar: 12,
     repeats: 2,
+    laneSpeed: TUTORIAL_LANE_STEP ** 2,
   },
 ];
 

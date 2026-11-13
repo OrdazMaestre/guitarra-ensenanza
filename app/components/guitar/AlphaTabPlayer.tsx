@@ -19,6 +19,7 @@ import {
   createOverdriveChain,
   getAudioCurrentTime,
   guitarSampleTrim,
+  overdriveRegisterTrim,
   OVERDRIVE_VOICE_LEVEL,
   playBassNote,
   playMetronomeClick as playDrumClick,
@@ -3306,7 +3307,7 @@ export default function AlphaTabPlayer({
     // balance stay before the drive. Clean: exactly the historical path.
     const overdrive = allowOverdrive && guitarToneRef.current === 'overdrive';
     const voiceLevel = overdrive
-      ? (volumeRef.current > 0 ? level / volumeRef.current : 0) * (OVERDRIVE_VOICE_LEVEL / 0.58)
+      ? (volumeRef.current > 0 ? level / volumeRef.current : 0) * (OVERDRIVE_VOICE_LEVEL / 0.58) * overdriveRegisterTrim(midi)
       : level;
 
     toneFilter.type = 'lowpass';

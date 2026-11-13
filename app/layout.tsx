@@ -8,6 +8,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import RenderIdleWarning from "./components/RenderIdleWarning";
 import VercelLimitWarning from "./components/VercelLimitWarning";
 import MaikaelWidget from "./components/maikael/MaikaelWidget";
+import InstallAppPrompt from "./components/InstallAppPrompt";
 import MixingConsole from "./components/mixingConsole/MixingConsole";
 import { DEPLOY_TARGET } from "./lib/deployTarget";
 import { SITE_SEARCH_ENTRIES } from "./lib/siteSearchIndex";
@@ -55,6 +56,7 @@ export default function RootLayout({
           {children}
         </div>
         <MaikaelWidget />
+        <InstallAppPrompt />
         {/* Solo en Vercel: en Render /_vercel/insights no existe y daría 404. */}
         {DEPLOY_TARGET === 'vercel' && <Analytics />}
       </body>

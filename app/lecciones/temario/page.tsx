@@ -1,8 +1,8 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { Caveat_Brush, Poppins, Space_Mono } from 'next/font/google';
 import { RenderTopNotice, VercelLimitNotice } from '../../components/DeploymentNotice';
 import { SITE_SEARCH_ENTRIES } from '../../lib/siteSearchIndex';
+import CoverBackdrop from './CoverBackdrop';
 import PortadaShell from './PortadaShell';
 
 // Portada de la web. Las tipografías se cargan solo aquí para no cambiar nada del resto de la web.
@@ -15,16 +15,7 @@ export default function TemarioPage() {
     <main className="portada2-main">
       <PortadaShell className={`${brush.variable} ${mono.variable} ${body.variable}`} entries={SITE_SEARCH_ENTRIES}>
         <section className="portada2-stage">
-          <div className="portada2-bg-wrap" aria-hidden="true">
-            <Image
-              src="/images/guitar/cover-instruments-pencil.png"
-              alt=""
-              width={1746}
-              height={901}
-              priority
-              className="portada2-bg"
-            />
-          </div>
+          <CoverBackdrop priority />
 
           <div className="portada2-copy">
             <RenderTopNotice />
@@ -387,43 +378,7 @@ export default function TemarioPage() {
           position: relative;
         }
 
-        /* El dibujo va SIEMPRE detrás del texto con el mismo filtro, en cualquier ancho. Su tamaño
-           solo depende del alto de la pantalla (--portada2-bg-h), nunca del ancho: al ensanchar
-           la ventana no crece ni encoge, solo se mueve. Mientras no cabe entero se recorta
-           centrado en el 70% (se ven las guitarras); en cuanto cabe, se queda pegado a la derecha.
-           Eso es el max() de "left": el primer término gana mientras sobra imagen (negativo), el
-           segundo en cuanto sobra pantalla (positivo). 1.938 = 1746/901, proporción del dibujo. */
-        .portada2-bg-wrap {
-          --portada2-bg-h: clamp(520px, calc(100svh - 80px), 860px);
-          --portada2-bg-w: calc(var(--portada2-bg-h) * 1.938);
-          inset: 0;
-          opacity: 0.35;
-          overflow: hidden;
-          pointer-events: none;
-          position: absolute;
-          z-index: 0;
-        }
-
-        /* Bordes difuminados con máscara sobre la propia imagen: el gris del papel del dibujo no
-           coincide con el fondo de la página y sin esto se ve su recuadro. Funciona igual en modo
-           oscuro, donde todo .site-shell se invierte. */
-        .portada2-bg {
-          height: var(--portada2-bg-h);
-          left: max(calc((100% - var(--portada2-bg-w)) * 0.7), calc(100% - var(--portada2-bg-w)));
-          max-width: none;
-          position: absolute;
-          top: 50%;
-          transform: translateY(-50%);
-          width: var(--portada2-bg-w);
-          -webkit-mask-image:
-            linear-gradient(to right, transparent 0%, #000 14%),
-            linear-gradient(to bottom, transparent 0%, #000 16%, #000 84%, transparent 100%);
-          -webkit-mask-composite: source-in;
-          mask-image:
-            linear-gradient(to right, transparent 0%, #000 14%),
-            linear-gradient(to bottom, transparent 0%, #000 16%, #000 84%, transparent 100%);
-          mask-composite: intersect;
-        }
+        /* El fondo a lápiz (.portada2-bg-wrap / .portada2-bg) vive en CoverBackdrop.tsx. */
 
         /* Sin tope de ancho (petición del usuario): los párrafos ocupan todo el ancho de la pantalla
            encima del dibujo; el título no se estira porque es width: max-content. */

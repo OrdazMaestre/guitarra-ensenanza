@@ -14,9 +14,11 @@ import {
   restoreSavedSongs,
   searchRememberedFolder,
   subscribeLocalSongs,
+  answerDeletedFound,
+  removeLocalSong,
 } from '@/app/lib/localSongs';
 import { findSong, type SongEntry } from '@/app/lib/songs';
-import { getDifficulties, getServerDifficulties, requestDifficulties, subscribeDifficulties } from '@/app/lib/songDifficulty';
+import { forgetDifficulty, getDifficulties, getServerDifficulties, requestDifficulties, subscribeDifficulties } from '@/app/lib/songDifficulty';
 
 // Canciones del propio dispositivo (app/lib/localSongs.ts) en los discos del juego y de la
 // tablatura: la lista compartida, la elección de canción de cada disco y la tarjeta "Buscar mis
@@ -112,7 +114,7 @@ const PALETTES = {
 // `onOpenChange`: el menú que la contiene se ensancha a dos columnas mientras la tarjeta está
 // abierta (petición del usuario: ver "Elegir carpeta" sin hacer scroll).
 export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (open: boolean) => void; variant: 'light' | 'dark' }) {
-  const { songs, scanning, lastFound, rememberedFolder, folderScanned, savedFull } = useLocalSongs();
+  const { songs, scanning, lastFound, rememberedFolder, folderScanned, savedFull, deletedFound } = useLocalSongs();
   const [open, setOpenState] = useState(false);
   // Borrar pide un segundo toque: un dedo despistado no debe vaciar la lista.
   const [confirmClear, setConfirmClear] = useState(false);
@@ -154,6 +156,17 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
 
   return (
     <div className="local-song-search" style={{ display: 'grid', gap: 6 }}>
+      {/* Una búsqueda encontró canciones que el usuario borró: UNA pregunta (usuario, 2026-11-13). */}
+      {deletedFound && (
+        <div aria-label="Canciones borradas" role="alertdialog" style={{ background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 12, color: colors.text, display: 'grid', fontSize: 13, fontWeight: 700, gap: 6, padding: '8px 10px' }}>
+          <p style={{ margin: 0 }}>Ya borraste: {deletedFound.length > 3 ? `${deletedFound.slice(0, 3).join(', ')} y ${deletedFound.length - 3} más` : deletedFound.join(', ')}.</p>
+          <p style={{ margin: 0 }}>¿Volver a añadirlas?</p>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => void answerDeletedFound(true)} style={buttonStyle(true)} type="button">Sí</button>
+            <button onClick={() => void answerDeletedFound(false)} style={buttonStyle(false)} type="button">No</button>
+          </div>
+        </div>
+      )}
       {/* Carpeta recordada, sin canciones guardadas (el navegador pudo borrarlas) y aún sin buscar
           en esta visita: un clic, bien a la vista. */}
       {rememberedFolder && !folderScanned && songs.length === 0 && mode === 'directory-api' && (
@@ -236,5 +249,46 @@ export function LocalSongSearch({ onOpenChange, variant }: { onOpenChange?: (ope
         </div>
       )}
     </div>
+  );
+}
+
+// Papelera de una canción del DISPOSITIVO (nunca de las de la web; usuario, 2026-11-13): pide "¿Seguro?"
+// en la misma fila, sin cerrar el menú. Borra la copia guardada y su carita; el archivo original del
+// usuario no se toca, y si se vuelve a encontrar, se pregunta antes de añadirlo (localSongs.ts).
+export function DeleteSongButton({ id, title, variant }: { id: string; title: string; variant: 'light' | 'dark' }) {
+  const [asking, setAsking] = useState(false);
+  const colors = PALETTES[variant];
+  const small = { background: colors.ghost, border: `1px solid ${colors.border}`, borderRadius: 999, color: colors.text, cursor: 'pointer', fontSize: 12, fontWeight: 800, padding: '3px 9px' };
+  if (asking) {
+    return (
+      <span aria-label={`¿Borrar ${title}?`} className="song-delete-confirm" role="group" style={{ alignItems: 'center', color: colors.text, display: 'inline-flex', flex: 'none', fontSize: 12, fontWeight: 800, gap: 4 }}>
+        ¿Seguro?
+        <button
+          onClick={() => {
+            forgetDifficulty(id);
+            void removeLocalSong(id);
+          }}
+          style={{ ...small, background: '#dc2626', border: '1px solid #dc2626', color: '#ffffff' }}
+          type="button"
+        >
+          Sí
+        </button>
+        <button onClick={() => setAsking(false)} style={small} type="button">No</button>
+      </span>
+    );
+  }
+  return (
+    <button
+      aria-label={`Borrar ${title}`}
+      className="song-delete"
+      onClick={() => setAsking(true)}
+      style={{ alignItems: 'center', background: 'transparent', border: 0, borderRadius: 8, color: colors.text, cursor: 'pointer', display: 'inline-flex', flex: 'none', height: 30, justifyContent: 'center', opacity: 0.75, padding: 0, width: 30 }}
+      title="Borrar de la lista"
+      type="button"
+    >
+      <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
+        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+      </svg>
+    </button>
   );
 }

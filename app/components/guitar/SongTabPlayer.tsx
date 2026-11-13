@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AlphaTabPlayer from './AlphaTabPlayer';
 import { DiscIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons } from './riff/RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
-import { LocalSongSearch, useSongChoice } from './LocalSongSearch';
+import { DeleteSongButton, LocalSongSearch, useSongChoice } from './LocalSongSearch';
 import type { SongEntry } from '@/app/lib/songs';
 
 // Reproductor de tablatura con selector de canción: un botón con un disco a la izquierda del
@@ -121,7 +121,7 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
             // Delante del título, la carita de su dificultad (difficulty.ts); el disco mientras se mide.
             const lacks = [entry.noGuitar ? 'sin guitarra' : '', entry.noDrums ? 'sin batería' : ''].filter(Boolean).join(', ');
             const name = [entry.title, entry.difficulty ? `(canción ${DIFFICULTY_LABEL[entry.difficulty]})` : '', lacks ? `(${lacks})` : ''].filter(Boolean).join(' ');
-            return (
+            const row = (
               <button
                 aria-checked={current}
                 data-difficulty={entry.difficulty}
@@ -144,6 +144,7 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
                   gap: 8,
                   padding: '8px 10px',
                   textAlign: 'left',
+                  width: '100%',
                 }}
                 type="button"
               >
@@ -152,6 +153,13 @@ function SongPicker({ notice, onPick, song, songs }: { notice: string | null; on
                 <SongLacksIcons noDrums={entry.noDrums} noGuitar={entry.noGuitar} />
               </button>
             );
+            // Las del dispositivo llevan su papelera (las de la web, no).
+            return entry.local ? (
+              <div key={entry.id} style={{ alignItems: 'center', display: 'flex', gap: 4, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>{row}</div>
+                <DeleteSongButton id={entry.id} title={entry.title} variant="dark" />
+              </div>
+            ) : row;
           })}
           <SongDifficultyLegend style={{ alignItems: 'center', color: '#d4d4d8', display: 'flex', flexWrap: 'wrap', fontSize: 12, fontWeight: 700, gap: 10, margin: '4px 0 0' }} />
           </div>

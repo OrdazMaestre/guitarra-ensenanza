@@ -56,6 +56,18 @@ function rememberTraits(id: string, traits: MeasuredDifficulty) {
   }
 }
 
+// Al borrar una canción del dispositivo: olvida su carita (en memoria y en `localStorage`).
+export function forgetDifficulty(id: string) {
+  const all = rememberedTraits();
+  if (!(id in all)) return;
+  delete all[id];
+  try {
+    if (typeof window !== 'undefined') window.localStorage.setItem(SONG_TRAITS_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    // Sin almacenamiento: ya está fuera de la memoria.
+  }
+}
+
 export function subscribeDifficulties(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);

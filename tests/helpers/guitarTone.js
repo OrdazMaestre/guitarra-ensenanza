@@ -111,11 +111,28 @@
   };
   const HIGH_STRETCH_FROM_MIDI = 76;
   const HIGH_STRETCH_DB_PER_SEMITONE = -0.15;
+  const REGISTER_LOW_TOP_MIDI = 52;
+  const REGISTER_HIGH_FROM_MIDI = 59;
+  const REGISTER_LOW_DB = 20 * Math.log10(1.25);
+  const REGISTER_HIGH_DB = 20 * Math.log10(0.75);
+  const OD_REGISTER_EXTRA_HIGH_DB = -6;
+  function registerHighWeight(midi) {
+    return Math.min(1, Math.max(0, (midi - REGISTER_LOW_TOP_MIDI) / (REGISTER_HIGH_FROM_MIDI - REGISTER_LOW_TOP_MIDI)));
+  }
+  function overdriveRegisterTrim(midi) {
+    return 10 ** ((registerHighWeight(midi) * OD_REGISTER_EXTRA_HIGH_DB) / 20);
+  }
+  function registerDb(midi) {
+    if (midi <= REGISTER_LOW_TOP_MIDI) return REGISTER_LOW_DB;
+    if (midi >= REGISTER_HIGH_FROM_MIDI) return REGISTER_HIGH_DB;
+    const k = (midi - REGISTER_LOW_TOP_MIDI) / (REGISTER_HIGH_FROM_MIDI - REGISTER_LOW_TOP_MIDI);
+    return REGISTER_LOW_DB + (REGISTER_HIGH_DB - REGISTER_LOW_DB) * k;
+  }
   function guitarSampleTrim(file, midi) {
-    const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE;
+    const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE + registerDb(midi);
     return 10 ** (db / 20);
   }
-  const CLEAN_TRIM = 0.8;
+  const CLEAN_TRIM = 0.7;
   const OD_VOICE_LEVEL = 0.52;
   const OD_DRIVE = 2.2;
   const OD_SHAPE_K = 5;
@@ -123,7 +140,7 @@
   const OD_STAGE2_GAIN = 0.8;
   const OD_STAGE2_K = 1.5;
   const OD_ROOM_WET = 0.08;
-  const OD_MAKEUP = 0.09;
+  const OD_MAKEUP = 0.086;
 
   function makeCurve(fn, n = 4096) {
     const c = new Float32Array(n);
@@ -221,7 +238,7 @@
       if (s.loopEnd > s.loopStart + 8) { src.loop = true; src.loopStart = s.loopStart / s.sampleRate; src.loopEnd = s.loopEnd / s.sampleRate; }
       const g = ctx.createGain();
       const trim = tone === 'raw' ? 1 : guitarSampleTrim(s.file, midi);
-      const level = tone === 'overdrive' ? OD_VOICE_LEVEL * trim : 0.52 * trim * volume;
+      const level = tone === 'overdrive' ? OD_VOICE_LEVEL * trim * overdriveRegisterTrim(midi) : 0.52 * trim * volume;
       g.gain.setValueAtTime(0.0001, 0);
       g.gain.linearRampToValueAtTime(level, 0.005);
       src.connect(g); g.connect(bus);
@@ -232,6 +249,6 @@
 
   window.__guitarTone = {
     SR, lufs, maxMomentary, rmsDb, peak, bandShareDb, kWeighting, speaker,
-    guitarSampleTrim, createCleanToneChain, createOverdriveChain, loadSamples, renderNotes,
+    guitarSampleTrim, overdriveRegisterTrim, createCleanToneChain, createOverdriveChain, loadSamples, renderNotes,
   };
 })();
