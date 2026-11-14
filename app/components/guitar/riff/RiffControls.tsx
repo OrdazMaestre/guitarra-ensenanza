@@ -3,9 +3,9 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
-import { RIFF_PANEL_TOUR, TutorialButton } from '../ButtonTour';
+import { RIFF_PANEL_TOUR, RIFF_TRICKS_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BassIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, SpeakerIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BassIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
 import { DeleteSongButton, LocalSongSearch } from '../LocalSongSearch';
@@ -17,12 +17,17 @@ import { isTouchOnly } from '@/app/lib/localSongs';
 
 const SPEEDS = [0.5, 0.75, 1] as const;
 const MODE_LABEL: Record<RiffMode, string> = { ritmo: 'Con ritmo', paso: 'Paso a paso' };
-type MenuId = 'cancion' | 'nivel' | 'pista' | 'metronomo' | 'velocidad' | 'ritmo' | 'compases' | 'concierto';
+type MenuId = 'cancion' | 'nivel' | 'pista' | 'velocidad' | 'compases';
 const CONCERT_LOCK = 'En Concierto no se cambia';
 const CLICK_LABEL: Record<RiffClick, string> = { nada: 'Nada', metronomo: 'Metrónomo', auto: 'Batería automática' };
+// Lo que el botón de Pistas dice del metrónomo (su valor, en aria-label y title).
+const CLICK_VALUE: Record<RiffClick, string> = { nada: 'sin metrónomo', metronomo: 'con metrónomo', auto: 'con batería automática' };
 const ROLE_LABEL: Record<TrackRole, string> = { S: 'Guitarra solista', R: 'Guitarra rítmica' };
 
 // Orden (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases; y Concierto al final.
+// Agrupados (usuario, 2026-11-14): Concierto va dentro de Nivel; el metrónomo / batería automática, dentro
+// de Pistas (con lo que suena de fondo); "Con ritmo / Paso a paso", dentro de Compases, que pasa a
+// llamarse "Práctica con loop". Quedan: Nivel, Velocidad, Canción, Pistas y Práctica con loop.
 // Las notas que pasan del último traste se siguen recolocando (chart.ts), pero ya sin aviso.
 // En el panel solo se ven ICONOS (petición del usuario: ahorrar espacio); el nombre de cada ajuste
 // y su valor siguen en aria-label, en `title` y en texto oculto. En los menús, icono + nombre.
@@ -121,7 +126,13 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
       <div className="riff-controls">
-        <RiffDropdown {...menuProps('nivel')} align="start" icon={<LevelIcon level={riff.level} />} label="Nivel" value={levelLabel(riff.level)}>
+        <RiffDropdown
+          {...menuProps('nivel')}
+          align="start"
+          icon={<>{<LevelIcon level={riff.level} />}{riff.concert && <ConcertIcon />}</>}
+          label="Nivel"
+          value={`${levelLabel(riff.level)}${riff.concert ? ' · Concierto' : ''}`}
+        >
           {/* Dos modos, uno por columna: Trastes (vale cualquier cuerda) y Cuerdas. */}
           <div className="riff-level-groups">
             {RIFF_LEVEL_GROUPS.map((group) => (
@@ -133,6 +144,14 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
           </div>
           {/* Híbrido: de ningún modo, a todo el ancho debajo de los dos. */}
           <div className="riff-level-hybrid">{levelChip(RIFF_HYBRID_LEVEL)}</div>
+          {/* Concierto (antes, su propio botón al final del panel): se activa y desactiva aquí, sin cerrar. */}
+          <div className="riff-level-hybrid">
+            <button aria-pressed={riff.concert} className="riff-chip riff-concert-chip" onClick={() => riff.toggleConcert()} type="button">
+              <ConcertIcon />
+              Concierto
+            </button>
+          </div>
+          {riff.concert && <p className="riff-rankings-soon">Aquí irán tus rankings</p>}
         </RiffDropdown>
         <RiffDropdown {...menuProps('velocidad', riff.concert)} icon={<SpeedIcon speed={riff.speed} />} label="Velocidad" value={`${Math.round(riff.speed * 100)}%`}>
           {SPEEDS.map((value) => (
@@ -174,11 +193,11 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             </div>
           </RiffDropdown>
         )}
-        {/* Pistas (petición del usuario, 2026-11-03): arriba la guitarra que tocas; debajo, las demás
-            pistas de la canción (otra guitarra, bajo, batería), que suenan de fondo y se pueden
-            silenciar una a una con su altavoz. Silenciar no cierra el menú. */}
-        {(riff.tracks.length > 1 || bandTracks.length > 0) && (
-          <RiffDropdown {...menuProps('pista')} icon={currentTrack?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pistas" value={currentTrack ? trackLabel(currentTrack) : '—'}>
+        {/* Pistas (petición del usuario, 2026-11-03): arriba la guitarra que tocas; debajo, lo que suena de
+            fondo: las demás pistas de la canción (otra guitarra, bajo, batería) EN FILA y solo con su icono
+            (usuario, 2026-11-14: sin nombre ni altavoz; tocar una la calla y se ve apagada, sin cerrar el
+            menú), y el metrónomo / la batería automática (antes, su propio desplegable). */}
+        <RiffDropdown {...menuProps('pista')} icon={currentTrack?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pistas" value={`${currentTrack ? trackLabel(currentTrack) : '—'}, ${CLICK_VALUE[riff.click]}`}>
             <span className="riff-level-heading">Tocas</span>
             {riff.tracks.map((track) => (
               <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
@@ -186,49 +205,55 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
                 {trackLabel(track)}
               </button>
             ))}
-            {bandTracks.length > 0 && <span className="riff-level-heading">Suenan de fondo</span>}
-            {bandTracks.map((track) => {
-              const on = !riff.muted.includes(track.index);
-              const name = track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)];
-              return (
-                <button
-                  aria-label={`${name}: ${on ? 'suena' : 'silenciada'}`}
-                  aria-pressed={on}
-                  className="riff-chip riff-band-track"
-                  key={track.index}
-                  onClick={() => riff.toggleMuted(track.index)}
-                  title={track.name}
-                  type="button"
-                >
-                  {track.kind === 'drums' ? <DrumIcon /> : track.kind === 'bass' ? <BassIcon /> : <TrackIcon role={roleOf(track.name)} />}
-                  <span className="riff-song-title">{name}</span>
-                  <SpeakerIcon on={on} />
-                </button>
-              );
-            })}
-          </RiffDropdown>
-        )}
-        {/* Metrónomo (petición del usuario, 2026-11-03): nada, el metrónomo o la batería automática
-            (autoDrums.ts, ritmos según tempo, compás y densidad de la música). La batería real es una
-            pista más de "Pistas": silenciándola, la automática la sustituye; si no, suenan las dos. */}
-        <RiffDropdown {...menuProps('metronomo')} icon={<ClickIcon click={riff.click} />} label="Metrónomo" value={CLICK_LABEL[riff.click]}>
-          {(['nada', 'metronomo', 'auto'] as const).map((value) => (
-            <button aria-pressed={riff.click === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setClick(value))} type="button">
-              <ClickIcon click={value} />
-              {CLICK_LABEL[value]}
-            </button>
-          ))}
+            <span className="riff-level-heading">Suenan de fondo</span>
+            <div className="riff-band-row">
+                {bandTracks.map((track) => {
+                  const on = !riff.muted.includes(track.index);
+                  const name = track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)];
+                  return (
+                    <button
+                      aria-label={`${name}: ${on ? 'suena' : 'silenciada'}`}
+                      aria-pressed={on}
+                      className="riff-chip riff-band-track"
+                      key={track.index}
+                      onClick={() => riff.toggleMuted(track.index)}
+                      title={`${name} (${on ? 'suena' : 'silenciada'})`}
+                      type="button"
+                    >
+                      {track.kind === 'drums' ? <DrumIcon /> : track.kind === 'bass' ? <BassIcon /> : <TrackIcon role={roleOf(track.name)} />}
+                    </button>
+                  );
+                })}
+                {/* Metrónomo y batería automática (autoDrums.ts): dos iconos más de la fila (usuario,
+                    2026-11-14; ya no hay "Nada": apagados los dos es lo de por defecto). Encender uno apaga el
+                    otro. La batería real es una pista más: silenciándola, la automática la sustituye. Por
+                    defecto, la automática solo en canciones sin batería (useRiffController). */}
+                {(['metronomo', 'auto'] as const).map((value) => {
+                  const on = riff.click === value;
+                  return (
+                    <button
+                      aria-label={`${CLICK_LABEL[value]}: ${on ? 'suena' : 'apagado'}`}
+                      aria-pressed={on}
+                      className="riff-chip riff-band-track riff-click-track"
+                      key={value}
+                      onClick={() => riff.setClick(on ? 'nada' : value)}
+                      title={`${CLICK_LABEL[value]} (${on ? 'suena' : 'apagado'})`}
+                      type="button"
+                    >
+                      <ClickIcon click={value} />
+                    </button>
+                  );
+                })}
+            </div>
         </RiffDropdown>
-        <RiffDropdown {...menuProps('ritmo', riff.concert)} icon={<ModeIcon mode={riff.mode} />} label="Ritmo" value={MODE_LABEL[riff.mode]}>
-          {(['ritmo', 'paso'] as const).map((value) => (
-            <button aria-pressed={riff.mode === value} className="riff-chip" key={value} onClick={() => pick(() => riff.setMode(value))} type="button">
-              <ModeIcon mode={value} />
-              {MODE_LABEL[value]}
-            </button>
-          ))}
-        </RiffDropdown>
-        {/* Solo el icono del bucle: normal si se repite, tachado si no. */}
-        <RiffDropdown {...menuProps('compases', riff.concert)} icon={<LoopIcon loop={riff.loop} />} label="Compases" value={`${from}–${to}${riff.loop ? ' en bucle' : ''}`}>
+        {/* Práctica con loop (usuario, 2026-11-14; antes "Compases" + "Ritmo"): el trozo, el bucle y si la
+            canción espera (Paso a paso) o no. El icono, el del bucle (tachado si no se repite). */}
+        <RiffDropdown
+          {...menuProps('compases', riff.concert)}
+          icon={<LoopIcon loop={riff.loop} />}
+          label="Práctica con loop"
+          value={`${from}–${to}${riff.loop ? ' en bucle' : ''}${riff.mode === 'paso' ? ' · Paso a paso' : ''}`}
+        >
           <div className="riff-bars">
             <label>
               Del
@@ -243,20 +268,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             <LoopIcon loop={riff.loop} />
             Repetir en bucle
           </button>
-        </RiffDropdown>
-        {/* El botón activa y desactiva el modo; al activarlo se abre su desplegable. */}
-        <RiffDropdown
-          {...menuProps('concierto')}
-          icon={<ConcertIcon />}
-          label="Concierto"
-          onToggle={() => {
-            riff.toggleConcert();
-            setOpenMenu(riff.concert ? null : 'concierto');
-          }}
-          pressed={riff.concert}
-          value={riff.concert ? 'sí' : 'no'}
-        >
-          <p className="riff-rankings-soon">Aquí irán tus rankings</p>
+          {/* "Con ritmo" no tiene botón (usuario, 2026-11-14): es lo normal cuando no hay bucle ni Paso a paso.
+              Paso a paso se enciende y apaga como el bucle, sin cerrar el menú. */}
+          <button aria-pressed={riff.mode === 'paso'} className="riff-chip" onClick={() => riff.setMode(riff.mode === 'paso' ? 'ritmo' : 'paso')} type="button">
+            <ModeIcon mode="paso" />
+            {MODE_LABEL.paso}
+          </button>
         </RiffDropdown>
       </div>
 
@@ -266,7 +283,9 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
         </button>
         {/* Continuar: retoma la partida en pausa un compás antes, con cuenta de entrada. */}
         {!riff.concert && (riff.canContinue || continueShown) && <button className="riff-action riff-action-stop" disabled={!riff.canContinue} onClick={continueGame} type="button">Continuar</button>}
-        {/* Tutorial del panel: antes, vuelve a la configuración de base (petición del usuario). */}
+        {/* Tutorial (usuario, 2026-11-14): despliega "Controles" (el recorrido del panel; antes, vuelve a la
+            configuración de base) y "Trucos" ("Activa el teclado" si aún no lo está y directo a la partida de
+            prueba). */}
         {!riff.concert && (
           <TutorialButton
             // Al final, la partida tutorial de mecánicas (riffTutorial.ts).
@@ -277,6 +296,11 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             }}
             rootRef={panelRef}
             steps={RIFF_PANEL_TOUR}
+            tricks={{
+              finish: { label: '¡A jugar!', run: () => { onStart?.(); riff.startTutorial(); } },
+              onStart: () => setOpenMenu(null),
+              steps: RIFF_TRICKS_TOUR,
+            }}
           />
         )}
       </div>
@@ -715,6 +739,24 @@ export function RiffStyles() {
 
       .riff-level-hybrid .riff-chip {
         justify-content: center;
+      }
+
+      /* Pistas que suenan de fondo: en fila, solo el icono; la callada, apagada. */
+      .riff-band-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+      }
+
+      .riff-band-track {
+        justify-content: center;
+        min-height: 40px;
+        min-width: 48px;
+      }
+
+      .riff-band-track[aria-pressed='false'] {
+        opacity: 0.4;
       }
 
       .riff-level-group {

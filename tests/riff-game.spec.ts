@@ -67,7 +67,9 @@ async function openGame(page: Page, song = 'Canción de prueba') {
 // En "Nivel", los dos modos tienen un "Medio" y un "Avanzado": por defecto, el del modo trastes
 // (Difícil y Experto solo están en el de cuerdas); "Medio cuerdas" elige el del modo cuerdas.
 async function choose(page: Page, menu: string, option: string) {
-  await page.locator('.riff-dd-toggle', { hasText: menu }).click();
+  // Desde 2026-11-14 "Ritmo" está dentro de "Práctica con loop" y el metrónomo dentro de "Pistas".
+  const toggleText = ({ Ritmo: 'Práctica con loop' } as Record<string, string>)[menu] ?? menu;
+  await page.locator('.riff-dd-toggle', { hasText: toggleText }).click();
   let scope = page.locator('.riff-dd-menu');
   let name = option;
   if (menu === 'Nivel') {
@@ -76,6 +78,8 @@ async function choose(page: Page, menu: string, option: string) {
     scope = scope.getByRole('group', { name: cuerdas ? 'Modo cuerdas' : 'Modo trastes' });
   }
   await scope.getByRole('button', { name, exact: true }).click();
+  // "Paso a paso" se enciende y apaga sin cerrar el menú (no hay botón "Con ritmo", usuario 2026-11-14).
+  if (menu === 'Ritmo') await page.locator('.riff-dd-toggle', { hasText: toggleText }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 }
 
@@ -92,11 +96,12 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await openGame(page);
   // Abierto, el mismo botón es SALIR.
   await expect(pill.locator('button').first()).toHaveText('SALIR');
-  // Orden del panel (decisión del usuario, 2026-11-03): Nivel, Velocidad, Canción, Pistas, Metrónomo, Ritmo, Compases.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Metrónomo/, /Ritmo/, /Compases/, /Concierto/], { timeout: 10000 });
+  // Orden del panel (usuario, 2026-11-03; agrupado 2026-11-14): Nivel (con Concierto), Velocidad, Canción,
+  // Pistas (con el metrónomo) y Práctica con loop (compases, bucle y ritmo).
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Nivel/, /Velocidad/, /Canción/, /Pistas/, /Práctica con loop/], { timeout: 10000 });
   // Configuración inicial (decisión del usuario): Kirk, Principiante, 100 %, Con ritmo, sin bucle; con
   // batería en la canción, el metrónomo apagado.
-  await expect(page.locator('.riff-dd-toggle')).toHaveText([/Principiante/, /100%/, /Canción de prueba/, /Guitarra solista/, /MetrónomoNada/, /Con ritmo/, /^Compases1–\d+▾$/, /Concierto.*no/]);
+  await expect(page.locator('.riff-dd-toggle')).toHaveText([/^NivelPrincipiante▾$/, /100%/, /Canción de prueba/, /Guitarra solista, sin metrónomo/, /^Práctica con loop1–\d+▾$/]);
   // El aviso de notas recolocadas (más allá del traste 12) ya no se enseña.
   await expect(page.locator('.riff-panel')).not.toContainText('pasaban del traste');
   await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled();
@@ -119,14 +124,23 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   const inFront = await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest('.riff-overlay'), { x: box.x + box.width / 2, y: box.y + box.height / 2 });
   expect(inFront).toBe(true);
 
-  // Metrónomo: desplegable Nada / Metrónomo / Batería automática.
-  const riffMetronome = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
-  await choose(page, 'Metrónomo', 'Metrónomo');
-  await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Metrónomo');
+  // Metrónomo y batería automática: dos iconos de "Suenan de fondo" en Pistas (usuario, 2026-11-14; sin
+  // "Nada"): se encienden y apagan sin cerrar el menú, y encender uno apaga el otro.
+  const riffMetronome = page.locator('.riff-dd-toggle', { hasText: 'Pistas' });
   await riffMetronome.click();
-  await expect(page.locator('.riff-dd-menu').getByRole('button', { name: 'Batería automática', exact: true })).toBeEnabled();
-  await page.locator('.riff-dd-menu').getByRole('button', { name: 'Nada', exact: true }).click();
-  await expect(riffMetronome).toHaveAttribute('aria-label', 'Metrónomo: Nada');
+  const ddMenu = page.locator('.riff-dd-menu');
+  await expect(ddMenu.getByRole('button', { name: 'Nada', exact: true })).toHaveCount(0);
+  const metro = ddMenu.getByRole('button', { name: /^Metrónomo:/ });
+  const autoDrums = ddMenu.getByRole('button', { name: /^Batería automática:/ });
+  await expect(metro).toHaveAttribute('aria-pressed', 'false');
+  await metro.click();
+  await expect(riffMetronome).toHaveAttribute('aria-label', /con metrónomo$/);
+  await autoDrums.click();
+  await expect(metro).toHaveAttribute('aria-pressed', 'false');
+  await expect(riffMetronome).toHaveAttribute('aria-label', /con batería automática$/);
+  await autoDrums.click();
+  await expect(riffMetronome).toHaveAttribute('aria-label', /sin metrónomo$/);
+  await riffMetronome.click();
   await choose(page, 'Velocidad', '75%');
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Velocidad' })).toContainText('75%');
 
@@ -136,14 +150,14 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(page.locator('.riff-dd-menu')).toHaveCount(1);
   await expect(page.locator('.riff-dd-menu')).toContainText('50%');
   await page.locator('.riff-dd-toggle', { hasText: 'Velocidad' }).click();
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await expect(page.getByLabel('Desde el compás')).toBeVisible();
   // Tocar fuera o hacer scroll NO lo cierra (en el móvil, deslizar el dedo lo cerraba); su botón, sí.
   await page.mouse.click(5, 5);
   await page.mouse.wheel(0, 200);
   await page.waitForTimeout(200);
   await expect(page.locator('.riff-dd-menu')).toHaveCount(1);
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 
   // Fuera de partida, la barra tiene afinación, colores y metrónomo, y no hay PAUSA.
@@ -479,6 +493,7 @@ test('recuerda la última dificultad elegida; el Tutorial no la cambia', async (
   await expect(nivel).toContainText('Fácil');
   // El Tutorial vuelve a la base en pantalla, pero no toca lo guardado.
   await page.locator('.riff-panel .tour-launch').click();
+  await page.getByRole('menuitem', { name: 'Controles' }).click();
   await page.keyboard.press('Escape');
   await expect(nivel).toContainText('Principiante');
   await page.reload();
@@ -618,7 +633,7 @@ test('con bucle (Práctica) no se puntúa y se puede cambiar la dificultad en pa
   await page.goto(URL);
   await openGame(page);
   const stage = page.locator('.test-room-fretboard .riff-stage');
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await page.getByLabel('Desde el compás').fill('9');
   await page.getByLabel('Hasta el compás').fill('12');
   await page.getByRole('button', { name: /Repetir en bucle/ }).click();
@@ -635,13 +650,13 @@ test('con bucle (Práctica) no se puntúa y se puede cambiar la dificultad en pa
   await page.waitForTimeout(500);
   await expect(stage).toHaveAttribute('data-status', 'paused');
   // El tramo del bucle (9-12) se conserva al cambiar de dificultad (bug real: volvía a 1-103).
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toContainText('9–12');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toContainText('9–12');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
   // Quitar el bucle con otra dificultad que la de la partida en pausa sí la anula.
   await hold(page, pause);
   await choose(page, 'Nivel', 'Avanzado cuerdas');
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await page.getByRole('button', { name: /Repetir en bucle/ }).click();
   await page.keyboard.press('Escape');
   await expect(stage).toHaveAttribute('data-status', 'idle');
@@ -655,7 +670,7 @@ test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continu
   const toggle = (name: string) => page.locator('.riff-dd-toggle', { hasText: name });
   await choose(page, 'Velocidad', '50%');
   await choose(page, 'Ritmo', 'Paso a paso');
-  await toggle('Compases').click();
+  await toggle('Práctica con loop').click();
   await page.getByLabel('Desde el compás').fill('9');
   await page.getByLabel('Hasta el compás').fill('12');
   await page.getByRole('button', { name: /Repetir en bucle/ }).click();
@@ -668,19 +683,22 @@ test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continu
   const pause = page.getByRole('button', { name: 'PAUSA' });
   await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
-  const concert = toggle('Concierto');
+  // Concierto vive dentro del desplegable Nivel (usuario, 2026-11-14) y no lo cierra.
+  await toggle('Nivel').click();
+  const concert = page.locator('.riff-dd-menu').getByRole('button', { name: 'Concierto', exact: true });
   await concert.click();
   await expect(stage).toHaveAttribute('data-status', 'idle');
   await expect(stage).toHaveAttribute('data-game-mode', 'concierto');
   await expect(concert).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.riff-dd-menu')).toHaveText('Aquí irán tus rankings');
+  await expect(page.locator('.riff-dd-menu')).toContainText('Aquí irán tus rankings');
+  await expect(toggle('Nivel')).toContainText('Concierto');
+  await toggle('Nivel').click();
   await expect(page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Continuar' })).toHaveCount(0);
 
   await expect(toggle('Velocidad')).toContainText('100%');
-  await expect(toggle('Ritmo')).toContainText('Con ritmo');
-  await expect(toggle('Compases')).toHaveText(/^Compases1–\d+▾$/);
-  for (const name of ['Velocidad', 'Ritmo', 'Compases']) {
+  await expect(toggle('Práctica con loop')).toHaveText(/^Práctica con loop1–\d+▾$/);
+  for (const name of ['Velocidad', 'Práctica con loop']) {
     await expect(toggle(name)).toBeDisabled();
     await expect(toggle(name)).toHaveAttribute('title', 'En Concierto no se cambia');
   }
@@ -696,14 +714,16 @@ test('modo Concierto: canción entera al 100 %, ajustes bloqueados y sin continu
   await expect(page.getByRole('button', { name: 'Volver a empezar' })).toBeEnabled();
 
   // Salir de Concierto anula esa partida y devuelve los ajustes de antes, bucle incluido.
+  await toggle('Nivel').click();
   await concert.click();
   await expect(stage).toHaveAttribute('data-status', 'idle');
   await expect(stage).toHaveAttribute('data-game-mode', 'practica');
-  await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
+  await expect(page.locator('.riff-dd-menu')).not.toContainText('Aquí irán tus rankings');
+  await toggle('Nivel').click();
   await expect(page.locator('.riff-panel').getByRole('button', { name: 'Tutorial' })).toBeVisible();
   await expect(toggle('Velocidad')).toContainText('50%');
-  await expect(toggle('Ritmo')).toContainText('Paso a paso');
-  await expect(toggle('Compases')).toContainText('9–12');
+  await expect(toggle('Práctica con loop')).toContainText('Paso a paso');
+  await expect(toggle('Práctica con loop')).toContainText('9–12');
 });
 
 test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo estiran en X (sin agrandarlo)', async ({ page }) => {
@@ -791,10 +811,14 @@ test('Pistas: la otra guitarra, el bajo y la batería se pueden silenciar; el me
   await page.goto(URL);
   await openGame(page);
   // Canción con batería: metrónomo apagado.
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /sin metrónomo$/);
   await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
   const menu = page.locator('.riff-dd-menu');
-  await expect(menu.locator('.riff-band-track')).toHaveText([/Bajo/, /Guitarra rítmica/, /Batería/]);
+  // En fila y solo con su icono (usuario, 2026-11-14): el nombre, en aria-label y title.
+  await expect(menu.locator('.riff-band-track .riff-song-title')).toHaveCount(0);
+  expect(await menu.locator('.riff-band-track').evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).toEqual(['Bajo: suena', 'Guitarra rítmica: suena', 'Batería: suena', 'Metrónomo: apagado', 'Batería automática: apagado']);
+  const rowTops = await menu.locator('.riff-band-track').evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+  expect(new Set(rowTops).size).toBe(1);
   const bass = menu.getByRole('button', { name: /^Bajo:/ });
   await expect(bass).toHaveAttribute('aria-pressed', 'true');
   await bass.click();
@@ -820,7 +844,7 @@ test('canción sin batería: empieza con la batería automática', async ({ page
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Canción' })).toHaveAttribute('aria-label', 'Canción: cumple', { timeout: 20000 });
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /con batería automática$/, { timeout: 10000 });
 });
 
 for (const width of [360, 1280]) {
@@ -840,7 +864,7 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await choose(page, 'Nivel', 'Medio');
   await choose(page, 'Velocidad', '50%');
-  await page.locator('.riff-dd-toggle', { hasText: 'Compases' }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await page.getByLabel('Hasta el compás').fill('42');
   await page.getByLabel('Desde el compás').fill('42');
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
@@ -977,6 +1001,7 @@ test.describe('pantalla táctil', () => {
 // sola antes de cada parte para enseñar su mensaje. Se lanza desde el último paso del tutorial del panel.
 async function launchTutorial(page: Page) {
   await page.locator('.riff-panel .tour-launch').click();
+  await page.getByRole('menuitem', { name: 'Controles' }).click();
   const main = page.locator('.tour-bubble .tour-btn-main');
   while ((await main.textContent()) === 'Siguiente') await main.click();
   await expect(page.locator('.tour-bubble')).toContainText('Partida de prueba');
@@ -1139,10 +1164,10 @@ test('cambiar de canción con el disco: en el juego y en la tablatura de debajo 
   await expect(disc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
   // Una sola guitarra, pero con bajo y batería: "Pistas" está para silenciarlas. 44 compases.
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toBeVisible();
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–44▾$/, { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toHaveText(/^Práctica con loop1–44▾$/, { timeout: 10000 });
   await choose(page, 'Canción', 'Iron Rain');
   await expect(disc).toHaveAttribute('aria-label', 'Canción: Iron Rain');
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–101▾$/, { timeout: 10000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toHaveText(/^Práctica con loop1–101▾$/, { timeout: 10000 });
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toBeVisible();
   // Se puede jugar: Empezar arranca la partida.
   await page.getByRole('button', { name: 'Empezar' }).click();
@@ -1211,7 +1236,7 @@ test.describe('canciones del dispositivo', () => {
     // El bueno: se juega (Electric Warlock tiene 128 compases).
     await choose(page, 'Canción', 'mi-cancion');
     await expect(disc).toHaveAttribute('aria-label', 'Canción: mi-cancion');
-    await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–128▾$/, { timeout: 10000 });
+    await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toHaveText(/^Práctica con loop1–128▾$/, { timeout: 10000 });
     await page.getByRole('button', { name: 'Empezar' }).click();
     await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/);
     await hold(page, page.getByRole('button', { name: 'PAUSA' }));
@@ -1497,8 +1522,8 @@ test('canción muy densa: notas de fondo con tope y batería sin buffers nuevos 
     { name: 'estres.musicxml', mimeType: 'application/xml', buffer: fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml') },
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'estres', exact: true }).click();
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–110▾$/, { timeout: 20000 });
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toHaveText(/^Práctica con loop1–110▾$/, { timeout: 20000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /sin metrónomo$/);
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 20000 });
   const buffersAtStart = await page.evaluate(() => (window as unknown as { __audio: { buffers: number } }).__audio.buffers);
@@ -1554,7 +1579,7 @@ test('canción muy densa: el bajo es monofónico y el temporizador no se retrasa
     { name: 'estres.musicxml', mimeType: 'application/xml', buffer: fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml') },
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'estres', exact: true }).click();
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Compases' })).toHaveText(/^Compases1–110▾$/, { timeout: 20000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' })).toHaveText(/^Práctica con loop1–110▾$/, { timeout: 20000 });
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 20000 });
   await page.evaluate(() => { (window as unknown as { __bass: { maxTickGap: number } }).__bass.maxTickGap = 0; });
@@ -1591,18 +1616,20 @@ test('batería automática: en una canción sin batería se pone sola y suena co
   await page.goto(URL);
   await openGame(page, 'Black Gilmur');
   // Con batería en la canción no se pone sola, pero se puede elegir (para cambiar la real por esta).
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Nada');
-  await choose(page, 'Metrónomo', 'Batería automática');
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /sin metrónomo$/);
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+  await page.locator('.riff-dd-menu').getByRole('button', { name: /^Batería automática:/ }).click();
+  await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /con batería automática$/);
   await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
   await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
   await page.getByTestId('local-song-files').setInputFiles([
     { name: 'cumple.gp', mimeType: 'application/octet-stream', buffer: fs.readFileSync('public/tabs/cumpleanos-feliz.gp') },
   ]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'cumple', exact: true }).click();
-  const toggle = page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' });
+  const toggle = page.locator('.riff-dd-toggle', { hasText: 'Pistas' });
   // Se pone sola al elegir una canción sin batería.
-  await expect(toggle).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
+  await expect(toggle).toHaveAttribute('aria-label', /con batería automática$/, { timeout: 20000 });
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
@@ -1621,7 +1648,7 @@ for (const width of [360, 480]) {
       expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
       expect(Math.abs(box.x + box.width / 2 - width / 2), selector).toBeLessThanOrEqual(3);
     };
-    for (const menu of ['Nivel', 'Velocidad', 'Canción', 'Pistas', 'Metrónomo', 'Ritmo', 'Compases']) {
+    for (const menu of ['Nivel', 'Velocidad', 'Canción', 'Pistas', 'Práctica con loop']) {
       await page.locator('.riff-dd-toggle', { hasText: menu }).click();
       await centered('.riff-dd-menu');
       await page.locator('.riff-dd-toggle', { hasText: menu }).click();
@@ -1660,7 +1687,7 @@ test('canción sin batería pero con bajo: el bajo suena de fondo junto a la bat
   await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
   await page.getByTestId('local-song-files').setInputFiles([{ name: 'sinbateria.musicxml', mimeType: 'application/xml', buffer: Buffer.from(xml) }]);
   await page.locator('.riff-dd-menu').getByRole('button', { name: 'sinbateria', exact: true }).click();
-  await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /con batería automática$/, { timeout: 20000 });
   await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
   await expect(page.locator('.riff-dd-menu').getByRole('button', { name: /^Bajo:/ })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
@@ -1697,7 +1724,7 @@ test('bajo jugable: se elige en Pistas, suena con su sintetizador y la guitarra 
   await choose(page, 'Nivel', 'Difícil');
   await choose(page, 'Pistas', 'Bajo');
   const pistas = page.locator('.riff-dd-toggle', { hasText: 'Pistas' });
-  await expect(pistas).toHaveAttribute('aria-label', 'Pistas: Bajo');
+  await expect(pistas).toHaveAttribute('aria-label', /^Pistas: Bajo,/);
   // El mástil no toma la octava del bajo como afinación.
   await pistas.click();
   await expect(page.getByRole('button', { name: 'Guitarra rítmica: suena' })).toBeVisible();
@@ -1743,7 +1770,7 @@ for (const [label, tuning, count] of [['guitarra de 7', SEVEN, 7], ['bajo de 5',
     const xml = tabXml([...tuning], [[count, 1], [count, 2], [1, 3], [count - 1, 0]]);
     await page.getByTestId('local-song-files').setInputFiles([{ name: 'muchas.musicxml', mimeType: 'application/xml', buffer: Buffer.from(xml) }]);
     await page.locator('.riff-dd-menu').getByRole('button', { name: 'muchas', exact: true }).click();
-    await expect(page.locator('.riff-dd-toggle', { hasText: 'Metrónomo' })).toHaveAttribute('aria-label', 'Metrónomo: Batería automática', { timeout: 20000 });
+    await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /con batería automática$/, { timeout: 20000 });
     await choose(page, 'Nivel', 'Experto');
     await choose(page, 'Ritmo', 'Paso a paso');
     await page.locator('.riff-actions').scrollIntoViewIfNeeded();
@@ -1820,6 +1847,7 @@ test('tutorial en PC: paso "Activa el teclado" y animaciones de teclado', async 
   await page.goto(URL);
   await openGame(page);
   await page.locator('.riff-panel .tour-launch').click();
+  await page.getByRole('menuitem', { name: 'Controles' }).click();
   const bubble = page.locator('.tour-bubble');
   const main = bubble.locator('.tour-btn-main');
   const titles: string[] = [];
@@ -1860,6 +1888,7 @@ test.describe('pantalla táctil (tutorial)', () => {
     await page.goto(URL);
     await openGame(page);
     await page.locator('.riff-panel .tour-launch').click();
+    await page.getByRole('menuitem', { name: 'Controles' }).click();
     const bubble = page.locator('.tour-bubble');
     const main = bubble.locator('.tour-btn-main');
     for (let i = 0; i < 20 && (await main.textContent()) === 'Siguiente'; i++) {
@@ -1872,6 +1901,51 @@ test.describe('pantalla táctil (tutorial)', () => {
     await expect(hold).toHaveAttribute('data-device', 'touch');
     await expect(hold.locator('[data-key]')).toHaveCount(0);
   });
+});
+
+// Tutorial del juego (usuario, 2026-11-14): despliega "Controles" (el recorrido del panel) y "Trucos"
+// ("Activa el teclado" solo si aún no lo está, y directo a la partida de prueba). Con el teclado ya
+// activado, ninguno de los dos enseña "Activa el teclado".
+test('Tutorial: Controles y Trucos; "Activa el teclado" se salta si ya está activado', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const launch = page.locator('.riff-panel .tour-launch');
+  const bubble = page.locator('.tour-bubble');
+  const card = page.locator('.riff-tutorial-card');
+  await launch.click();
+  await expect(page.getByRole('menuitem')).toHaveText(['Controles', 'Trucos']);
+  // Escape y pulsar fuera lo cierran.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menuitem')).toHaveCount(0);
+  // Trucos con el teclado apagado: solo "Activa el teclado" y, al seguir, la partida de prueba.
+  await launch.click();
+  await page.getByRole('menuitem', { name: 'Trucos' }).click();
+  await expect(bubble.locator('.tour-title')).toHaveText('Activa el teclado');
+  await expect(bubble.locator('.tour-btn-main')).toHaveText('¡A jugar!');
+  await page.getByTestId('tour-hole').click();
+  await expect(page.locator('.midi-kb-toggle').first()).toHaveAttribute('aria-pressed', 'true');
+  await bubble.locator('.tour-btn-main').click();
+  await expect(card).toContainText('MANTÉN PULSADO');
+  await card.getByRole('button', { name: 'Salir' }).click();
+  await expect(card).toHaveCount(0);
+  // Con el teclado ya activado, Trucos va directo a la partida de prueba...
+  await launch.click();
+  await page.getByRole('menuitem', { name: 'Trucos' }).click();
+  await expect(bubble).toHaveCount(0);
+  await expect(card).toContainText('MANTÉN PULSADO');
+  await card.getByRole('button', { name: 'Salir' }).click();
+  // ...y Controles no enseña "Activa el teclado".
+  await launch.click();
+  await page.getByRole('menuitem', { name: 'Controles' }).click();
+  const titles: string[] = [];
+  for (let i = 0; i < 20; i++) {
+    titles.push((await bubble.locator('.tour-title').textContent()) ?? '');
+    if ((await bubble.locator('.tour-btn-main').textContent()) !== 'Siguiente') break;
+    await bubble.locator('.tour-btn-main').click();
+  }
+  expect(titles).not.toContain('Activa el teclado');
+  expect(titles[titles.length - 1]).toBe('Partida de prueba');
 });
 
 // Papelera de las canciones del dispositivo (usuario, 2026-11-13), en el disco del juego y en el de la
@@ -1946,4 +2020,38 @@ test('pantalla encendida: se pide al jugar y se suelta en pausa y al salir', asy
   await expect.poll(wake).toBe('pedida,soltada,pedida');
   await hold(page, page.locator('.riff-open-toggle'));
   await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
+});
+
+// Teclado en niveles de 2 y 3 cuerdas (usuario, 2026-11-14): las filas de las cuerdas que el nivel no
+// tiene, por encima de su cuerda más aguda, cuentan como esa cuerda (mismo traste). En 4 cuerdas, no.
+test('teclado: en 2 cuerdas la fila de números toca la La; en Difícil, no', async ({ page }) => {
+  const { FRETBOARD_KEYMAP } = await import('../app/lib/fretboardKeymap');
+  const keyFor = (string: number, fret: number) => Object.entries(FRETBOARD_KEYMAP).find(([, e]) => e.string === string && e.fret === fret)?.[0];
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  const panel = page.locator('.test-room-fretboard .riff-stage');
+  const kb = page.locator('.test-room-fretboard .midi-kb-toggle');
+  await kb.click();
+  await expect(page.locator('.test-room-fretboard').getByRole('button', { name: 'Graves' })).toBeVisible();
+  for (const [label, level, counts] of [['Medio cuerdas', 'medio-cuerdas', true], ['Difícil', 'dificil', false]] as const) {
+    const chart = jamesChart(level);
+    await choose(page, 'Nivel', label);
+    await choose(page, 'Pistas', 'Guitarra rítmica');
+    await choose(page, 'Ritmo', 'Paso a paso');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: /^(Empezar|Volver a empezar)$/ }).click();
+    await expect(panel).toHaveAttribute('data-status', 'playing', { timeout: 10000 });
+    const target = chart.notes.find((n) => n.string === 5)!;
+    const before = chart.notes.slice(0, chart.notes.indexOf(target));
+    // Hasta la primera nota de la La, cada nota con su fila normal.
+    for (const note of before) await page.keyboard.press(keyFor(note.string, note.fret)!);
+    await expect(panel).toHaveAttribute('data-hits', String(before.length));
+    // La nota de la La, con la fila de NÚMEROS (la de la cuerda 3) y el mismo traste.
+    await page.keyboard.press(keyFor(3, target.fret)!);
+    await page.waitForTimeout(300);
+    await expect(panel).toHaveAttribute('data-hits', String(before.length + (counts ? 1 : 0)));
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+    await expect(panel).toHaveAttribute('data-status', 'paused');
+  }
 });

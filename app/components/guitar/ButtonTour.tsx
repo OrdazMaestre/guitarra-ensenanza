@@ -22,6 +22,8 @@ export interface TourStep {
   // El botón resaltado SÍ se puede pulsar en este paso (el resto de la página sigue bloqueado):
   // "Activa el teclado" es justo el momento de activarlo (usuario, 2026-11-13).
   clickable?: boolean;
+  // El paso se salta si ya no hace falta (p. ej. el teclado ya está activado; usuario, 2026-11-14).
+  skip?: (target: Element) => boolean;
 }
 
 const byLabel = (label: string) => (root: HTMLElement) => root.querySelector(`[aria-label="${label}"]`);
@@ -57,32 +59,39 @@ export const TUNING_TOUR: TourStep[] = [
   { title: 'KEYBOARD', lines: ['Toca con un teclado de ordenador.'], find: keyboardToggle },
 ];
 
+// "Activa el teclado": solo con teclado físico (en pantalla táctil el botón está oculto y el paso se salta
+// solo; usuario, 2026-11-13) y solo si aún no está activado (usuario, 2026-11-14). KEYBOARD vive en la barra
+// del mástil, fuera del panel: se busca en su instrumento. Sirve a los dos tutoriales del juego.
+const KEYBOARD_HANDS_STEP: TourStep = {
+  title: 'Activa el teclado',
+  lines: ['Pulsa el botón de abajo.'],
+  art: 'keyboard-hands',
+  after: ['Encuentra tu combinación.'],
+  clickable: true,
+  find: (root) => root.closest('.midi-instrument-host')?.querySelector('.midi-kb-toggle') ?? null,
+  skip: (target) => target.getAttribute('aria-pressed') === 'true',
+};
+
 const ddToggle = (id: string) => (root: HTMLElement) => root.querySelector(`.riff-dd-toggle[aria-controls="riff-menu-${id}"]`);
 
 export const RIFF_PANEL_TOUR: TourStep[] = [
-  // Mismo orden que el panel (decisión del usuario, 2026-11-03).
+  // Mismo orden que el panel (decisión del usuario, 2026-11-03). Solo explica los botones que se ven en el
+  // panel; lo que va dentro de un desplegable (Concierto, metrónomo, Con ritmo / Paso a paso) no tiene paso
+  // (usuario, 2026-11-14).
   { title: 'Nivel', lines: ['Dos modos:', 'Trastes: vale cualquier cuerda.', 'Cuerdas: la cuerda también cuenta.'], find: ddToggle('nivel') },
   { title: 'Velocidad', lines: ['Súbela o bájala según qué tal te salga.'], find: ddToggle('velocidad') },
   { title: 'Canción', lines: ['Elige qué canción tocar.', 'También puedes buscar las tuyas.'], find: ddToggle('cancion') },
-  { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Toca el altavoz para callar una pista.'], find: ddToggle('pista') },
-  { title: 'Metrónomo', lines: ['Metrónomo o batería automática.', 'Para canciones sin batería.'], find: ddToggle('metronomo') },
-  { title: 'Ritmo', lines: ['Decide si la canción espera o no a que toques.'], find: ddToggle('ritmo') },
-  { title: 'Compases y bucle', lines: ['Elige qué trozo tocar.', 'Puedes repetirlo en bucle.'], find: ddToggle('compases') },
-  { title: 'Concierto', lines: ['Toda la canción, ¡sin parar!', 'Si pausas, vuelves a empezar.'], find: ddToggle('concierto') },
-  // Solo con teclado físico (en pantalla táctil el botón está oculto y el paso se salta solo; usuario,
-  // 2026-11-13): antes de la partida de prueba, cómo poner las manos. KEYBOARD vive en la barra del mástil,
-  // fuera del panel: se busca en su instrumento.
-  {
-    title: 'Activa el teclado',
-    lines: ['Pulsa el botón de abajo.'],
-    art: 'keyboard-hands',
-    after: ['Encuentra tu combinación.'],
-    clickable: true,
-    find: (root) => root.closest('.midi-instrument-host')?.querySelector('.midi-kb-toggle') ?? null,
-  },
+  { title: 'Pistas', lines: ['Elige qué guitarra tocas.', 'Elige qué suena de fondo.'], find: ddToggle('pista') },
+  { title: 'Práctica con loop', lines: ['Elige qué trozo tocar y repítelo en bucle.'], find: ddToggle('compases') },
+  // Antes de la partida de prueba, cómo poner las manos.
+  KEYBOARD_HANDS_STEP,
   // Último paso: el botón principal lanza la partida tutorial de mecánicas (`finish` de TutorialButton).
   { title: 'Partida de prueba', lines: ['Aprende tres trucos jugando:', 'mantener pulsado, tapping y deslizar.'], find: (root) => root.querySelector('.tour-launch') },
 ];
+
+// "Trucos" (usuario, 2026-11-14): sin explicar los botones, solo "Activa el teclado" (si hace falta) y
+// directo a la partida de prueba.
+export const RIFF_TRICKS_TOUR: TourStep[] = [KEYBOARD_HANDS_STEP];
 
 const PAD = 6;
 const BUBBLE_WIDTH = 300;
@@ -207,8 +216,17 @@ export function ButtonTour({ finish, onClose, rootRef, steps: shown }: TourProps
   );
 }
 
+// Segunda opción del botón "Tutorial" (juego: "Controles" = el recorrido de siempre; "Trucos" = esta):
+// sus pasos (los que no se vean o sobren se saltan) y su final; sin pasos, el final directamente.
+export interface TourTricks {
+  finish: TourFinish;
+  onStart?: () => void;
+  steps: TourStep[];
+}
+
 interface ButtonProps {
   finish?: TourFinish;
+  tricks?: TourTricks;
   // Antes de abrir (p. ej. el juego vuelve a su configuración de base).
   onStart?: () => void;
   rootRef: RefObject<HTMLElement | null>;
@@ -217,24 +235,71 @@ interface ButtonProps {
 }
 
 // Botón "Tutorial" que abre el recorrido.
-export function TutorialButton({ className, finish, onStart, rootRef, steps }: ButtonProps) {
-  // Pasos del recorrido abierto: solo los botones que se ven al pulsar "Tutorial".
-  const [shown, setShown] = useState<TourStep[] | null>(null);
+// Con `tricks`, el botón despliega dos opciones: "Controles" (`steps` + `finish`) y "Trucos" (`tricks`).
+export function TutorialButton({ className, finish, onStart, rootRef, steps, tricks }: ButtonProps) {
+  // Recorrido abierto: solo los pasos cuyo botón se ve al pulsar (y que no sobran), y su final.
+  const [open, setOpen] = useState<{ steps: TourStep[]; finish?: TourFinish } | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const shownSteps = (list: TourStep[]) => {
+    const root = rootRef.current;
+    if (!root) return [];
+    return list.filter((step) => {
+      const target = step.find(root);
+      return visible(target) && !step.skip?.(target);
+    });
+  };
+  const startControls = () => {
+    setChoosing(false);
+    onStart?.();
+    setOpen({ steps: shownSteps(steps), finish });
+  };
+  const startTricks = (t: TourTricks) => {
+    setChoosing(false);
+    t.onStart?.();
+    const list = shownSteps(t.steps);
+    if (list.length === 0) t.finish.run();
+    else setOpen({ steps: list, finish: t.finish });
+  };
+
+  // El desplegable se cierra al pulsar fuera o con Escape.
+  useEffect(() => {
+    if (!choosing) return;
+    const onDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setChoosing(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChoosing(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [choosing]);
+
   return (
     <>
       <TourStyles />
-      <button
-        className={`tour-launch${className ? ` ${className}` : ''}`}
-        onClick={() => {
-          onStart?.();
-          const root = rootRef.current;
-          setShown(root ? steps.filter((step) => visible(step.find(root))) : []);
-        }}
-        type="button"
-      >
-        Tutorial
-      </button>
-      {shown && <ButtonTour finish={finish} onClose={() => setShown(null)} rootRef={rootRef} steps={shown} />}
+      <span className="tour-launch-wrap" ref={wrapRef}>
+        <button
+          aria-expanded={tricks ? choosing : undefined}
+          aria-haspopup={tricks ? 'menu' : undefined}
+          className={`tour-launch${className ? ` ${className}` : ''}`}
+          onClick={() => (tricks ? setChoosing((c) => !c) : startControls())}
+          type="button"
+        >
+          Tutorial
+        </button>
+        {tricks && choosing && (
+          <span className="tour-choice" role="menu">
+            <button className="tour-choice-item" onClick={startControls} role="menuitem" type="button">Controles</button>
+            <button className="tour-choice-item" onClick={() => startTricks(tricks)} role="menuitem" type="button">Trucos</button>
+          </span>
+        )}
+      </span>
+      {open && <ButtonTour finish={open.finish} onClose={() => setOpen(null)} rootRef={rootRef} steps={open.steps} />}
     </>
   );
 }
@@ -409,6 +474,46 @@ function TourStyles() {
           background: var(--tour-glow);
           box-shadow: 0 0 10px 3px var(--tour-glow);
         }
+      }
+
+      /* Desplegable "Controles / Trucos" del Tutorial del juego: se abre hacia arriba, centrado. */
+      .tour-launch-wrap {
+        display: inline-flex;
+        position: relative;
+      }
+
+      .tour-choice {
+        background: #ffffff;
+        border: 1.5px solid #047857;
+        border-radius: 12px;
+        bottom: calc(100% + 8px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        left: 50%;
+        padding: 8px;
+        position: absolute;
+        transform: translateX(-50%);
+        z-index: 30;
+      }
+
+      .tour-choice-item {
+        background: #ffffff;
+        border: 1.5px solid #047857;
+        border-radius: 999px;
+        color: #047857;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 900;
+        padding: 6px 18px;
+        white-space: nowrap;
+      }
+
+      .tour-choice-item:hover,
+      .tour-choice-item:focus-visible {
+        background: #047857;
+        color: #ffffff;
       }
 
       .instrument-tutorial-row {

@@ -431,6 +431,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // una cuerda al arrastrar el dedo a otra, que no pasa por emitNoteEvent.
   const riffPlayingRef = useRef(false);
   useEffect(() => { riffPlayingRef.current = riff.playing; }, [riff.playing]);
+  // Teclado en los niveles de 2 y 3 cuerdas (usuario, 2026-11-14): las filas de teclas de cuerdas que el
+  // nivel no tiene, por ENCIMA de su cuerda más aguda, cuentan como esa cuerda, con su mismo traste (2
+  // cuerdas: las filas Q y de números tocan la La; 3 cuerdas: la de números toca la Re). Así cada mano
+  // tiene más filas cómodas. El resto de niveles, igual que siempre.
+  const levelStrings = riffGame && gameOpen && riff.profile && !riff.profile.freeStrings ? riff.profile.strings : null;
+  const kbTopString = levelStrings && (levelStrings.length === 2 || levelStrings.length === 3) ? Math.min(...levelStrings) : null;
+  const kbTopStringRef = useRef<number | null>(null);
+  useEffect(() => { kbTopStringRef.current = kbTopString; }, [kbTopString]);
   // Partida en curso: MAIkael no se abre con un toque sin querer (petición del usuario).
   useEffect(() => {
     if (!riffGame) return;
@@ -636,8 +644,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     async function down(e: KeyboardEvent) {
       e.preventDefault();
       if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
-      const entry = activeMap[e.code];
-      if (!entry) return;
+      const raw = activeMap[e.code];
+      if (!raw) return;
+      const top = kbTopStringRef.current;
+      const entry = top !== null && raw.string < top ? { string: top, fret: raw.fret, midi: OPEN_STRING_MIDI[top] + raw.fret } : raw;
       const cur = kbStringVoiceRef.current.get(entry.string);
       if (!cur && kbStringVoiceRef.current.size >= 3) return;
       if (paintModeRef.current) toggleMark(noteNameForFret(entry.string, entry.fret, centsRef.current[entry.string]));
@@ -1319,6 +1329,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       {!riffInGame && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
       <div className="midi-anchor">
         <button
+          // aria-pressed: el tutorial del juego se salta "Activa el teclado" si ya está activado.
+          aria-pressed={kbMode}
           className={`midi-kb-toggle${riffGame && gameOpen ? ' riff-kb-glow' : ''}`}
           onClick={() => setKbMode(m => !m)}
           style={{ background: kbMode ? '#047857' : 'transparent', border: `1.5px solid ${kbMode ? '#047857' : '#9ca3af'}`, borderRadius: '5px', color: kbMode ? '#fff' : '#6b7280', cursor: 'pointer', fontSize: '12px', fontWeight: 700, lineHeight: 1.4, padding: '3px 8px' }}
