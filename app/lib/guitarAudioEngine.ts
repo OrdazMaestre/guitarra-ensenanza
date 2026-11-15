@@ -283,12 +283,29 @@ const REGISTER_HIGH_DB = 20 * Math.log10(0.75);
 // encima del clean): las agudas entran a la saturación 6 dB más bajas, con el mismo paso gradual
 // (usuario, 2026-11-13; medido en tests/guitar-overdrive.spec.ts, mástil y tablatura).
 const OD_REGISTER_EXTRA_HIGH_DB = -6;
+// Por encima de Do4 (60), otro −40 % (usuario, 2026-11-15, en toda la web): desde Do#4 (61) entero,
+// Do4 a mitad de camino en dB, Si3 (59) y por debajo sin cambio.
+const REGISTER_TOP_FROM_MIDI = 61;
+const REGISTER_TOP_DB = 20 * Math.log10(0.6);
+const OD_TOP_EXTRA_SHARE = 0.3;
+// Graves +35 % hasta Re#3 (51) (usuario, 2026-11-15, en los 3: tablatura, juego y mástiles); Mi3 (52) a
+// mitad de camino en dB, Fa3 (53) y más agudas sin cambio. Se suma al +25 % hasta Mi3.
+const REGISTER_BASS_TO_MIDI = 51;
+const REGISTER_BASS_DB = 20 * Math.log10(1.35);
+function registerBassDb(midi: number): number {
+  return Math.min(1, Math.max(0, (REGISTER_BASS_TO_MIDI + 2 - midi) / 2)) * REGISTER_BASS_DB;
+}
+function registerTopDb(midi: number): number {
+  return Math.min(1, Math.max(0, (midi - (REGISTER_TOP_FROM_MIDI - 2)) / 2)) * REGISTER_TOP_DB;
+}
 function registerHighWeight(midi: number): number {
   return Math.min(1, Math.max(0, (midi - REGISTER_LOW_TOP_MIDI) / (REGISTER_HIGH_FROM_MIDI - REGISTER_LOW_TOP_MIDI)));
 }
 // Factor extra solo para las voces que van a la cadena de overdrive. Exportado para la tablatura.
+// Lo mismo con el −40 % desde Do4 (2026-11-15): en overdrive casi no se notaba (tablatura hasta +2,6 LU
+// sobre el clean), así que esas notas entran a la saturación otro tanto más bajas.
 export function overdriveRegisterTrim(midi: number): number {
-  return 10 ** ((registerHighWeight(midi) * OD_REGISTER_EXTRA_HIGH_DB) / 20);
+  return 10 ** ((registerHighWeight(midi) * OD_REGISTER_EXTRA_HIGH_DB + OD_TOP_EXTRA_SHARE * registerTopDb(midi)) / 20);
 }
 function registerDb(midi: number): number {
   if (midi <= REGISTER_LOW_TOP_MIDI) return REGISTER_LOW_DB;
@@ -300,12 +317,13 @@ function registerDb(midi: number): number {
 // Factor de ganancia lineal para una nota `midi` tocada con el sample `file`
 // (nombre de fichero del manifest). Exportado para el reproductor de tablatura.
 export function guitarSampleTrim(file: string, midi: number): number {
-  const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE + registerDb(midi);
+  const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE + registerDb(midi) + registerTopDb(midi) + registerBassDb(midi);
   return 10 ** (db / 20);
 }
 
-// 0,8 hasta el 2026-11-13; 0,70 con el refuerzo de graves (+25 %) para que un acorde grave no pase del pico 0,84.
-const CLEAN_TRIM = 0.7;
+// 0,8 hasta el 2026-11-13; 0,70 con el refuerzo de graves (+25 %) y 0,58 desde el 2026-11-15 con el otro +35 %
+// hasta Re#3: siempre para que un acorde grave no pase del pico 0,84 (el usuario prefiere bajar todo a perder la proporción).
+const CLEAN_TRIM = 0.58;
 
 const OD_VOICE_LEVEL = 0.52;
 // Nivel fijo al que entra a la saturación una nota sola (el volumen va después, en `output`):
@@ -318,7 +336,10 @@ const OD_STAGE2_GAIN = 0.8;
 const OD_STAGE2_K = 1.5;
 const OD_ROOM_WET = 0.08;
 // 0,09 hasta el 2026-11-13; 0,086 con el nuevo balance de registros (clean más bajo, agudas recortadas).
-const OD_MAKEUP = 0.086;
+// 0,0713 desde el 2026-11-15 (= 0,086 × 0,58/0,7): baja lo mismo que el clean, así medias y agudas siguen
+// igualadas. El +35 % de las graves NO se nota en overdrive (la distorsión comprime; subirlas antes de la
+// saturación no cambiaba nada): las graves quedan ~2,7 LU bajo el clean, decisión del usuario (no tocar su timbre).
+const OD_MAKEUP = 0.0713;
 
 let overdriveIn: GainNode | null = null;
 let overdriveOutGain: GainNode | null = null;

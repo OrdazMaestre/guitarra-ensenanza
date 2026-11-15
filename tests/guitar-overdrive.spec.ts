@@ -37,7 +37,10 @@ test('overdrive tone: LUFS parity with clean, tame 2-5 kHz, safe peak, working v
   });
 
   console.log('overdrive measurements', JSON.stringify(result));
-  expect(result.median).toBeGreaterThanOrEqual(-2);
+  // Most of these cases are low notes: since 2026-11-15 the clean lows are +35 % up to D#3 and the overdrive
+  // can't follow (compression; user decision: keep its tone), so the median sits ~2.7 LU below (measured
+  // -2.65..-3.14 over 6 runs); it was >= -2.
+  expect(result.median).toBeGreaterThanOrEqual(-3.6);
   expect(result.median).toBeLessThanOrEqual(0.5);
   expect(Math.max(...result.lufsDiff)).toBeLessThanOrEqual(2.5);
   expect(Math.max(...result.sustainDiff)).toBeLessThanOrEqual(6);

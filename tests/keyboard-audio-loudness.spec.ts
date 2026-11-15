@@ -80,5 +80,7 @@ test('keyboard oscillator and guitar sample are perceptually similar in loudness
   console.log('keyboard vs guitar', JSON.stringify(result));
   expect(result.kbPeak).toBeLessThan(1.0); // no clipping anywhere in the extended range
   expect(Math.abs(result.earlyDb)).toBeLessThan(3); // attack loudness within ~3dB
-  expect(Math.abs(result.sustainDb)).toBeLessThan(5); // sustained loudness within ~5dB
+  // Sustained loudness within ~5dB until 2026-11-15; the guitar's highs (64, 71 here) then went another -40 %
+  // above C4 (user request, guitar only), so the average guitar sits ~6 dB under the keyboard.
+  expect(Math.abs(result.sustainDb)).toBeLessThan(7);
 });

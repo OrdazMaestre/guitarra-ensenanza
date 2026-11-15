@@ -213,6 +213,8 @@ function getSvgCoords(
 
 // Hueco mínimo (px) entre los números de traste y el botón KEYBOARD para poner "Usa teclado" + la flecha.
 const KB_HINT_MIN_GAP = 34;
+// Ancho (px) de "◀ Usa teclado" a la derecha de la barra (con JUGAR la barra va pegada a los números).
+const KB_SIDE_HINT_WIDTH = 104;
 
 const BASE_BOARD_HEIGHT = 158;
 const TALL_NECK_SCREEN = 0.4;
@@ -345,7 +347,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // normal, o pantallas anchas), `HorizontalScrollbar` simplemente no se muestra (ya se comporta
   // así en el resto del sitio).
   const svgWidthPercent = (viewBoxWidth / baseViewBoxWidth) * 100;
-  const viewBoxHeight = hasBottomLabels ? bottomLabelY + 18 : boardY + boardHeight + (compactGame ? 6 : 20);
+  // Con JUGAR abierto, lo justo bajo los números de traste (usuario, 2026-11-15: barra MIDI lo más
+  // pegada posible, para que al empezar quepan PAUSA y KEYBOARD en pantalla).
+  const viewBoxHeight = hasBottomLabels ? bottomLabelY + (gameLayout ? 5 : 18) : boardY + boardHeight + (compactGame ? 6 : 20);
   const [cents, setCents] = useState<Record<number, number>>(zeroedCents());
   const centsRef = useRef(cents);
   useEffect(() => { centsRef.current = cents; }, [cents]);
@@ -452,6 +456,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   }, [registerPracticeNote, riffNoteEvent]);
   // Partida en marcha o en pausa (no terminada).
   const riffInGame = !!riffGame && gameOpen && (riff.playing || riff.paused);
+  // Barra del mástil con JUGAR abierto / con la partida corriendo (cuenta atrás o tocando).
+  const gameOpenBar = !!riffGame && gameOpen;
+  const gamePlayingBar = gameOpenBar && riff.playing;
   // Panel de ajustes ENCIMA del mástil (petición del usuario): centrado sobre el <svg>, sin salirse
   // por arriba del escenario (en móvil el mástil es bajito y el panel puede ser más alto).
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -521,7 +528,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Con sitio entre los números de traste y la barra, la flecha baja y lleva encima el mensaje "Usa
   // teclado" (petición del usuario, 2026-11-03: sin invadir el mástil ni tapar números); `top` es entonces
   // el BORDE INFERIOR del bloque, 4 px por encima del botón. Sin sitio, la flecha sola en la fila de números.
-  const [kbArrow, setKbArrow] = useState<{ left: number; top: number; hint: boolean } | null>(null);
+  // Con JUGAR la barra va pegada a los números (usuario, 2026-11-15) y casi nunca hay hueco encima:
+  // entonces "◀ Usa teclado" va A LA DERECHA de la barra (KEYBOARD es su último botón en el juego),
+  // centrado en el botón; si tampoco cabe ahí, la flecha sola en la fila de números.
+  const [kbArrow, setKbArrow] = useState<{ left: number; top: number; hint: boolean; side?: boolean } | null>(null);
   const kbArrowWanted = !!riffGame && gameOpen && !kbMode;
   useLayoutEffect(() => {
     if (!kbArrowWanted) return;
@@ -541,6 +551,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       const numbersBottom = host.querySelector('.reduced-fret-number')?.getBoundingClientRect().bottom;
       if (numbersBottom !== undefined && buttonRect.top - numbersBottom >= KB_HINT_MIN_GAP) {
         setKbArrow({ left, top: buttonRect.top - 4 - hostRect.top, hint: true });
+        return;
+      }
+      const pillRect = host.querySelector('.midi-float-pill')?.getBoundingClientRect();
+      if (pillRect && pillRect.right + 6 + KB_SIDE_HINT_WIDTH <= Math.min(hostRect.right, document.documentElement.clientWidth)) {
+        setKbArrow({ left: pillRect.right + 6 - hostRect.left, top: buttonRect.top + buttonRect.height / 2 - hostRect.top, hint: true, side: true });
         return;
       }
       const rowY = ctm.d * (bottomLabelY - 5) + ctm.f;
@@ -563,6 +578,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   function toggleGame() {
     // Cerrar JUGAR para la partida y sale de la partida tutorial si la había.
     if (gameOpen) riff.exitTutorial();
+    else {
+      // Sus botones desaparecen con JUGAR abierto: si se quedaran encendidos no se podrían apagar.
+      metr.turnOff();
+      setShowTuning(false);
+      setPaintMode(false);
+    }
     setGameOpen((open) => !open);
   }
   const showHighway = !!riffGame && gameOpen && !riff.narrow && !!riff.chart;
@@ -923,7 +944,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const ctm = svg.getScreenCTM();
     const woodBottom = ctm ? ctm.d * (boardY + boardHeight) + ctm.f : neckBottom;
     // En vertical / ventana estrecha, SIEMPRE con los botones SALIR y PAUSA a 2 px del borde inferior.
-    const exitButton = compactGame ? hostRef.current?.querySelector('.riff-open-toggle') : null;
+    // Jugando solo queda PAUSA en la barra (SALIR vuelve en pausa).
+    const exitButton = compactGame ? hostRef.current?.querySelector('.riff-pause-toggle') ?? hostRef.current?.querySelector('.riff-open-toggle') : null;
     if (exitButton) {
       window.scrollTo({ top: window.scrollY + exitButton.getBoundingClientRect().bottom + 2 - window.innerHeight, behavior: 'instant' });
       return;
@@ -1057,10 +1079,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     )}
     {tutorial && (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-        <TutorialButton rootRef={hostRef} steps={FRETBOARD_TOUR} />
+        {/* Con JUGAR abierto solo brillan el Tutorial de la partida y KEYBOARD (usuario, 2026-11-15). */}
+        <TutorialButton glow={!(riffGame && gameOpen)} rootRef={hostRef} steps={FRETBOARD_TOUR} />
       </div>
     )}
-    <div className={`midi-instrument-host${compactGame ? ' riff-compact' : ''}`} ref={hostRef}>
+    <div className={`midi-instrument-host${compactGame ? ' riff-compact' : ''}${riffGame && gameOpen ? ' riff-game-open' : ''}`} ref={hostRef}>
     {/* Puntos de la partida ENCIMA del carril de las notas (usuario, 2026-11-09; antes, entre el mástil
         y la barra): rojo intenso con brillo amarillo. Pegados arriba de la pantalla (sticky) cuando el
         carril empieza por encima de ella. La fila existe mientras JUGAR está abierto, para que nada
@@ -1077,6 +1100,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       className={riffGame ? `riff-stage${riffInGame ? ' riff-live' : ''}` : undefined}
       data-game-mode={riffGame && gameOpen ? riff.gameMode : undefined}
       data-status={riffGame && gameOpen ? riff.game.status : undefined}
+      // Afinación del mástil (nota de la 6ª al aire): con JUGAR abierto su botón no está en la barra.
+      data-tuning={riffGame && gameOpen ? noteNameForFret(6, 0, cents[6]) : undefined}
       data-tutorial={riffGame && gameOpen && riff.tutorialOn ? riff.tutorialCard ?? 'playing' : undefined}
       data-repetition={riffGame && gameOpen && riff.game.repetition ? riff.game.repetition : undefined}
       ref={stageRef}
@@ -1243,10 +1268,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     )}
     </div>
     <HorizontalScrollbar targetRef={scrollRef} />
-    {/* Fuera del modo compacto, el hueco que ocupaban los puntos entre el mástil y la barra se
-        queda (vacío): ahí va el aviso "Usa teclado". En vertical / ventana estrecha, no. */}
-    {riffGame && gameOpen && !compactGame && <div aria-hidden="true" className="riff-score-space" />}
-    {kbArrowWanted && kbArrow && (kbArrow.hint ? (
+    {kbArrowWanted && kbArrow && (kbArrow.side ? (
+      <span aria-hidden="true" className="riff-kb-hint riff-kb-side" data-testid="riff-kb-hint" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>
+        <span className="riff-kb-arrow" data-testid="riff-kb-arrow">◀</span>
+        <span className="riff-kb-hint-text">Usa teclado</span>
+      </span>
+    ) : kbArrow.hint ? (
       <span aria-hidden="true" className="riff-kb-hint" data-testid="riff-kb-hint" style={{ left: `${kbArrow.left}px`, top: `${kbArrow.top}px` }}>
         <span className="riff-kb-hint-text">Usa teclado</span>
         <span className="riff-kb-arrow" data-testid="riff-kb-arrow">▼</span>
@@ -1265,7 +1292,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       {/* Mientras la partida corre, cada control de la barra (PAUSA incluida) pide mantenerlo
           pulsado 1 s: evita activarlos sin querer al tocar la pantalla jugando. En pausa, no. */}
       <HoldGuard active={!!riffGame && gameOpen && riff.playing}>
-      {riffGame && (
+      {riffGame && !gamePlayingBar && (
         // Con el juego abierto, el mismo botón es SALIR: cierra panel y autopista y para la partida.
         <button aria-pressed={gameOpen} className="riff-open-toggle" onClick={toggleGame} type="button">
           {gameOpen ? 'SALIR' : 'JUGAR'}
@@ -1284,10 +1311,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           PAUSA
         </button>
       )}
-      {allowLeftHanded && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
-      {/* Durante la partida (también en pausa), afinación, colores y metrónomo -- que no se usan
-          jugando -- se esconden. CLEAN/OVERDRIVE se queda. */}
-      {allowTuning && !riffInGame && (
+      {/* Con JUGAR abierto (usuario, 2026-11-15): jugando, solo PAUSA y KEYBOARD; con el panel abierto (antes de
+          empezar, en pausa o al terminar), solo JUGAR/SALIR, PAUSA, KEYBOARD, diestro/zurdo y
+          CLEAN/OVERDRIVE. Afinación, colores, volumen del mástil y metrónomo no se usan en el juego
+          (el panel tiene su propio Vol). */}
+      {allowLeftHanded && !gamePlayingBar && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
+      {allowTuning && !gameOpenBar && (
         <div className="midi-anchor">
           <button
             onClick={() => setShowTuning(s => !s)}
@@ -1316,7 +1345,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           )}
         </div>
       )}
-      {allowOverdrive && (
+      {allowOverdrive && !gamePlayingBar && (
         <button
           onClick={() => setTone(t => (t === 'clean' ? 'overdrive' : 'clean'))}
           aria-pressed={tone === 'overdrive'}
@@ -1326,8 +1355,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           {tone === 'overdrive' ? 'OVERDRIVE' : 'CLEAN'}
         </button>
       )}
-      {!riffInGame && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
-      <div className="midi-anchor">
+      {!gameOpenBar && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
+      {/* KEYBOARD se queda también jugando (usuario, 2026-11-15; en táctil lo esconde el CSS). */}
+      {<div className="midi-anchor">
         <button
           // aria-pressed: el tutorial del juego se salta "Activa el teclado" si ya está activado.
           aria-pressed={kbMode}
@@ -1347,8 +1377,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
             ))}
           </div>
         )}
-      </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+      </div>}
+      {!gameOpenBar && <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
         <span style={{ fontSize: '13px', fontWeight: 700, color: '#080808', minWidth: '40px', textAlign: 'right' }}>
           Vol {Math.round(volume * 100)}
         </span>
@@ -1360,8 +1390,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           value={volume}
           onChange={(e) => setVolume(Number(e.target.value))}
         />
-      </label>
-      {!riffInGame && <MetronomeControls {...metr} />}
+      </label>}
+      {!gameOpenBar && <MetronomeControls {...metr} />}
       </HoldGuard>
     </MidiInstrumentChrome>
     </div>

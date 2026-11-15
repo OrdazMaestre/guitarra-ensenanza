@@ -77,9 +77,14 @@ async function choose(page: Page, menu: string, option: string) {
     name = option.replace(/ cuerdas$/, '');
     scope = scope.getByRole('group', { name: cuerdas ? 'Modo cuerdas' : 'Modo trastes' });
   }
-  await scope.getByRole('button', { name, exact: true }).click();
-  // "Paso a paso" se enciende y apaga sin cerrar el menú (no hay botón "Con ritmo", usuario 2026-11-14).
-  if (menu === 'Ritmo') await page.locator('.riff-dd-toggle', { hasText: toggleText }).click();
+  // "Paso a paso" se enciende y apaga sin cerrar el menú (no hay botón "Con ritmo", usuario 2026-11-14):
+  // "Con ritmo" = Paso a paso apagado. Solo se pulsa si no está ya como se pide.
+  if (menu === 'Ritmo') {
+    const step = scope.getByRole('button', { name: 'Paso a paso', exact: true });
+    const want = option === 'Paso a paso' ? 'true' : 'false';
+    if ((await step.getAttribute('aria-pressed')) !== want) await step.click();
+    await page.locator('.riff-dd-toggle', { hasText: toggleText }).click();
+  } else await scope.getByRole('button', { name, exact: true }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 }
 
@@ -160,27 +165,39 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await page.locator('.riff-dd-toggle', { hasText: 'Práctica con loop' }).click();
   await expect(page.locator('.riff-dd-menu')).toHaveCount(0);
 
-  // Fuera de partida, la barra tiene afinación, colores y metrónomo, y no hay PAUSA.
+  // Con el panel abierto (usuario, 2026-11-15) la barra solo tiene SALIR, KEYBOARD, diestro/zurdo y
+  // CLEAN/OVERDRIVE: ni afinación, ni colores, ni volumen del mástil, ni metrónomo, ni PAUSA.
   const tuning = pill.getByRole('button', { name: 'Afinar el mástil' });
   const palette = pill.getByRole('button', { name: /marcador de notas/ });
   const metronome = pill.getByRole('button', { name: /metrónomo/i });
+  const neckVolume = pill.getByLabel('Volumen de la guitarra');
   const pause = pill.getByRole('button', { name: 'PAUSA' });
-  await expect(tuning).toBeVisible();
-  await expect(palette).toBeVisible();
-  await expect(metronome.first()).toBeVisible();
+  const kb = pill.locator('.midi-kb-toggle');
+  const lefty = pill.getByRole('button', { name: /modo (diestro|zurdo)/ });
+  const tone = pill.getByRole('button', { name: /clean u overdrive/ });
+  const exit = pill.getByRole('button', { name: 'SALIR', exact: true });
+  await expect(tuning).toHaveCount(0);
+  await expect(palette).toHaveCount(0);
+  await expect(metronome).toHaveCount(0);
+  await expect(neckVolume).toHaveCount(0);
   await expect(pause).toHaveCount(0);
+  for (const control of [exit, kb, lefty, tone]) await expect(control).toBeVisible();
+  // Solo brillan el Tutorial de la partida y KEYBOARD; el del mástil, no.
+  const neckTutorial = page.locator('.test-room-fretboard .tour-launch').first();
+  await expect(neckTutorial).toHaveClass(/tour-launch-still/);
+  await expect(page.locator('.riff-panel .tour-launch')).not.toHaveClass(/tour-launch-still/);
+  await expect(kb).toHaveClass(/riff-kb-glow/);
 
-  // Empezar: el panel se pliega; PAUSA aparece justo después de JUGAR, y afinación, colores y
-  // metrónomo se esconden. CLEAN/OVERDRIVE se queda.
+  // Empezar: el panel se pliega y en la barra solo quedan PAUSA y KEYBOARD (en PC).
   await page.getByRole('button', { name: 'Empezar' }).click();
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await expect(stage).not.toHaveAttribute('data-status', 'idle');
   await expect(overlay).toHaveCount(0);
-  await expect(pill.locator('button').nth(1)).toHaveText('PAUSA');
-  await expect(tuning).toHaveCount(0);
-  await expect(palette).toHaveCount(0);
-  await expect(metronome).toHaveCount(0);
-  await expect(pill.getByRole('button', { name: /clean u overdrive/ })).toBeVisible();
+  await expect(pill.locator('button')).toHaveCount(2);
+  await expect(pill.locator('button').first()).toHaveText('PAUSA');
+  await expect(kb).toBeVisible();
+  await expect(neckVolume).toHaveCount(0);
+  await expect(neckTutorial).toHaveClass(/tour-launch-still/);
 
   // Jugando, un toque corto en PAUSA (o en otro control de la barra) no hace nada...
   await pause.click();
@@ -191,8 +208,10 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(stage).toHaveAttribute('data-status', 'paused');
   await expect(overlay).toBeVisible();
   await expect(pause).toHaveAttribute('aria-pressed', 'true');
-  // En pausa siguen escondidos (la partida no ha terminado).
+  // En pausa vuelven SALIR, KEYBOARD, diestro/zurdo y CLEAN/OVERDRIVE; lo demás sigue escondido.
+  for (const control of [exit, kb, lefty, tone]) await expect(control).toBeVisible();
   await expect(tuning).toHaveCount(0);
+  await expect(neckVolume).toHaveCount(0);
   // "Empezar" ya se llama "Volver a empezar"; "Continuar" está activo.
   await expect(page.getByRole('button', { name: 'Empezar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Volver a empezar' })).toBeEnabled();
@@ -228,14 +247,20 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   // Ya estaba a la vista: se queda, apagado.
   await expect(page.getByRole('button', { name: 'Continuar' })).toBeDisabled();
   await expect(pause).toHaveCount(0);
-  await expect(tuning).toBeVisible();
+  await expect(tuning).toHaveCount(0);
 
-  // SALIR (JUGAR con el juego abierto) quita el panel y la autopista y para la partida.
+  // SALIR (JUGAR con el juego abierto) quita el panel y la autopista y para la partida. Jugando no
+  // está en la barra: primero PAUSA.
   await page.getByRole('button', { name: 'Volver a empezar' }).click();
-  await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
+  await expect(exit).toHaveCount(0);
+  await hold(page, pause);
+  await exit.click();
   await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect(page.getByTestId('riff-highway')).toHaveCount(0);
   await expect(pause).toHaveCount(0);
+  // Fuera del juego vuelve todo, y el Tutorial del mástil vuelve a brillar.
+  for (const control of [tuning, palette, metronome.first(), neckVolume]) await expect(control).toBeVisible();
+  await expect(neckTutorial).not.toHaveClass(/tour-launch-still/);
 });
 
 test('móvil en vertical: con 6 trastes el mástil mide el 40 % del alto de la pantalla y se puede tocar', async ({ page }) => {
@@ -294,14 +319,15 @@ test('ventana estrecha: sin números de traste, SALIR a 2 px del borde; ESPACIO 
   await page.goto(URL);
   await openGame(page);
   await expect(page.locator('.test-room-fretboard .reduced-fret-number')).toHaveCount(0);
+  await expect(page.locator('.test-room-fretboard .midi-kb-toggle')).not.toHaveAttribute('aria-pressed', 'true');
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await expect(stage).toHaveAttribute('data-status', /countin|playing/, { timeout: 5000 });
   await page.waitForTimeout(600);
-  const exit = (await page.locator('.test-room-fretboard .riff-open-toggle').boundingBox())!;
+  // Jugando, en la barra solo está PAUSA (usuario, 2026-11-15): ella queda a 2 px del borde.
+  const exit = (await page.locator('.test-room-fretboard .riff-pause-toggle').boundingBox())!;
   expect(Math.abs(780 - (exit.y + exit.height) - 2)).toBeLessThanOrEqual(1);
-  await expect(page.locator('.test-room-fretboard .midi-kb-toggle')).not.toHaveAttribute('aria-pressed', 'true');
   // Foco en PAUSA: el keyup del espacio no debe "pulsarla" (reanudaría).
   await page.locator('.test-room-fretboard .riff-pause-toggle').focus();
   await page.keyboard.down('Space');
@@ -396,7 +422,9 @@ test.describe('giro bloqueado en móvil', () => {
     await expect(stage).toHaveAttribute('data-status', /countin|playing/);
     await expect.poll(() => (screenCalls(page))).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait', 'suelta', 'bloqueo:portrait']);
 
-    await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
+    // Jugando solo está PAUSA en la barra: se pausa (suelta) y SALIR sale de pantalla completa.
+    await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+    await page.getByRole('button', { name: 'SALIR', exact: true }).click();
     await expect.poll(() => screenCalls(page)).toEqual(['rechazado', 'pantalla completa', 'bloqueo:portrait', 'suelta', 'bloqueo:portrait', 'suelta', 'sale de pantalla completa']);
   });
 
@@ -734,6 +762,10 @@ test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo es
   await expect(fretNumbers).toHaveCount(13);
   const before = (await svg.boundingBox())!;
   await openGame(page);
+  // Con JUGAR, el margen bajo los números de traste es más corto (barra MIDI pegada, 2026-11-15): la
+  // altura se compara entre niveles, ya en el juego; el ancho, con el mástil de siempre.
+  const gameHeight = (await svg.boundingBox())!.height;
+  expect(gameHeight).toBeLessThan(before.height);
   // Solo se dibujan los trastes del nivel, más anchos: 0-5 en trastes Principiante/Fácil/Medio, 0-10
   // en trastes Avanzado y 0-11 en Medio cuerdas.
   for (const [label, frets] of [['Principiante', 6], ['Fácil', 6], ['Medio', 6], ['Avanzado', 11], ['Medio cuerdas', 12], ['Avanzado cuerdas', 13], ['Difícil', 13], ['Experto', 13]] as const) {
@@ -741,7 +773,7 @@ test('el mástil ocupa lo mismo en todos los niveles; los de menos trastes lo es
     await expect(fretNumbers).toHaveCount(frets);
     const now = (await svg.boundingBox())!;
     expect(Math.round(now.width)).toBe(Math.round(before.width));
-    expect(Math.round(now.height)).toBe(Math.round(before.height));
+    expect(Math.round(now.height)).toBe(Math.round(gameHeight));
   }
 });
 
@@ -895,32 +927,31 @@ test('mantener pulsado: el compás 42 entero con el traste 0 (ratón) cuenta las
   expect(score).toBeLessThanOrEqual(29);
 });
 
-test('jugando, el volumen solo se mueve tras mantenerlo 1 s; en pausa y fuera de partida, al instante', async ({ page }) => {
+test('jugando, la barra del mástil solo tiene PAUSA (mantener 1 s); en pausa, diestro/zurdo responde al instante', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await openGame(page);
-  const slider = page.getByLabel('Volumen de la guitarra');
+  const pill = page.locator('.test-room-fretboard .midi-float-pill');
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await page.locator('.riff-actions').scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Empezar' }).click();
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  const box = (await slider.boundingBox())!;
-  const y = box.y + box.height / 2;
-  // Toque corto: nada.
-  await page.mouse.click(box.x + 4, y);
-  await expect(slider).toHaveValue('1');
-  // Mantener 1 s y arrastrar sin soltar: se mueve.
-  await page.mouse.move(box.x + box.width - 3, y);
-  await page.mouse.down();
-  await page.waitForTimeout(1200);
-  await page.mouse.move(box.x + box.width * 0.3, y, { steps: 6 });
-  await page.mouse.up();
-  expect(Number(await slider.inputValue())).toBeCloseTo(0.3, 1);
-  // En pausa vuelve a responder al instante (también DIESTRO, por ejemplo).
-  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  // Usuario, 2026-11-15: jugando desaparece todo menos PAUSA y KEYBOARD (en PC), que sigue señalado.
+  await expect(pill.locator('button, input')).toHaveCount(2);
+  await expect(pill.locator('.midi-kb-toggle')).toBeVisible();
+  await expect(page.getByLabel('Volumen de la guitarra')).toHaveCount(0);
+  await expect(page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]')).toBeVisible();
+  const pause = pill.getByRole('button', { name: 'PAUSA' });
+  // Toque corto: nada; mantener 1 s: pausa.
+  await pause.click();
+  await page.waitForTimeout(300);
+  await expect(stage).not.toHaveAttribute('data-status', 'paused');
+  await hold(page, pause);
   await expect(stage).toHaveAttribute('data-status', 'paused');
-  await slider.fill('0.8');
-  await expect(slider).toHaveValue('0.8');
+  // En pausa, al instante.
+  const lefty = pill.getByRole('button', { name: 'Cambiar a modo zurdo' });
+  await lefty.click();
+  await expect(pill.getByRole('button', { name: 'Cambiar a modo diestro' })).toBeVisible();
 });
 
 for (const width of [1280, 760]) {
@@ -935,21 +966,24 @@ for (const width of [1280, 760]) {
     await expect(arrow).toBeVisible();
     const a = (await arrow.boundingBox())!;
     const k = (await kb.boundingBox())!;
-    expect(Math.abs(a.x + a.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
-    expect(a.y + a.height).toBeLessThan(k.y);
     const number = (await page.locator('.test-room-fretboard .reduced-fret-number').first().boundingBox())!;
-    // Con sitio entre los números de traste y la barra (petición del usuario, 2026-11-03): "Usa teclado"
-    // encima de la flecha, los dos por DEBAJO de los números (sin invadir el mástil ni taparlos). Sin
-    // sitio, la flecha sola a la altura de los números, como antes.
+    // Con JUGAR la barra va pegada a los números de traste (usuario, 2026-11-15): "◀ Usa teclado" a la
+    // DERECHA de la barra, a la altura de KEYBOARD, sin tapar números ni mástil. Sin sitio a la derecha,
+    // la flecha sola en la fila de los números, encima del botón.
+    expect(Math.abs(k.y - (number.y + number.height))).toBeLessThan(12);
     const hint = page.locator('.test-room-fretboard [data-testid="riff-kb-hint"]');
     if (width === 1280) await expect(hint).toBeVisible();
     if (await hint.count()) {
       await expect(hint).toContainText('Usa teclado');
+      const pill = (await page.locator('.test-room-fretboard .midi-float-pill').boundingBox())!;
       const text = (await hint.locator('.riff-kb-hint-text').boundingBox())!;
+      expect(a.x).toBeGreaterThanOrEqual(pill.x + pill.width);
+      expect(text.x).toBeGreaterThan(a.x);
+      expect(Math.abs(text.y + text.height / 2 - (k.y + k.height / 2))).toBeLessThan(4);
       expect(text.y).toBeGreaterThanOrEqual(number.y + number.height);
-      expect(text.y + text.height).toBeLessThanOrEqual(a.y + 1);
-      expect(Math.abs(text.x + text.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
+      expect(text.x + text.width).toBeLessThanOrEqual(width);
     } else {
+      expect(Math.abs(a.x + a.width / 2 - (k.x + k.width / 2))).toBeLessThan(3);
       expect(Math.abs(a.y + a.height / 2 - (number.y + number.height / 2))).toBeLessThan(10);
     }
     // Activado el teclado, la flecha (y su mensaje) se van (el brillo sigue mientras JUGAR esté abierto).
@@ -1068,7 +1102,9 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   await page.locator('.riff-tutorial-card').getByRole('button', { name: '¡A tocar!' }).click();
   const stage = page.locator('.test-room-fretboard .riff-stage');
   await expect(stage).toHaveAttribute('data-status', /countin|playing/);
-  await hold(page, page.getByRole('button', { name: 'SALIR', exact: true }));
+  // Jugando solo está PAUSA en la barra: primero se pausa.
+  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  await page.getByRole('button', { name: 'SALIR', exact: true }).click();
   await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
   await expect(page.locator('.riff-panel')).toBeVisible();
@@ -1188,12 +1224,16 @@ test('el mástil del juego toma la afinación original de cada canción (Do#, Mi
   await page.goto(URL);
   // Black Gilmur (por defecto) está en Do#: el botón de afinar (nota de la 6ª al aire) dice C#.
   await openGame(page, 'Black Gilmur');
-  const tuning = page.locator('.test-room-fretboard').getByRole('button', { name: 'Afinar el mástil' });
-  await expect(tuning).toHaveText('C#', { timeout: 10000 });
+  // Con JUGAR abierto el botón de afinar no está en la barra (usuario, 2026-11-15): se lee del escenario.
+  const stage = page.locator('.test-room-fretboard .riff-stage');
+  await expect(stage).toHaveAttribute('data-tuning', 'C#', { timeout: 10000 });
   await choose(page, 'Canción', 'Iron Rain');
-  await expect(tuning).toHaveText('D#', { timeout: 10000 });
+  await expect(stage).toHaveAttribute('data-tuning', 'D#', { timeout: 10000 });
   await choose(page, 'Canción', 'Canción de prueba');
-  await expect(tuning).toHaveText('E', { timeout: 10000 });
+  await expect(stage).toHaveAttribute('data-tuning', 'E', { timeout: 10000 });
+  // Al salir, el botón de afinar vuelve y dice lo mismo.
+  await page.getByRole('button', { name: 'SALIR', exact: true }).click();
+  await expect(page.locator('.test-room-fretboard').getByRole('button', { name: 'Afinar el mástil' })).toHaveText('E');
 });
 
 test.describe('canciones del dispositivo', () => {
@@ -2018,7 +2058,11 @@ test('pantalla encendida: se pide al jugar y se suelta en pausa y al salir', asy
   await expect.poll(wake).toBe('pedida,soltada');
   await page.getByRole('button', { name: 'Continuar' }).click();
   await expect.poll(wake).toBe('pedida,soltada,pedida');
-  await hold(page, page.locator('.riff-open-toggle'));
+  // Salir: jugando solo está PAUSA (suelta); luego SALIR ya no tiene nada que soltar.
+  await hold(page, page.getByRole('button', { name: 'PAUSA' }));
+  await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
+  await page.locator('.riff-open-toggle').click();
+  await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
 });
 
@@ -2054,4 +2098,71 @@ test('teclado: en 2 cuerdas la fila de números toca la La; en Difícil, no', as
     await hold(page, page.getByRole('button', { name: 'PAUSA' }));
     await expect(panel).toHaveAttribute('data-status', 'paused');
   }
+});
+
+// Volumen de la partida (usuario, 2026-11-15): barra 0-200 % en el panel, el centro = el volumen de siempre,
+// recordada en el navegador. Se mide lo que de verdad llega a los altavoces (un analizador delante del destino).
+test('volumen de la partida: 0 calla, el centro es el de siempre, 200 % sube y se recuerda', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.addInitScript(() => {
+    const w = window as unknown as { __peak: number; __analysers: AnalyserNode[] };
+    w.__peak = 0;
+    w.__analysers = [];
+    const connect = AudioNode.prototype.connect as (this: AudioNode, ...args: unknown[]) => unknown;
+    const meters = new WeakMap<BaseAudioContext, AnalyserNode>();
+    AudioNode.prototype.connect = function (this: AudioNode, ...args: unknown[]) {
+      const target = args[0];
+      if (target instanceof AudioDestinationNode) {
+        let analyser = meters.get(this.context);
+        if (!analyser) {
+          analyser = this.context.createAnalyser();
+          analyser.fftSize = 2048;
+          connect.call(analyser, target);
+          meters.set(this.context, analyser);
+          w.__analysers.push(analyser);
+        }
+        return connect.call(this, analyser);
+      }
+      return connect.apply(this, args);
+    } as typeof AudioNode.prototype.connect;
+    const buf = new Float32Array(2048);
+    const tick = () => {
+      for (const analyser of w.__analysers) {
+        analyser.getFloatTimeDomainData(buf);
+        for (const v of buf) w.__peak = Math.max(w.__peak, Math.abs(v));
+      }
+      setTimeout(tick, 15);
+    };
+    tick();
+  });
+  await page.goto(URL);
+  await openGame(page);
+  const slider = page.getByRole('slider', { name: 'Volumen de la partida' });
+  await expect(slider).toHaveValue('1');
+  await expect(page.locator('.riff-game-volume')).toContainText('Vol 50');
+
+  const measure = async (value: string) => {
+    await slider.fill(value);
+    const start = page.locator('.riff-action-start');
+    await start.click();
+    await expect(page.locator('.riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 15000 });
+    await page.evaluate(() => { (window as unknown as { __peak: number }).__peak = 0; });
+    await page.waitForTimeout(4000);
+    const peak = await page.evaluate(() => (window as unknown as { __peak: number }).__peak);
+    await page.keyboard.press('Space');
+    await expect(page.locator('.riff-stage')).toHaveAttribute('data-status', 'paused');
+    await page.waitForTimeout(400);
+    return peak;
+  };
+  const normal = await measure('1');
+  const silent = await measure('0');
+  const double = await measure('2');
+  console.log(`pico volumen partida: 0 -> ${silent.toFixed(4)}, centro -> ${normal.toFixed(4)}, 200 % -> ${double.toFixed(4)}`);
+  expect(normal).toBeGreaterThan(0.05);
+  expect(silent).toBeLessThan(0.005);
+  expect(double).toBeGreaterThan(normal * 1.3);
+
+  await page.reload();
+  await openGame(page);
+  await expect(page.getByRole('slider', { name: 'Volumen de la partida' })).toHaveValue('2');
 });

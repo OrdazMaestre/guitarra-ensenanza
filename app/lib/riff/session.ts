@@ -142,6 +142,9 @@ type Click = { t: number; sound: DrumSound; volume: number };
 // Bombo de la batería del juego (real y automática): +40 % (usuario, 2026-11-13). 0,8 × 1,4 = 1,12, dentro de
 // lo que el metrónomo ya admite sin saturar (hasta 2, tests/metronome-volume-safety.spec.ts).
 export const KICK_BOOST = 1.4;
+// Las dos baterías del juego (real y automática) un 20 % más bajas frente al resto de instrumentos
+// (usuario, 2026-11-15; también la del reproductor de tablaturas). El metrónomo y la cuenta, no.
+export const DRUM_LEVEL = 0.8;
 
 export interface NoteScore {
   points: number;
@@ -279,7 +282,7 @@ export class RiffSession {
     // Metrónomo (si está encendido) y batería (si no está silenciada) pueden sonar a la vez.
     const drumTrack = chart.bandTracks?.find((track) => track.kind === 'drums');
     // Bombo un 40 % más fuerte en las dos baterías, la real y la automática (usuario, 2026-11-13).
-    const boost = <T extends { sound: DrumSound; volume: number }>(hit: T): T => (hit.sound === 'kick' ? { ...hit, volume: hit.volume * KICK_BOOST } : hit);
+    const boost = <T extends { sound: DrumSound; volume: number }>(hit: T): T => ({ ...hit, volume: hit.volume * DRUM_LEVEL * (hit.sound === 'kick' ? KICK_BOOST : 1) });
     const songClicks: Click[] = [
       ...(backing.click === 'auto' ? autoDrumsOf(chart).filter((hit) => inRange(hit.t)).map(boost) : []),
       ...(backing.click === 'metronomo' ? chart.beats.filter((beat) => inRange(beat.t)).map((beat) => ({ t: beat.t, sound: 'snare' as DrumSound, volume: beat.isBarStart ? 1 : 0.65 })) : []),

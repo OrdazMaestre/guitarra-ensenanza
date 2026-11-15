@@ -125,6 +125,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
 
   return (
     <div aria-label="Ajustes de la partida" className="riff-panel" ref={panelRef} role="group">
+      {/* Volumen de la partida (usuario, 2026-11-15): 0-200 %, el centro es el volumen de siempre. Encima
+          del resto de botones. */}
+      <label className="riff-game-volume">
+        <input aria-label="Volumen de la partida" max={2} min={0} onChange={(e) => riff.setGameVolume(Number(e.target.value))} step={0.05} type="range" value={riff.gameVolume} />
+        <span>Vol {Math.round(riff.gameVolume * 50)}</span>
+      </label>
       <div className="riff-controls">
         <RiffDropdown
           {...menuProps('nivel')}
@@ -473,6 +479,20 @@ export function RiffStyles() {
         0%, 100% { transform: translateY(-2px); }
         50% { transform: translateY(2px); }
       }
+      /* "◀ Usa teclado" a la derecha de la barra MIDI, centrado en KEYBOARD (con JUGAR la barra va
+         pegada a los números de traste y ya no queda hueco encima; usuario, 2026-11-15). */
+      .riff-kb-side {
+        flex-direction: row;
+        gap: 4px;
+        transform: translate(0, -50%);
+      }
+      .riff-kb-side .riff-kb-arrow {
+        animation-name: riff-kb-side-arrow, riff-kb-arrow-glow;
+      }
+      @keyframes riff-kb-side-arrow {
+        0%, 100% { transform: translateX(2px); }
+        50% { transform: translateX(-2px); }
+      }
       @keyframes riff-kb-arrow-glow {
         0%, 100% { filter: drop-shadow(0 0 1px var(--riff-kb-glow)); }
         50% { filter: drop-shadow(0 0 6px var(--riff-kb-glow)) drop-shadow(0 0 3px var(--riff-kb-glow)); }
@@ -577,6 +597,21 @@ export function RiffStyles() {
         transform: translate(-50%, -50%);
         width: max-content;
         z-index: 30;
+      }
+
+      .riff-game-volume {
+        align-items: center;
+        align-self: center;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 800;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .riff-game-volume input {
+        accent-color: #047857;
+        width: 112px;
       }
 
       .riff-panel {
@@ -716,12 +751,9 @@ export function RiffStyles() {
         text-shadow: 0 0 6px #facc15, 0 0 14px rgba(250, 204, 21, 0.85);
       }
 
-      .riff-score-space {
-        height: 32px;
-      }
-
-      /* Juego en vertical / ventana estrecha: la barra MIDI, pegada al mástil. */
-      .riff-compact .midi-float-controls {
+      /* Con JUGAR abierto (usuario, 2026-11-15; antes solo en vertical / ventana estrecha): la barra
+         MIDI, pegada a los números de traste (o al mástil, sin números). */
+      .riff-game-open .midi-float-controls {
         margin-top: 2px;
       }
 

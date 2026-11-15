@@ -116,11 +116,22 @@
   const REGISTER_LOW_DB = 20 * Math.log10(1.25);
   const REGISTER_HIGH_DB = 20 * Math.log10(0.75);
   const OD_REGISTER_EXTRA_HIGH_DB = -6;
+  const REGISTER_TOP_FROM_MIDI = 61;
+  const REGISTER_TOP_DB = 20 * Math.log10(0.6);
+  const OD_TOP_EXTRA_SHARE = 0.3;
+  const REGISTER_BASS_TO_MIDI = 51;
+  const REGISTER_BASS_DB = 20 * Math.log10(1.35);
+  function registerBassDb(midi) {
+    return Math.min(1, Math.max(0, (REGISTER_BASS_TO_MIDI + 2 - midi) / 2)) * REGISTER_BASS_DB;
+  }
+  function registerTopDb(midi) {
+    return Math.min(1, Math.max(0, (midi - (REGISTER_TOP_FROM_MIDI - 2)) / 2)) * REGISTER_TOP_DB;
+  }
   function registerHighWeight(midi) {
     return Math.min(1, Math.max(0, (midi - REGISTER_LOW_TOP_MIDI) / (REGISTER_HIGH_FROM_MIDI - REGISTER_LOW_TOP_MIDI)));
   }
   function overdriveRegisterTrim(midi) {
-    return 10 ** ((registerHighWeight(midi) * OD_REGISTER_EXTRA_HIGH_DB) / 20);
+    return 10 ** ((registerHighWeight(midi) * OD_REGISTER_EXTRA_HIGH_DB + OD_TOP_EXTRA_SHARE * registerTopDb(midi)) / 20);
   }
   function registerDb(midi) {
     if (midi <= REGISTER_LOW_TOP_MIDI) return REGISTER_LOW_DB;
@@ -129,10 +140,10 @@
     return REGISTER_LOW_DB + (REGISTER_HIGH_DB - REGISTER_LOW_DB) * k;
   }
   function guitarSampleTrim(file, midi) {
-    const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE + registerDb(midi);
+    const db = (SAMPLE_TRIM_DB[file] ?? 0) + Math.max(0, midi - HIGH_STRETCH_FROM_MIDI) * HIGH_STRETCH_DB_PER_SEMITONE + registerDb(midi) + registerTopDb(midi) + registerBassDb(midi);
     return 10 ** (db / 20);
   }
-  const CLEAN_TRIM = 0.7;
+  const CLEAN_TRIM = 0.58;
   const OD_VOICE_LEVEL = 0.52;
   const OD_DRIVE = 2.2;
   const OD_SHAPE_K = 5;
@@ -140,7 +151,7 @@
   const OD_STAGE2_GAIN = 0.8;
   const OD_STAGE2_K = 1.5;
   const OD_ROOM_WET = 0.08;
-  const OD_MAKEUP = 0.086;
+  const OD_MAKEUP = 0.0713;
 
   function makeCurve(fn, n = 4096) {
     const c = new Float32Array(n);

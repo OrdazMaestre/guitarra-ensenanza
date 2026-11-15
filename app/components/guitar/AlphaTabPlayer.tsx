@@ -105,13 +105,15 @@ const DENSE_CHORD_NOTE_COUNT = 3;
 // volumeRef=1.0 this reaches 0.754 — just past the metronome limiter's -3dB
 // (~0.708) threshold, which is exactly what that limiter exists to absorb
 // gracefully (see "Multipista" > drum volume in AlphaTabPlayer.NOTES.md).
-const DRUM_TRACK_VOLUME_BOOST = 1.3;
+// 1.3 until 2026-11-15; the user lowered every drum kit by 20 % against the other instruments (1.3 × 0.8).
+const DRUM_TRACK_VOLUME_BOOST = 1.04;
 // Bass volume relative to the shared volumeRef slider, same pattern as
 // DRUM_TRACK_VOLUME_BOOST above. See AlphaTabPlayer.NOTES.md "Bajo
 // sintetizado" for the measured RMS comparison against the guitar track that
 // the original 1.0 value was based on, and its "-50%" follow-up entry for
 // why this dropped to 0.5.
-const BASS_TRACK_VOLUME_MULTIPLIER = 0.5;
+// 0.5 until 2026-11-15; the user lowered the bass by 15 % (0.5 × 0.85), also in the Riff game.
+const BASS_TRACK_VOLUME_MULTIPLIER = 0.425;
 const TAB_DRAG_THRESHOLD = 8;
 const HORIZONTAL_SCROLL_MIN_EXTRA_WIDTH = 80;
 const MAX_GUITAR_VOICES = 12;

@@ -232,11 +232,13 @@ interface ButtonProps {
   rootRef: RefObject<HTMLElement | null>;
   steps: TourStep[];
   className?: string;
+  // false: sin el brillo que late (clase tour-launch-still).
+  glow?: boolean;
 }
 
 // Botón "Tutorial" que abre el recorrido.
 // Con `tricks`, el botón despliega dos opciones: "Controles" (`steps` + `finish`) y "Trucos" (`tricks`).
-export function TutorialButton({ className, finish, onStart, rootRef, steps, tricks }: ButtonProps) {
+export function TutorialButton({ className, finish, glow = true, onStart, rootRef, steps, tricks }: ButtonProps) {
   // Recorrido abierto: solo los pasos cuyo botón se ve al pulsar (y que no sobran), y su final.
   const [open, setOpen] = useState<{ steps: TourStep[]; finish?: TourFinish } | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -286,7 +288,7 @@ export function TutorialButton({ className, finish, onStart, rootRef, steps, tri
         <button
           aria-expanded={tricks ? choosing : undefined}
           aria-haspopup={tricks ? 'menu' : undefined}
-          className={`tour-launch${className ? ` ${className}` : ''}`}
+          className={`tour-launch${glow ? '' : ' tour-launch-still'}${className ? ` ${className}` : ''}`}
           onClick={() => (tricks ? setChoosing((c) => !c) : startControls())}
           type="button"
         >
@@ -474,6 +476,17 @@ function TourStyles() {
           background: var(--tour-glow);
           box-shadow: 0 0 10px 3px var(--tour-glow);
         }
+      }
+
+      /* Sin brillo (glow={false}): el Tutorial del mástil con JUGAR abierto, para que solo brillen
+         el Tutorial de la partida y KEYBOARD (usuario, 2026-11-15). */
+      .tour-launch.tour-launch-still {
+        animation: none;
+        color: #047857;
+      }
+
+      .tour-launch.tour-launch-still::before {
+        display: none;
       }
 
       /* Desplegable "Controles / Trucos" del Tutorial del juego: se abre hacia arriba, centrado. */

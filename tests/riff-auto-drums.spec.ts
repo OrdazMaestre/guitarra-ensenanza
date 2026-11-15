@@ -316,15 +316,17 @@ test('canciones reales sin batería: un ritmo razonable', () => {
 
 // Bombo +40 % en las dos baterías del juego (usuario, 2026-11-13), igual en la real y en la automática.
 test('bombo +40 % en la batería real y en la automática', async () => {
-  const { KICK_BOOST } = await import('../app/lib/riff/session');
+  const { KICK_BOOST, DRUM_LEVEL } = await import('../app/lib/riff/session');
   expect(KICK_BOOST).toBe(1.4);
+  // Y las dos baterías un 20 % más bajas (usuario, 2026-11-15).
+  expect(DRUM_LEVEL).toBe(0.8);
   const chart = fourBars(110);
   const real: Chart = { ...chart, drums: [{ t: chart.bars[0].t, sound: 'kick' }, { t: chart.bars[0].t + 0.25, sound: 'snare' }] };
   const vols = (click: 'auto' | 'nada') => new RiffSession(real, { speed: 1, mode: 'ritmo', loop: false, fromBar: 1, toBar: 4 }, 0, { click, muted: [] })
     .takeClicks(0, 60).slice(4);
   const realHits = vols('nada');
-  expect(realHits.find((c) => c.sound === 'kick')!.volume).toBeCloseTo(0.8 * 1.4);
-  expect(realHits.find((c) => c.sound === 'snare')!.volume).toBeCloseTo(0.8);
+  expect(realHits.find((c) => c.sound === 'kick')!.volume).toBeCloseTo(0.8 * 1.4 * 0.8);
+  expect(realHits.find((c) => c.sound === 'snare')!.volume).toBeCloseTo(0.8 * 0.8);
   const autoKick = Math.max(...vols('auto').filter((c) => c.sound === 'kick').map((c) => c.volume));
-  expect(autoKick).toBeCloseTo(0.8 * 1.4);
+  expect(autoKick).toBeCloseTo(0.8 * 1.4 * 0.8);
 });

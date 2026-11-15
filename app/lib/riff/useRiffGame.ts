@@ -13,9 +13,10 @@ const TICK_MS = 25;
 // Volumen de la banda (las otras pistas). La otra guitarra, bastante por debajo de las notas de fondo
 // de la propia pista (GUIDE_GAIN) para que se distinga lo que toca el alumno: 0,195 = el 75 % del
 // 0,26 de antes (petición del usuario, 2026-10-27: tocando James, el solo de Kirk se oía demasiado).
-// El bajo, como el del reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,5).
+// El bajo, como el del reproductor de tablaturas (BASS_TRACK_VOLUME_MULTIPLIER = 0,425: 0,5 hasta el
+// 2026-11-15, el usuario lo bajó un 15 % en las dos partes).
 const BAND_GUITAR_GAIN = 0.195;
-const BAND_BASS_GAIN = 0.5;
+const BAND_BASS_GAIN = 0.425;
 
 // La pista propia cuando se toca el bajo (mismo sintetizador que el bajo de la banda). `volume` en la
 // escala de GUIDE_GAIN/OPEN_GAIN, como la guitarra: abierta suena como el bajo de la banda.
@@ -33,7 +34,11 @@ export type RiffGameStatus = 'idle' | RiffStatus;
 // repetidas con la pulsación mantenida (RiffSession.autoHold).
 export type HeldPositionsRef = MutableRefObject<() => { string: number; fret: number }[]>;
 
-export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
+// `volume`: el volumen de la partida (barra del panel, 0-2; 1 = el de siempre, usuario 2026-11-15).
+// Multiplica TODO lo que suena en la partida: notas de fondo, banda, batería, metrónomo y cuenta.
+export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, volume = 1) {
+  const volumeRef = useRef(volume);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
   const sessionRef = useRef<RiffSession | null>(null);
   const [status, setStatus] = useState<RiffGameStatus>('idle');
   // Aciertos y puntos, FUERA del estado de React (usuario, 2026-11-09: en el móvil, cada nota daba un
@@ -78,10 +83,11 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
   // Un acierto "abre" sus notas reales: las ya programadas suben de volumen (las siguientes saldrán
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
   const applyHit = useCallback((session: RiffSession, hit: ChartNote, now: number) => {
-    for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(OPEN_GAIN);
+    const open = OPEN_GAIN * volumeRef.current;
+    for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(open);
     for (const note of session.playNowFor(hit)) {
-      if (session.bass) playOwnBass(note, now, note.duration, OPEN_GAIN);
-      else void scheduleGuideNote(note.midi, now, note.duration, OPEN_GAIN, note.bend);
+      if (session.bass) playOwnBass(note, now, note.duration, open);
+      else void scheduleGuideNote(note.midi, now, note.duration, open, note.bend);
     }
   }, []);
 
@@ -137,12 +143,13 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
     timerRef.current = window.setInterval(() => {
       const now = getAudioCurrentTime();
       session.advance(now);
+      const level = volumeRef.current;
       for (const note of session.autoHold(heldRef?.current() ?? [])) applyHit(session, note, now);
       for (const click of session.takeClicks(now, CLICK_LOOKAHEAD_SECONDS)) {
-        playMetronomeClick(click.at, click.volume, click.sound);
+        playMetronomeClick(click.at, click.volume * level, click.sound);
       }
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
-        const volume = note.open ? OPEN_GAIN : GUIDE_GAIN;
+        const volume = (note.open ? OPEN_GAIN : GUIDE_GAIN) * level;
         const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
         void scheduled.then((handle) => {
           if (!handle) return;
@@ -156,9 +163,9 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef) {
       }
       for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
         if (note.kind === 'bass') {
-          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute, note.bend);
+          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN * level, note.palmMute, note.bend);
         } else {
-          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN, note.bend).then((handle) => {
+          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN * level, note.bend).then((handle) => {
             if (!handle) return;
             if (sessionRef.current !== session) handle.setVolume(0);
             else {

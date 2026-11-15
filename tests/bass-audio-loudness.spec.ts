@@ -242,7 +242,7 @@ test('synth bass voice is audible, clipping-free, and comparable in level to the
     // DEFAULT_VOLUME=0.8 * 0.5 after the "-50%" follow-up request) — this is
     // the actual effective volume during normal playback, not playBassNote's
     // own raw volume parameter.
-    const BASS_TRACK_VOLUME_MULTIPLIER = 0.5;
+    const BASS_TRACK_VOLUME_MULTIPLIER = 0.425;
     const bassMutedDefault = await renderBass(30, 0.14, 0.8 * BASS_TRACK_VOLUME_MULTIPLIER, true);
     const guitarMutedDefault = await renderGuitarNote(42, true);
     const bassSustainedDefault = await renderBass(33, 0.6, 0.8 * BASS_TRACK_VOLUME_MULTIPLIER, false);

@@ -35,6 +35,19 @@ const LEVEL_STORAGE_KEY = 'riff-ultimo-nivel';
 const neverChanges = () => () => {};
 const noSavedLevel = () => null;
 
+// Volumen de la partida (barra del panel, usuario 2026-11-15): 0-2, el centro (1) es el volumen de
+// siempre. Se recuerda en este navegador; `resetDefaults` no lo toca (es del dispositivo).
+const GAME_VOLUME_STORAGE_KEY = 'riff-volumen-partida';
+const noSavedVolume = () => null;
+function savedGameVolume(): number | null {
+  try {
+    const value = Number(window.localStorage.getItem(GAME_VOLUME_STORAGE_KEY) ?? NaN);
+    return Number.isFinite(value) && value >= 0 && value <= 2 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function savedLevel(): RiffLevel | null {
   try {
     const value = window.localStorage.getItem(LEVEL_STORAGE_KEY);
@@ -118,7 +131,19 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // En el tutorial el mástil del juego es el de modo trastes 0-5 (Fácil y Medio).
   const profile = tutorialRemix ? RIFF_LEVELS.medio : level === 'experto' ? null : RIFF_LEVELS[level];
 
-  const game = useRiffGame(activeChart, heldRef);
+  const [visitVolume, setVisitVolume] = useState<number | null>(null);
+  const storedVolume = useSyncExternalStore(neverChanges, savedGameVolume, noSavedVolume);
+  const gameVolume = visitVolume ?? storedVolume ?? 1;
+  function setGameVolume(value: number) {
+    setVisitVolume(value);
+    try {
+      window.localStorage.setItem(GAME_VOLUME_STORAGE_KEY, String(value));
+    } catch {
+      // Sin almacenamiento: vale para esta visita.
+    }
+  }
+
+  const game = useRiffGame(activeChart, heldRef, gameVolume);
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.
   const playing = game.status === 'countin' || game.status === 'playing';
   const paused = game.status === 'paused';
@@ -371,6 +396,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     gameMode, concert, toggleConcert,
     click, setClick,
     muted, toggleMuted,
+    gameVolume, setGameVolume,
     fitsLevel,
     // Cabe el mástil ENTERO (todos sus trastes): si no, el juego va en modo estrecho (mástil alto,
     // sin números de traste...; ReducedFretboardDiagram). El mismo criterio que `fitsLevel`.

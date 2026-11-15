@@ -210,7 +210,8 @@ test('guitar output limiter: identity at trackVolumeMultiplier=1, caps trackVolu
   // (not silently near-zero, which would make the identity check above
   // meaningless).
   console.log('tab guitar peaks', JSON.stringify(result));
-  expect(result.baselineSingleNoLimiter).toBeGreaterThan(0.3);
+  // Open high E (64): 0.204 since the -40 % above C4 and CLEAN_TRIM 0.58 (user, 2026-11-15); it was > 0.3.
+  expect(result.baselineSingleNoLimiter).toBeGreaterThan(0.15);
 
   // New worst case (trackVolumeMultiplier=2) no longer clips — measured
   // without any limiter this reaches ~1.06-1.09 (see AlphaTabPlayer.NOTES.md
@@ -319,7 +320,7 @@ test('drum element volume worst case (DRUM_TRACK_VOLUME_BOOST * trackVolume(2) *
       return peakAbs(buf.getChannelData(0));
     }
 
-    const DRUM_TRACK_VOLUME_BOOST = 1.3;
+    const DRUM_TRACK_VOLUME_BOOST = 1.04;
     return {
       // Worst case: volumeRef=1.0 * DRUM_TRACK_VOLUME_BOOST * trackVolume(2) * drumElementVolume(2).
       worstCase: await renderKick(1.0 * DRUM_TRACK_VOLUME_BOOST * 2 * 2),

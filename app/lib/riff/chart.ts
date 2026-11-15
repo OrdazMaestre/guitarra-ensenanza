@@ -10,11 +10,13 @@
 
 import type * as AlphaTab from '@coderline/alphatab';
 import { relocatePassages } from './relocate';
+import { absorbedTracks, gapFillPlan } from './fillGaps';
 import { buildBendCurve, type BendCurve, type BendNoteLike } from '../bendCurve';
 
 type AlphaTabModule = typeof AlphaTab;
 type Score = AlphaTab.model.Score;
 type Note = AlphaTab.model.Note;
+type Bar = AlphaTab.model.Bar;
 
 export type ChartTech = 'hammer' | 'pull' | 'slide' | 'bend';
 
@@ -131,6 +133,9 @@ export interface Chart {
   // Solo en charts traducidos: notas que son copia de otra (vueltas iguales y trozos repetidos), como
   // pares [índice de la copia, índice de la original] en `notes`.
   repeats?: Array<[number, number]>;
+  // Compases (número de la partitura) que vienen de OTRA pista para rellenar un rato largo sin tocar
+  // (fillGaps.ts): compás → índice de la pista donante.
+  filled?: Array<{ bar: number; track: number }>;
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -163,12 +168,14 @@ export function listGuitarTracks(score: Score): GuitarTrackInfo[] {
 }
 
 // Todo lo que se puede jugar: las guitarras primero (la pista inicial sigue siendo una guitarra) y
-// luego los bajos de 4 cuerdas o más.
+// luego los bajos de 4 cuerdas o más. Sin los trozos que ya van enteros dentro de otra pista
+// (`absorbedTracks`, fillGaps.ts: una intro de otro sonido en su propia pista).
 export function listPlayableTracks(score: Score): GuitarTrackInfo[] {
   const basses = pitchedTracks(score)
     .filter(({ staff }) => staff.tuning.length >= 4 && isBassTuning(staff.tuning))
     .map(({ index, name }) => ({ index, name, kind: 'bass' as const }));
-  return [...listGuitarTracks(score), ...basses];
+  const absorbed = absorbedTracks(score);
+  return [...listGuitarTracks(score), ...basses].filter((track) => !absorbed.has(track.index));
 }
 
 // Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
@@ -279,6 +286,9 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   // Cuerda del juego de una nota (la cuerda 1 de alphaTab es la más grave).
   const gameString = (note: Note) => stringOf[staff.tuning.length - note.string];
   let nextId = 0;
+  // Compases enteros de otras pistas que rellenan los ratos largos sin tocar de esta (fillGaps.ts).
+  const fill = gapFillPlan(score, trackIndex);
+  const filled: Array<{ bar: number; track: number }> = [];
 
   for (const lookup of lookups) {
     const masterBar = lookup.masterBar;
@@ -305,7 +315,10 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
       }
     }
 
+    const donor = fill.bars.get(masterBar.index);
     for (const { track: bandTrack, kind } of bandTracks) {
+      // Ese compás de la donante lo toca ahora el jugador: fuera de la banda (no suena dos veces).
+      if (bandTrack.index === donor) continue;
       const bandBar = bandTrack.staves[0].bars[masterBar.index];
       if (!bandBar) continue;
       for (const voice of bandBar.voices) {
@@ -325,18 +338,37 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
       }
     }
 
+    if (donor !== undefined) {
+      const donorStaff = score.tracks[donor].staves[0];
+      const donorBar = donorStaff.bars[masterBar.index];
+      if (donorBar) {
+        filled.push({ bar: masterBar.index + 1, track: donor });
+        readBar(donorBar, lookup.start, donatedPlace(donorStaff.tuning));
+      }
+      continue;
+    }
     const bar = staff.bars[masterBar.index];
     if (!bar) continue;
+    readBar(bar, lookup.start, (note) => {
+      const string = gameString(note);
+      return string === undefined ? null : { string, fret: note.fret };
+    });
+  }
+
+  // Notas de un compás de la partitura. `place` da su cuerda y traste en el mástil del juego (null =
+  // no se puede tocar).
+  function readBar(bar: Bar, barStartTick: number, place: (note: Note) => { string: number; fret: number } | null) {
     for (const voice of bar.voices) {
       for (const beat of voice.beats) {
         if (beat.isRest || beat.notes.length === 0) continue;
-        const startTick = lookup.start + beat.playbackStart;
-        const playable = beat.notes.filter((note) => !note.isDead && !note.isTieDestination && gameString(note) !== undefined);
+        const startTick = barStartTick + beat.playbackStart;
+        const playable = beat.notes.filter((note) => !note.isDead && !note.isTieDestination);
         // Las notas que se salen del mástil (traste > maxFret) se recolocan después, por PASAJES
         // enteros (relocatePassages, relocate.ts).
         for (const note of playable) {
-          const string = gameString(note);
-          const fret = note.fret;
+          const spot = place(note);
+          if (!spot) continue;
+          const { string, fret } = spot;
           let durTicks = beat.playbackDuration;
           let tied: Note | null = note.tieDestination;
           while (tied) {
@@ -368,6 +400,24 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     }
   }
 
+  // Nota de una pista DONANTE (otra afinación, quizá): su misma cuerda del juego y el traste que da su
+  // altura real en la afinación de ESTA pista; si sale negativo, la cuerda más cercana más grave donde
+  // quepa; si no hay, una octava arriba. Lo que pase de maxFret se recoloca después como el resto.
+  function donatedPlace(tuning: number[]) {
+    const donorStrings = gameStrings(tuning);
+    const ownStrings = [...openOf.keys()];
+    return (note: Note) => {
+      let pitch = note.realValue - soundOffset;
+      const from = donorStrings[tuning.length - note.string];
+      const nearest = ownStrings.reduce((best, s) => (Math.abs(s - from) < Math.abs(best - from) ? s : best), ownStrings[0]);
+      for (let tries = 0; tries < 4; tries++, pitch += 12) {
+        const fits = ownStrings.filter((s) => s >= nearest && pitch - openMidi(s) >= 0).sort((a, b) => a - b);
+        if (fits.length) return { string: fits[0], fret: pitch - openMidi(fits[0]) };
+      }
+      return null;
+    };
+  }
+
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
   if (fold) foldToStandard(notes, bass);
   const instrument = fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
@@ -387,12 +437,14 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     drums,
     band,
     bandTracks: [
-      ...bandTracks.map(({ track: bandTrack, kind }) => ({ index: bandTrack.index, name: bandTrack.name, kind })),
+      // Una donante que ya no suena de fondo en ningún compás no se ofrece para silenciar.
+      ...bandTracks.filter(({ track: bandTrack }) => !fill.donors.has(bandTrack.index) || band.some((note) => note.track === bandTrack.index)).map(({ track: bandTrack, kind }) => ({ index: bandTrack.index, name: bandTrack.name, kind })),
       ...(drumTrack ? [{ index: drumTrack.index, name: drumTrack.name, kind: 'drums' as const }] : []),
     ].sort((a, b) => a.index - b.index),
     ...(soundOffset ? { soundOffset } : {}),
     ...(bass ? { bass } : {}),
     ...(!fold && instrument.join() !== ALL_STRINGS.join() ? { strings: instrument } : {}),
+    ...(filled.length ? { filled } : {}),
     movedAboveMaxFret: placed.moved,
     skippedAboveMaxFret: placed.skipped,
   };
