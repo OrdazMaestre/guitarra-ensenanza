@@ -1,4 +1,5 @@
 import { applyBend, type BendAutomationPoint } from './bendCurve';
+import { buildGameMixChain, GAME_MIX } from './gameMix';
 
 const SAMPLE_BASE = '/samples/seagull-acoustic/';
 const MAX_VOICES = 3;
@@ -42,9 +43,39 @@ function getMaster(context: AudioContext): GainNode {
   if (masterGain) return masterGain;
   const g = context.createGain();
   g.gain.value = pendingVolume;
-  g.connect(context.destination);
+  // Dos caminos fijos a la salida: directo (siempre, fuera de partida) y el bus de la partida
+  // (createGameMixChain), que solo se abre mientras se TOCA una partida (setGameMix).
+  const direct = context.createGain();
+  g.connect(direct);
+  direct.connect(context.destination);
+  const game = createGameMixChain(context, context.destination);
+  game.input.gain.value = 0;
+  g.connect(game.input);
+  masterDirect = direct;
+  gameMix = game;
   masterGain = g;
   return g;
+}
+
+// Bus de mezcla de la partida (app/lib/gameMix.ts): la barra Vol a la salida, con compresor y
+// limitador; solo mientras se toca una partida.
+let masterDirect: GainNode | null = null;
+let gameMix: { input: GainNode } | null = null;
+
+export function createGameMixChain(context: BaseAudioContext, destination: AudioNode): { input: GainNode } {
+  return buildGameMixChain(context, destination, GAME_MIX);
+}
+
+// Abre (active) o cierra el bus de la partida con un fundido de 30 ms; `volume` = barra (0-2).
+export function setGameMix(active: boolean, volume = 1): void {
+  // Sin audio todavía y nada que abrir: no se crea el AudioContext (sin gesto del usuario).
+  if (!active && !masterGain) return;
+  const context = getCtx();
+  getMaster(context);
+  const now = context.currentTime;
+  const fade = 0.01;
+  masterDirect!.gain.setTargetAtTime(active ? 0 : 1, now, fade);
+  gameMix!.input.gain.setTargetAtTime(active ? volume : 0, now, active ? 0.02 / 3 : fade);
 }
 
 // The metronome's volume (playMetronomeClick's `volume` arg) is independent

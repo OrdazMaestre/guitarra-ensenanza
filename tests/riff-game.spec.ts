@@ -2160,7 +2160,11 @@ test('volumen de la partida: 0 calla, el centro es el de siempre, 200 % sube y s
   console.log(`pico volumen partida: 0 -> ${silent.toFixed(4)}, centro -> ${normal.toFixed(4)}, 200 % -> ${double.toFixed(4)}`);
   expect(normal).toBeGreaterThan(0.05);
   expect(silent).toBeLessThan(0.005);
-  expect(double).toBeGreaterThan(normal * 1.3);
+  // Los PICOS suben menos que el volumen a propósito (el limitador del bus los frena); la sonoridad
+  // (RMS, +5-6 dB al 200 %) la mide tests/riff-game-mix.spec.ts.
+  expect(double).toBeGreaterThan(normal * 1.15);
+  // Bus de mezcla de la partida (app/lib/gameMix.ts, 2026-11-15): al 200 % ya no recorta (antes, 1,56).
+  expect(double).toBeLessThanOrEqual(0.968);
 
   await page.reload();
   await openGame(page);
