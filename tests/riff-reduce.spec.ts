@@ -781,7 +781,9 @@ test('modo cuerdas: un riff no se da la vuelta (estribillo de Crystal Mountain)'
     movedAboveMaxFret: 0,
     skippedAboveMaxFret: 0,
   };
-  const firstBar = (level: (typeof CUERDAS_LEVELS)[number][0]) => reduceChart(chart, RIFF_LEVELS[level]).notes.slice(0, 8).map((n) => `${n.string}/${n.fret}`).join(' ');
+  // Sin "bajar una cuerda" (lowerStrings.ts, 2026-11-15): este trozo suelto no usa nunca la cuerda 6 y la
+  // regla lo bajaría entero; aquí se prueba la regla de no dar la vuelta (la canción real no cumple su puerta).
+  const firstBar = (level: (typeof CUERDAS_LEVELS)[number][0]) => reduceChart(chart, RIFF_LEVELS[level], { lowerStrings: false }).notes.slice(0, 8).map((n) => `${n.string}/${n.fret}`).join(' ');
   // Medio (cuerdas 6 y 5): el riff entero una cuerda más abajo, con la misma forma y la cuerda al aire de abajo.
   expect(firstBar('medio-cuerdas')).toBe('5/10 6/7 6/0 6/7 5/9 6/7 6/0 6/7');
   // Avanzado y Difícil (tienen la cuerda 4): la tab exacta.

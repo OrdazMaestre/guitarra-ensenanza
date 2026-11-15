@@ -23,10 +23,11 @@
 
 import type { Chart, ChartNote } from './chart';
 import { RIFF_LEVELS, type LevelProfile } from './levels';
+import { leadOf } from './lead';
+import { lowerToFreeString } from './lowerStrings';
 
 // Afinación estándar: altura de cada cuerda al aire (cuerda 1 = Mi agudo).
 export const OPEN_MIDI: Record<number, number> = { 1: 64, 2: 59, 3: 55, 4: 50, 5: 45, 6: 40 };
-const POWER_CHORD_INTERVALS = new Set([0, 5, 7, 12, 17, 19, 24]);
 const PHRASE_MAX_BEATS = 8;
 const PHRASE_MAX_BARS = 2;
 
@@ -41,14 +42,6 @@ export interface LanePosition {
   string: number;
   fret: number;
   pitch: number;
-}
-
-function leadOf(notes: ChartNote[]): ChartNote {
-  if (notes.length === 1) return notes[0];
-  const sorted = [...notes].sort((a, b) => a.midi - b.midi);
-  const low = sorted[0];
-  const isPowerChord = sorted.every((note) => POWER_CHORD_INTERVALS.has(note.midi - low.midi));
-  return isPowerChord ? low : sorted[sorted.length - 1];
 }
 
 // Posición en negras (con decimales) de un instante, según las líneas de pulso del chart (`q`).
@@ -102,14 +95,14 @@ function gridSlots(chart: Chart, gridBeats: number, minSlotSeconds = 0): number[
   return slots;
 }
 
-function groupOnsets(chart: Chart, pos: (t: number) => number): Onset[] {
+function groupOnsets(chart: Chart, pos: (t: number) => number, realMidi?: Map<number, number>): Onset[] {
   const onsets: Onset[] = [];
   for (const note of chart.notes) {
     const last = onsets[onsets.length - 1];
     if (last && Math.abs(note.t - last.t) < 0.005) last.notes.push(note);
     else onsets.push({ t: note.t, pos: pos(note.t), notes: [note], lead: note });
   }
-  for (const onset of onsets) onset.lead = leadOf(onset.notes);
+  for (const onset of onsets) onset.lead = leadOf(onset.notes, realMidi);
   return onsets;
 }
 
@@ -298,6 +291,10 @@ export const LEVEL_WEIGHTS: PlaceWeights = { ...PLACE_WEIGHTS, string: 0.5, box:
 // Riffs compartidos con la guitarra que manda (ver `followPins`): ir a otro sitio cuesta esto por
 // nota, mucho más que cualquier otro término.
 const PIN_COST = 30;
+// Una nota aguda de un compás bajado una cuerda (lowerStrings.ts `keepUp`), por cada cuerda que quede por
+// debajo de la más aguda del nivel: si no, se plegaba sobre la base bajada (4/19 -> 5/0 o 3/22 -> 6/1 sobre
+// el pedal 6/0). Usuario: "las notas suficientemente agudas deben seguir en las cuerdas de arriba".
+const KEEP_UP_COST = 30;
 
 // La MISMA altura dos veces seguidas no cambia de sitio (así funciona "mantener pulsado").
 const SAME_PITCH_MOVE_COST = 50;
@@ -581,10 +578,20 @@ function placePhraseMulti(
           return;
         }
         const ref = out.length > 0 ? out[out.length - 1] : (fixedReal.findIndex(Boolean) >= 0 ? pitches[fixedReal.findIndex(Boolean)] : p);
+        // La octava más cercana a la anterior QUE CONSERVE LA DIRECCIÓN de la tab (2026-11-15: el 1/7 de
+        // Vektor c42, sobre un pedal 5/7 bajado a 6/7, caía en 47 = la MISMA altura que el pedal y la
+        // melodía se aplanaba). Si ninguna la conserva, la más cercana, como antes.
+        const dir = k > 0 ? Math.sign(p - pitches[k - 1]) : 0;
         let best: number | null = null;
+        let bestKeeps = false;
         for (let oct = -4; oct <= 4; oct++) {
           const q = p + 12 * oct;
-          if (fits(k, q) && (best === null || Math.abs(q - ref) < Math.abs(best - ref))) best = q;
+          if (!fits(k, q)) continue;
+          const keeps = dir === 0 || Math.sign(q - ref) === dir;
+          if (best === null || (keeps && !bestKeeps) || (keeps === bestKeeps && Math.abs(q - ref) < Math.abs(best - ref))) {
+            best = q;
+            bestKeeps = keeps;
+          }
         }
         if (best === null) ok = false;
         else {
@@ -799,7 +806,8 @@ function registerMap(kept: Onset[], levelPitches: number[]) {
   return (pitch: number) => (pitch <= knee ? pitch : knee + Math.min(1, (pitch - knee) / (hi - knee)) * (levelHi - knee));
 }
 
-function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, pins: Array<LanePosition | null>): LanePosition[] {
+function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile, barOf: number[], stringsUsed: Map<number, Set<number>>, pins: Array<LanePosition | null>, keepUp?: Set<number>): LanePosition[] {
+  const highest = Math.min(...profile.strings);
   const layout = laneLayout(profile);
   const zoneOf = zoneMap(kept, profile);
   const registerOf = registerMap(kept, laneLayout(profile).pitches);
@@ -817,7 +825,9 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
   // Una pasada: cada frase por su cuenta; una frase igual que otra anterior se copia tal cual. Las
   // notas ancladas a la guitarra que manda pagan PIN_COST si van a otro sitio.
   const pass = (unaryAt?: (index: number, place: LanePosition) => number) => {
-    const unary = (index: number, place: LanePosition) => (pins[index] && !samePlace(pins[index]!, place) ? PIN_COST : 0) + (unaryAt ? unaryAt(index, place) : 0);
+    const unary = (index: number, place: LanePosition) => (pins[index] && !samePlace(pins[index]!, place) ? PIN_COST : 0)
+      + (keepUp?.has(kept[index].lead.id) ? KEEP_UP_COST * (place.string - highest) : 0)
+      + (unaryAt ? unaryAt(index, place) : 0);
     const placed: LanePosition[] = new Array(kept.length);
     const byKey = new Map<string, LanePosition[]>();
     // Cuerdas ya usadas en cada compás: un compás partido entre dos frases sigue con las mismas.
@@ -980,7 +990,9 @@ function placeAllMulti(kept: Onset[], phraseOf: number[], profile: LevelProfile,
 // que manda (James, la rítmica) -- misma nota guía en el mismo instante --, esa nota se ancla a la
 // colocación que ya tiene en `follow` (el chart de esa guitarra, traducido al mismo nivel), para que
 // las dos pistas se vean iguales. null = nota no compartida.
-function followPins(kept: Onset[], follow?: Chart): Array<LanePosition | null> {
+// `realMidi`: altura REAL de una nota por su id (con la tab bajada una cuerda, lowerStrings.ts, la guía de
+// `kept` es virtual y `follow.sourceNotes` es real).
+function followPins(kept: Onset[], follow?: Chart, realMidi?: Map<number, number>): Array<LanePosition | null> {
   if (!follow?.sourceNotes) return kept.map(() => null);
   const key = (t: number) => Math.round(t * 1000);
   const realAt = new Map<number, ChartNote[]>();
@@ -989,7 +1001,7 @@ function followPins(kept: Onset[], follow?: Chart): Array<LanePosition | null> {
   return kept.map((onset) => {
     const note = placedAt.get(key(onset.t));
     const real = realAt.get(key(onset.t));
-    if (!note || !real || leadOf(real).midi !== onset.lead.midi) return null;
+    if (!note || !real || leadOf(real).midi !== (realMidi?.get(onset.lead.id) ?? onset.lead.midi)) return null;
     return { string: note.string, fret: note.fret, pitch: note.midi };
   });
 }
@@ -1012,6 +1024,9 @@ export interface ReduceOptions {
   follow?: Chart;
   // Rango del instrumento (`pitchRange` de todas sus pistas), para las zonas de `profile.zones`.
   range?: [number, number];
+  // Bajar una cuerda las pistas que casi no usan la grave (lowerStrings.ts). Por defecto, sí; `false`
+  // solo para que las pruebas comparen con y sin la regla.
+  lowerStrings?: boolean;
 }
 
 const MAX_SEAM_LEAP = 5;
@@ -1108,10 +1123,21 @@ function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: n
   return out;
 }
 
-export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions = {}): Chart {
-  if (profile.compose) return composeChart(chart, profile, { follow, range });
+export function reduceChart(chart: Chart, profile: LevelProfile, options: ReduceOptions = {}): Chart {
+  if (profile.compose) return composeChart(chart, profile, options);
+  // BAJAR UNA CUERDA (lowerStrings.ts, usuario 2026-11-15): se coloca sobre la tab virtual, pero lo que
+  // suena (`sourceNotes`) sigue siendo la real; los ids no cambian.
+  const lowered = profile.strings.length > 1 && options.lowerStrings !== false ? lowerToFreeString(chart, profile) : null;
+  if (!lowered || lowered.chart === chart) return reduceCore(chart, profile, options);
+  const out = reduceCore(lowered.chart, profile, options, new Map(chart.notes.map((note) => [note.id, note.midi])), lowered.keepUp);
+  return { ...out, sourceNotes: chart.notes };
+}
+
+// `realMidi`/`keepUp`: con la tab bajada una cuerda (lowerStrings.ts), alturas reales por id y notas agudas
+// que no van a la cuerda más grave.
+function reduceCore(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions, realMidi?: Map<number, number>, keepUp?: Set<number>): Chart {
   const { pos, beatSeconds } = makeBeatPosition(chart);
-  const onsets = groupOnsets(chart, pos);
+  const onsets = groupOnsets(chart, pos, realMidi);
   const barIndex = (t: number) => {
     let lo = 0;
     let hi = chart.bars.length - 1;
@@ -1139,8 +1165,8 @@ export function reduceChart(chart: Chart, profile: LevelProfile, { follow, range
   }
   const phraseOf = splitPhrases(kept, profile, beatSeconds, barInfo?.barOf);
   const layout = laneLayout(profile);
-  const pins = followPins(kept, follow);
-  const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, pins) : null;
+  const pins = followPins(kept, follow, realMidi);
+  const multiPlaces = barInfo ? placeAllMulti(kept, phraseOf, profile, barInfo.barOf, barInfo.stringsUsed, pins, keepUp) : null;
 
 
   // Altura traducida de cada nota, frase a frase (con varias cuerdas ya va en multiPlaces):
@@ -1442,10 +1468,10 @@ function avoidFretClashes(notes: ChartNote[], bars: Chart['bars'], pinned: Set<n
 // Nivel hecho de otros dos (`profile.compose`, Híbrido, petición del usuario, 2026-11-07): cada nota con
 // la CUERDA de un nivel y el TRASTE de otro, en el mismo instante. Con un solo traducido propio, Híbrido
 // usaba muy pocos trastes (NILE - Papyrus, intro: 3 frente a 6 en todos los demás niveles).
-function composeChart(chart: Chart, profile: LevelProfile, { follow, range }: ReduceOptions): Chart {
+function composeChart(chart: Chart, profile: LevelProfile, { follow, range, lowerStrings }: ReduceOptions): Chart {
   const { strings: stringsLevel, frets: fretsLevel } = profile.compose!;
-  const byStrings = reduceChart(chart, RIFF_LEVELS[stringsLevel], { follow: follow?.parts?.strings, range });
-  const byFrets = reduceChart(chart, RIFF_LEVELS[fretsLevel], { follow: follow?.parts?.frets, range });
+  const byStrings = reduceChart(chart, RIFF_LEVELS[stringsLevel], { follow: follow?.parts?.strings, range, lowerStrings });
+  const byFrets = reduceChart(chart, RIFF_LEVELS[fretsLevel], { follow: follow?.parts?.frets, range, lowerStrings });
   const fretTimes = byFrets.notes.map((note) => note.t);
   const fretAt = (t: number) => {
     let lo = 0;
