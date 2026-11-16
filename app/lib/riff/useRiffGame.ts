@@ -2,6 +2,7 @@
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
+import { perfEnd, perfInput, perfReset, perfTickStart } from './perfMeter';
 import type { Chart, ChartNote } from './chart';
 import { GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
 
@@ -148,6 +149,14 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
     handles.clear();
     setStatus(session.status);
     timerRef.current = window.setInterval(() => {
+      const perfStart = perfTickStart(TICK_MS);
+      try {
+        tick();
+      } finally {
+        perfEnd('tick', perfStart);
+      }
+    }, TICK_MS);
+    function tick() {
       const now = getAudioCurrentTime();
       session.advance(now);
       for (const note of session.autoHold(heldRef?.current() ?? [])) applyHit(session, note, now);
@@ -190,7 +199,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
       setRepetition(`${session.repetition}/${session.repeats}`);
       setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
-    }, TICK_MS);
+    }
   }, [applyHit, clearTimer, heldRef, onVoice, setStats]);
 
   // Todos los sonidos cargados ANTES de la cuenta de entrada: nada se carga a mitad de partida.
@@ -200,6 +209,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
     touchAudioContext();
     await preloadSamples();
     if (token !== startTokenRef.current) return;
+    perfReset();
     run(new RiffSession(chart, options, getAudioCurrentTime(), backing));
   }, [chart, run]);
 
@@ -239,7 +249,10 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
     const session = sessionRef.current;
     if (!session || session.status === 'finished') return undefined;
     const now = getAudioCurrentTime();
-    const result = session.judge(event, now);
+    // Cuánto tarde llega aquí el toque (ver RiffSession.judge): se juzga en el instante del toque.
+    const lag = event.timeStamp !== undefined ? (performance.now() - event.timeStamp) / 1000 : 0;
+    perfInput(lag * 1000);
+    const result = session.judge(event, now, lag);
     if (result.hit) applyHit(session, result.hit, now);
     return result.gain;
   }, [applyHit]);

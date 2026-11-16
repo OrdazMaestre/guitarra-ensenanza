@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Detector de mandos (fase de investigación, usuario 2026-11-13): para cuando haya una guitarra de PC tipo
 // Guitar Hero / Rock Band. Enseña en vivo qué botones y ejes mueve cada mando que ve el navegador (Gamepad
@@ -45,8 +45,12 @@ function readPads(): PadView[] {
 
 export default function GamepadDetector() {
   const [pads, setPads] = useState<PadView[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
 
+  // Solo mira los mandos mientras su bloque está ABIERTO (usuario, 2026-11-15: cerrado, seguía leyéndolos
+  // en cada fotograma y quitaba tiempo al juego de la misma página).
   useEffect(() => {
+    const details = rootRef.current?.closest('details');
     let raf = 0;
     let last = '';
     const tick = () => {
@@ -58,12 +62,21 @@ export default function GamepadDetector() {
       }
       raf = requestAnimationFrame(tick);
     };
-    tick();
-    return () => cancelAnimationFrame(raf);
+    const sync = () => {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      if (!details || details.open) tick();
+    };
+    sync();
+    details?.addEventListener('toggle', sync);
+    return () => {
+      cancelAnimationFrame(raf);
+      details?.removeEventListener('toggle', sync);
+    };
   }, []);
 
   return (
-    <div className="gamepad-detector" data-testid="gamepad-detector">
+    <div className="gamepad-detector" data-testid="gamepad-detector" ref={rootRef}>
       {pads.length === 0 ? (
         <p>Conecta un mando o una guitarra y pulsa cualquiera de sus botones.</p>
       ) : (

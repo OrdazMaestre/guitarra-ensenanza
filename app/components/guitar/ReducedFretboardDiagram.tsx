@@ -30,6 +30,7 @@ import { setGameInProgress } from '@/app/lib/gameInProgress';
 import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from './InstrumentIcons';
+import { RiffPerfBox } from './riff/RiffPerfBox';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -675,7 +676,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbKeysHeldRef.current.set(e.code, entry);
       setKbGhostWarn(hasKeyboardGhosting(kbKeysHeldRef.current));
       if (!cur) {
-        const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'pluck' });
+        const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'pluck' , timeStamp: e.timeStamp });
         kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
         syncPositions();
         const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
@@ -685,7 +686,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       } else {
         const curEntry = kbKeysHeldRef.current.get(cur.code);
         if (curEntry && entry.fret > curEntry.fret) {
-          const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'hammer' });
+          const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'hammer' , timeStamp: e.timeStamp });
           kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
           syncPositions();
           const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
@@ -705,7 +706,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       if (!cur || cur.code !== e.code) return;
       const next = getHighestOnString(entry.string);
       if (next) {
-        const gain = emitNoteEvent({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' });
+        const gain = emitNoteEvent({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' , timeStamp: e.timeStamp });
         kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
         syncPositions();
         const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current * gain, toneRef.current);
@@ -805,7 +806,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
       if (ptStringVoiceRef.current.size >= 3) return;
-      const gain = emitNoteEvent({ ...pos, kind: 'pluck' });
+      const gain = emitNoteEvent({ ...pos, kind: 'pluck' , timeStamp: e.timeStamp });
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
       syncPt();
@@ -817,7 +818,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const curEntry = ptHeldRef.current.get(cur.pid);
       if (curEntry && pos.fret > curEntry.fret) {
-        const gain = emitNoteEvent({ ...pos, kind: 'hammer' });
+        const gain = emitNoteEvent({ ...pos, kind: 'hammer' , timeStamp: e.timeStamp });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
         const id = await switchNote(cur.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
@@ -838,7 +839,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const sv = ptStringVoiceRef.current.get(pos.string);
       if (sv?.pid === e.pointerId) {
-        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
+        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry , timeStamp: e.timeStamp });
         syncPt();
         const id = await switchNote(sv.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
         const sv2 = ptStringVoiceRef.current.get(pos.string);
@@ -847,7 +848,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       } else if (sv) {
         const activeEntry = ptHeldRef.current.get(sv.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
-          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
+          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry , timeStamp: e.timeStamp });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
           const id = await switchNote(sv.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
@@ -875,7 +876,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       }
       const newVoice = ptStringVoiceRef.current.get(pos.string);
       if (!newVoice && ptStringVoiceRef.current.size < 3) {
-        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
+        const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry , timeStamp: e.timeStamp });
         ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
         syncPt();
         const id = await playNote(midi, false, volumeRef.current * gain, toneRef.current);
@@ -885,7 +886,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       } else if (newVoice) {
         const activeEntry = ptHeldRef.current.get(newVoice.pid);
         if (activeEntry && pos.fret > activeEntry.fret) {
-          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry });
+          const gain = emitNoteEvent({ ...pos, kind: 'slide', from: curEntry , timeStamp: e.timeStamp });
           ptStringVoiceRef.current.set(pos.string, { pid: e.pointerId, voiceId: -1 });
           syncPt();
           const id = await switchNote(newVoice.voiceId, midi, false, volumeRef.current * gain, toneRef.current);
@@ -909,7 +910,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const next = getHighestOnPtString(curEntry.string);
     if (next) {
       const nextEntry = ptHeldRef.current.get(next.pid);
-      const gain = nextEntry ? emitNoteEvent({ string: nextEntry.string, fret: nextEntry.fret, kind: 'pulloff' }) : 1;
+      const gain = nextEntry ? emitNoteEvent({ string: nextEntry.string, fret: nextEntry.fret, kind: 'pulloff' , timeStamp: e.timeStamp }) : 1;
       ptStringVoiceRef.current.set(curEntry.string, { pid: next.pid, voiceId: -1 });
       syncPt();
       const id = await switchNote(cur.voiceId, next.midi, false, volumeRef.current * gain, toneRef.current);
@@ -1108,6 +1109,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       style={{ containerType: 'inline-size', minWidth: 0, position: 'relative', ...(bleed && bleedWanted ? { marginLeft: -bleed.left, marginRight: -bleed.right } : null) }}
     >
     {showHighway && <div aria-hidden="true" className="riff-highway-space" />}
+    {riffGame && gameOpen && <RiffPerfBox status={riff.game.status} />}
     <div className="reduced-fretboard-wrap" ref={scrollRef}>
     <svg
       ref={svgRef}

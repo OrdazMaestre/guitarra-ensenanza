@@ -142,6 +142,8 @@ type Click = { t: number; sound: DrumSound; volume: number };
 // Bombo de la batería del juego (real y automática): +40 % (usuario, 2026-11-13). 0,8 × 1,4 = 1,12, dentro de
 // lo que el metrónomo ya admite sin saturar (hasta 2, tests/metronome-volume-safety.spec.ts).
 export const KICK_BOOST = 1.4;
+// Retraso máximo de un toque que se compensa al juzgarlo (ver `judge`).
+export const MAX_INPUT_LAG_SECONDS = 0.25;
 // Las dos baterías del juego (real y automática) un 20 % más bajas frente al resto de instrumentos
 // (usuario, 2026-11-15; también la del reproductor de tablaturas). El metrónomo y la cuenta, no.
 export const DRUM_LEVEL = 0.8;
@@ -574,8 +576,22 @@ export class RiffSession {
   // Juzga una nota que acaba de tocar el alumno. Experto: devuelve el volumen de SU nota (normal si
   // acierta, bajito si no). Niveles traducidos: su nota no suena (gain 0); un acierto abre la
   // canción real y un fallo suena a "clac". Los slides solo cuentan si son a una nota pegada.
-  judge(event: PracticeNoteEvent, now: number): JudgeResult {
+  // `lagSeconds`: cuánto tarde se atiende el toque (el móvil, ocupado dibujando o programando sonidos, puede
+  // tardar decenas de ms; usuario, 2026-11-16). La nota se juzga en la posición de la canción del TOQUE,
+  // no en la de ahora; el reloj de la partida no retrocede. Tope `MAX_INPUT_LAG_SECONDS`.
+  judge(event: PracticeNoteEvent, now: number, lagSeconds = 0): JudgeResult {
     this.advance(now);
+    const current = this.songPos;
+    const lag = Math.min(MAX_INPUT_LAG_SECONDS, Math.max(0, lagSeconds));
+    if (this.status === 'playing' || this.status === 'countin') this.songPos = current - lag * this.options.speed;
+    try {
+      return this.judgeAtSongPos(event);
+    } finally {
+      this.songPos = Math.max(this.songPos, current);
+    }
+  }
+
+  private judgeAtSongPos(event: PracticeNoteEvent): JudgeResult {
     const miss: JudgeResult = { gain: 0, hit: null, playNow: [] };
     // En pausa (o terminada) el mástil suena normal y no se juzga nada.
     if (this.status === 'finished' || this.status === 'paused') return { gain: 1, hit: null, playNow: [] };

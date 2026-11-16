@@ -1098,6 +1098,10 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
 export async function playNote(midi: number, forKeyboard = false, volume = 1.0, tone: GuitarTone = 'clean'): Promise<number> {
   const context = getCtx();
   if (context.state === 'suspended') await context.resume();
+  // Volumen 0 (el mástil durante una partida del juego: suena la canción, no el mástil): no se crea
+  // ninguna voz (usuario, 2026-11-16, fluidez: cada toque montaba fuente, filtros y envolvente para no
+  // oírse, ~5-8 ms en el móvil). -1 = "sin voz", que todos los llamadores ya tratan (releaseNote lo ignora).
+  if (volume <= 0) return -1;
 
   if (forKeyboard) {
     return startOscillatorVoice(midi, context, volume);

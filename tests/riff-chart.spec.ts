@@ -157,6 +157,25 @@ test('motor: acierto dentro de ±0,5 s suena normal; fuera o nota equivocada, ba
   expect(s.hitAt.size).toBe(2);
 });
 
+// Latencia (usuario, 2026-11-16): el toque se juzga en el instante en que OCURRIÓ, no cuando el código lo
+// atiende (el móvil ocupado puede tardar decenas de ms). El reloj de la partida no retrocede, y el
+// retraso que se compensa tiene un tope.
+test('motor: el toque se juzga en su instante (retraso compensado, con tope) y el reloj no retrocede', () => {
+  // La nota 0 cae en real = 104. Atendido en 104,15 con 0,15 s de retraso = tocado en 104 justo: +4.
+  const a = new RiffSession(fakeChart(), ritmo, 100, NADA);
+  expect(a.judge({ string: 1, fret: 2, kind: 'pluck' }, 104.15, 0.15).hit?.id).toBe(0);
+  expect(a.scoreOf.get(0)?.points).toBe(4);
+  expect(a.songPos).toBeCloseTo(0.15, 6);
+  // Sin compensar, el mismo toque sale 0,15 s tarde: +3.
+  const b = new RiffSession(fakeChart(), ritmo, 100, NADA);
+  b.judge({ string: 1, fret: 2, kind: 'pluck' }, 104.15);
+  expect(b.scoreOf.get(0)?.points).toBe(3);
+  // Tope: un retraso disparatado (2 s) cuenta como MAX_INPUT_LAG_SECONDS; no se va a notas ya pasadas.
+  const c = new RiffSession(fakeChart(), ritmo, 100, NADA);
+  expect(c.judge({ string: 1, fret: 2, kind: 'pluck' }, 106, 2).hit).toBeNull();
+  expect(c.songPos).toBeCloseTo(2, 6);
+});
+
 test('motor: slide solo cuenta a nota pegada', () => {
   const s = new RiffSession(fakeChart(), ritmo, 0, NADA);
   expect(s.judge({ string: 1, fret: 2, kind: 'pluck' }, 4).hit).not.toBeNull();

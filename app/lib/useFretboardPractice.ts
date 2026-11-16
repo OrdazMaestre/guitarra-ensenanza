@@ -12,6 +12,9 @@ export type PracticeNoteEvent = PracticeNote & {
   kind: 'pluck' | 'hammer' | 'pulloff' | 'slide';
   // Solo para 'slide': la posición desde la que se arrastró.
   from?: PracticeNote;
+  // Cuándo ocurrió el toque o la tecla (`event.timeStamp`, mismo reloj que `performance.now()`): el juego
+  // juzga la nota en ese instante y no cuando el código llega a atenderla (usuario, 2026-11-16, latencia).
+  timeStamp?: number;
 };
 export type PracticeFeedbackKind = 'success' | 'fail' | null;
 

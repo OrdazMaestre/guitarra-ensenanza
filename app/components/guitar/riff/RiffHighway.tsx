@@ -16,6 +16,15 @@ const phraseSeed = (session: RiffSession) => {
   return phraseSeeds.get(session)!;
 };
 import { laneLookaheadSeconds } from '@/app/lib/riff/levels';
+import { perfCanvas, perfEnd, perfFrameStart } from '@/app/lib/riff/perfMeter';
+// FLUIDEZ (usuario, 2026-11-16: tirones en el móvil con canciones densas; medido con perfMeter, CPU ×4):
+// - el canvas se dibuja como mucho a 2× (los móviles van a 2,6-3,5×: un 42 % menos de píxeles, apenas se
+//   nota); p95 del fotograma 25 → 20 ms;
+// - sin desenfoque de sombra (uno por gema en cada fotograma, caro en el móvil): el brillo es un HALO
+//   barato, la misma forma más ancha y translúcida por debajo. Las dos cosas juntas: p95 18 ms y
+//   fotogramas > 20 ms del 9,5 % al 2,8 %.
+const MAX_CANVAS_DPR = 2;
+const HALO_ALPHA = 0.35;
 import { barsAheadSeconds, mirroredFadeInSeconds, notesOnFret, notesOnString, STRING_LOOKAHEAD_BARS, stringAlpha, usageLevel, ZONE_LOOKAHEAD_BARS } from '@/app/lib/riff/visuals';
 
 export { RIFF_STRING_COLORS };
@@ -150,8 +159,17 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
 
   useEffect(() => {
     let raf = 0;
+    // `?medir=1` (perfMeter.ts): duración de cada fotograma y de su dibujo.
     const draw = () => {
       raf = requestAnimationFrame(draw);
+      const start = perfFrameStart();
+      try {
+        paint();
+      } finally {
+        perfEnd('draw', start);
+      }
+    };
+    const paint = () => {
       const canvas = canvasRef.current;
       const stage = stageRef.current;
       const geo = geometryRef.current;
@@ -164,12 +182,13 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
       const svgRect = svg.getBoundingClientRect();
       const cssW = stageRect.width;
       const cssH = Math.max(0, svgRect.bottom - stageRect.top);
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR);
       if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
         canvas.width = Math.round(cssW * dpr);
         canvas.height = Math.round(cssH * dpr);
         canvas.style.width = `${cssW}px`;
         canvas.style.height = `${cssH}px`;
+        perfCanvas(canvas.width, canvas.height, dpr);
       }
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -387,15 +406,18 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
           const y = toY(0, laneY(string));
           ctx.strokeStyle = RIFF_STRING_COLORS[string];
           ctx.globalAlpha = stringAlpha(notesOnString(chart.notes, string), songPos, speed, stringAhead);
-          ctx.shadowColor = RIFF_STRING_COLORS[string];
-          ctx.shadowBlur = 6;
-          ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(boardLeft, y);
           ctx.lineTo(boardRight, y);
+          // Halo (en vez de sombra desenfocada, ver FLUIDEZ arriba) y la cuerda encima.
+          const alpha = ctx.globalAlpha;
+          ctx.globalAlpha = alpha * HALO_ALPHA;
+          ctx.lineWidth = 9;
+          ctx.stroke();
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 3;
           ctx.stroke();
         }
-        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
       }
 
@@ -443,15 +465,14 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = '#ffffff';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 12 * s;
+        ctx.globalAlpha = 0.9 * HALO_ALPHA;
+        strokeShape(pts, Math.max(3, 7 * s) + 14 * s);
         ctx.globalAlpha = 0.9;
         strokeShape(pts, Math.max(3, 7 * s));
         if (session && z < APPROACH_SECONDS) {
           ctx.globalAlpha = 0.9 - (Math.max(0, z) / APPROACH_SECONDS) * 0.6;
           strokeShape(sorted.map((note) => fretPx(note.fret, note.string)), 4);
         }
-        ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
       }
 
@@ -550,8 +571,6 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         }
 
         ctx.globalAlpha = missed ? Math.max(0, 1 + z / MISS_FADE_SECONDS) * GHOST_ALPHA : 1;
-        ctx.shadowColor = missed || locked ? 'transparent' : color;
-        ctx.shadowBlur = missed || locked ? 0 : 14 * p.s;
         ctx.fillStyle = missed ? GHOST_COLOR : color;
         // Cuerda al aire (traste 0): un CÍRCULO grande en vez de la barra del resto (petición del
         // usuario), para distinguirla de un vistazo.
@@ -563,8 +582,15 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         } else {
           roundRect(ctx, p.x - w / 2, p.y - h / 2, w, h, 6 * p.s);
         }
+        // Brillo: halo del color de la gema por debajo (no en las falladas ni bloqueadas, como antes).
+        if (!missed && !locked) {
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = HALO_ALPHA;
+          ctx.lineWidth = 12 * p.s;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
         ctx.fill();
-        ctx.shadowBlur = 0;
         ctx.strokeStyle = note.palmMute ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.75)';
         ctx.lineWidth = Math.max(1, 2 * p.s);
         ctx.stroke();

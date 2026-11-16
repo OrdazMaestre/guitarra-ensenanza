@@ -346,6 +346,9 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
   useEffect(() => {
     if (!gameLocked) return;
     let raf = 0;
+    // Solo se reescribe el recorte cuando CAMBIA (usuario, 2026-11-15, fluidez en el móvil): escribirlo en
+    // cada fotograma, aunque fuera igual, obligaba a recalcular estilos y repintar el marco cada vez.
+    let last: string | null = null;
     const clip = () => {
       const frame = frameRef.current;
       const stage = document.querySelector('.riff-stage.riff-live');
@@ -356,9 +359,13 @@ export default function MaikaelWidget({ face }: MaikaelWidgetProps) {
         const y1 = s ? Math.max(0, s.top - f.top) : 0;
         const x2 = s ? Math.min(f.width, s.right - f.left) : 0;
         const y2 = s ? Math.min(f.height, s.bottom - f.top) : 0;
-        frame.style.clipPath = x2 > x1 && y2 > y1
+        const next = x2 > x1 && y2 > y1
           ? `polygon(evenodd, 0 0, ${f.width}px 0, ${f.width}px ${f.height}px, 0 ${f.height}px, 0 0, ${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px, ${x1}px ${y1}px)`
           : '';
+        if (next !== last) {
+          last = next;
+          frame.style.clipPath = next;
+        }
       }
       raf = requestAnimationFrame(clip);
     };
