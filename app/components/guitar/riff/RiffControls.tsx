@@ -1,6 +1,6 @@
 'use client';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
+import { DRUM_LEVEL_ORDER, levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, RIFF_TRICKS_TOUR, TutorialButton } from '../ButtonTour';
@@ -49,7 +49,8 @@ interface Props {
 
 export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = [], trackRoles }: Props) {
   const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
-  const trackLabel = (track: { name: string; kind?: string }) => (track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)]);
+  const trackLabel = (track: { name: string; kind?: string }) => (track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)]);
+  const trackIcon = (track: { name: string; kind?: string } | undefined) => (track?.kind === 'drums' ? <DrumIcon /> : track?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={track ? roleOf(track.name) : 'R'} />);
   // Solo un desplegable abierto a la vez.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   // Tarjeta "Buscar mis canciones" abierta: el menú del disco pasa a dos columnas.
@@ -139,17 +140,26 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
           label="Nivel"
           value={`${levelLabel(riff.level)}${riff.concert ? ' · Concierto' : ''}`}
         >
-          {/* Dos modos, uno por columna: Trastes (vale cualquier cuerda) y Cuerdas. */}
-          <div className="riff-level-groups">
-            {RIFF_LEVEL_GROUPS.map((group) => (
-              <div aria-label={group.label} className="riff-level-group" key={group.id} role="group">
-                <span className="riff-level-heading">{group.label}</span>
-                {group.levels.map(levelChip)}
+          {/* Batería (drums.ts): solo sus 4 niveles. Guitarra y bajo: dos modos, uno por columna -- Trastes
+              (vale cualquier cuerda) y Cuerdas -- y Híbrido, de ningún modo, a todo el ancho debajo. */}
+          {currentTrack?.kind === 'drums' ? (
+            <div aria-label="Batería" className="riff-level-group" role="group">
+              <span className="riff-level-heading">Batería</span>
+              {DRUM_LEVEL_ORDER.map(levelChip)}
+            </div>
+          ) : (
+            <>
+              <div className="riff-level-groups">
+                {RIFF_LEVEL_GROUPS.map((group) => (
+                  <div aria-label={group.label} className="riff-level-group" key={group.id} role="group">
+                    <span className="riff-level-heading">{group.label}</span>
+                    {group.levels.map(levelChip)}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {/* Híbrido: de ningún modo, a todo el ancho debajo de los dos. */}
-          <div className="riff-level-hybrid">{levelChip(RIFF_HYBRID_LEVEL)}</div>
+              <div className="riff-level-hybrid">{levelChip(RIFF_HYBRID_LEVEL)}</div>
+            </>
+          )}
           {/* Concierto (antes, su propio botón al final del panel): se activa y desactiva aquí, sin cerrar. */}
           <div className="riff-level-hybrid">
             <button aria-pressed={riff.concert} className="riff-chip riff-concert-chip" onClick={() => riff.toggleConcert()} type="button">
@@ -203,11 +213,11 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             fondo: las demás pistas de la canción (otra guitarra, bajo, batería) EN FILA y solo con su icono
             (usuario, 2026-11-14: sin nombre ni altavoz; tocar una la calla y se ve apagada, sin cerrar el
             menú), y el metrónomo / la batería automática (antes, su propio desplegable). */}
-        <RiffDropdown {...menuProps('pista')} icon={currentTrack?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={currentTrack ? roleOf(currentTrack.name) : 'R'} />} label="Pistas" value={`${currentTrack ? trackLabel(currentTrack) : '—'}, ${CLICK_VALUE[riff.click]}`}>
+        <RiffDropdown {...menuProps('pista')} icon={trackIcon(currentTrack)} label="Pistas" value={`${currentTrack ? trackLabel(currentTrack) : '—'}, ${CLICK_VALUE[riff.click]}`}>
             <span className="riff-level-heading">Tocas</span>
             {riff.tracks.map((track) => (
               <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
-                {track.kind === 'bass' ? <BassIcon /> : <TrackIcon role={roleOf(track.name)} />}
+                {trackIcon(track)}
                 {trackLabel(track)}
               </button>
             ))}
@@ -234,7 +244,8 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
                     2026-11-14; ya no hay "Nada": apagados los dos es lo de por defecto). Encender uno apaga el
                     otro. La batería real es una pista más: silenciándola, la automática la sustituye. Por
                     defecto, la automática solo en canciones sin batería (useRiffController). */}
-                {(['metronomo', 'auto'] as const).map((value) => {
+                {/* Tocando la batería no hay batería automática (la batería eres tú). */}
+                {(currentTrack?.kind === 'drums' ? (['metronomo'] as const) : (['metronomo', 'auto'] as const)).map((value) => {
                   const on = riff.click === value;
                   return (
                     <button

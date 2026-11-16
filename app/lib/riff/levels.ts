@@ -5,7 +5,9 @@
 
 // Ids internos: los del modo trastes sin sufijo; los del modo cuerdas que repiten nombre, con
 // '-cuerdas' (los dos modos tienen un "Medio" y un "Avanzado", decisión del usuario).
-export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto';
+export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto' | DrumLevel;
+// Niveles de BATERÍA (drums.ts, usuario 2026-11-16): solo cuando la pista que se toca es la batería.
+export type DrumLevel = 'bateria-facil' | 'bateria-medio' | 'bateria-avanzado' | 'bateria-dificil';
 
 export interface LevelProfile {
   label: string;
@@ -50,6 +52,8 @@ export interface LevelProfile {
   // Traste máximo de cada cuerda, si no es el mismo para todas (modo cuerdas: lo que alcanza el
   // teclado físico, ver FRETBOARD_KEYMAP -- Mi hasta el 10, La hasta el 11, Re y Sol hasta el 12).
   maxFretByString?: Record<number, number>;
+  // Nivel de BATERÍA: la regla de drums.ts (DRUM_LEVEL_RULES) que lo traduce.
+  drums?: 'facil' | 'medio' | 'avanzado' | 'dificil';
 }
 
 const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 };
@@ -106,7 +110,19 @@ export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = 
   // Híbrido (petición del usuario, 2026-11-07): la cuerda de cada nota, la de Medio (cuerdas); su
   // traste, el de Medio (trastes), en Mi y La con los trastes 0-5. Cuenta la cuerda, como el modo cuerdas.
   hibrido: { label: 'Híbrido', available: true, strings: [5, 6], minFret: 0, maxFret: 5, compose: { strings: 'medio-cuerdas', frets: 'medio' }, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 1, colorBy: 'string', freeStrings: false },
+  // BATERÍA (drums.ts): una "cuerda" y 6 pads en columnas fijas (0-5, mástil estirado), vale cualquier
+  // fila. Todos los golpes de sus pads (sin rejilla ni huecos: no se aligera, usuario 2026-11-16).
+  'bateria-facil': { label: 'Fácil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 1, colorBy: 'fret', freeStrings: true, drums: 'facil' },
+  'bateria-medio': { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'medio' },
+  'bateria-avanzado': { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'avanzado' },
+  'bateria-dificil': { label: 'Difícil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'dificil' },
 };
+
+// Los cuatro niveles de batería, de menos a más (el menú Nivel solo enseña estos con la batería).
+export const DRUM_LEVEL_ORDER: DrumLevel[] = ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil'];
+export function isDrumLevel(level: RiffLevel): level is DrumLevel {
+  return level.startsWith('bateria-');
+}
 
 // Dos modos de juego (decisión del usuario), cada uno con sus niveles de menos a más:
 // - Trastes: cuerdas libres, solo cuenta el traste.
@@ -151,6 +167,10 @@ export function laneLookaheadSeconds(base: number, speed: number, stretch: boole
 // Carril MÁS RÁPIDO (notas más separadas) en los niveles de varias cuerdas: un 25 % más a cualquier
 // velocidad, encima del estiramiento (usuario, 2026-11-13). Modo trastes, igual que siempre.
 export const MULTI_STRING_LANE_SPEED = 1.25;
+// Batería (drums.ts): un 50 % más rápido en todos sus niveles, para que los golpes seguidos se vean
+// separados y se distinga su orden (usuario, 2026-11-16).
+export const DRUM_LANE_SPEED = 1.5;
 export function laneSpeedFactor(level: RiffLevel) {
+  if (isDrumLevel(level)) return DRUM_LANE_SPEED;
   return level === 'experto' || RIFF_LEVELS[level].strings.length > 1 ? MULTI_STRING_LANE_SPEED : 1;
 }

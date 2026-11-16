@@ -16,6 +16,14 @@ const SECONDARY_TARGETS: Partial<Record<string, BranchItem['secondaryTarget']>> 
   'acordes-con-septima': 'sevenths',
 };
 
+// Igual que SECONDARY_TARGETS: un rótulo distinto SOLO para este árbol (petición del usuario),
+// sin tocar extensionPages.title -- ese título lo reutiliza también maikaelPageIndex.ts para
+// nombrar y buscar la página, y un cambio ahí se saldría de "solo en el árbol de contenidos".
+const TREE_TITLE_OVERRIDES: Partial<Record<string, string>> = {
+  'mas-punteos-cortos': 'Más canciones',
+  'tablaturas-dos-cuerdas': 'Tablaturas (dos cuerdas)',
+};
+
 // Derivado de extensionPages (temarioData.ts), la fuente única de las páginas rama.
 //
 // El quiz (/lecciones/temario/quiz) se deja fuera A PROPÓSITO de este árbol: no es una rama de
@@ -25,7 +33,7 @@ const SECONDARY_TARGETS: Partial<Record<string, BranchItem['secondaryTarget']>> 
 export const branchMap: Record<string, BranchItem[]> = extensionPages.reduce(
   (acc, page) => {
     (acc[page.parentSlug] ??= []).push({
-      title: page.title,
+      title: TREE_TITLE_OVERRIDES[page.slug] ?? page.title,
       href: `/lecciones/temario/${page.slug}`,
       secondaryTarget: SECONDARY_TARGETS[page.slug],
     });

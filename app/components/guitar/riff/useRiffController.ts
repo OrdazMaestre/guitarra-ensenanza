@@ -1,7 +1,8 @@
 'use client';
 import { type RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildChart, listGuitarTracks, listPlayableTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
-import { RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
+import { DRUM_LEVEL_ORDER, isDrumLevel, RIFF_LEVELS, type DrumLevel, type RiffLevel } from '@/app/lib/riff/levels';
+import { DRUM_LEVEL_RULES, reduceDrums } from '@/app/lib/riff/drums';
 import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
 import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
@@ -31,6 +32,8 @@ const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as Ri
 // Última dificultad elegida, en este navegador (petición del usuario, 2026-11-05). Puede fallar en
 // modo privado: entonces el juego empieza en el nivel de base.
 const LEVEL_STORAGE_KEY = 'riff-ultimo-nivel';
+// Y el de la batería, aparte (drums.ts, 2026-11-16): sus niveles son otros.
+const DRUM_LEVEL_STORAGE_KEY = 'riff-ultimo-nivel-bateria';
 
 const neverChanges = () => () => {};
 const noSavedLevel = () => null;
@@ -51,7 +54,16 @@ function savedGameVolume(): number | null {
 function savedLevel(): RiffLevel | null {
   try {
     const value = window.localStorage.getItem(LEVEL_STORAGE_KEY);
-    return value && value in RIFF_LEVELS ? (value as RiffLevel) : null;
+    return value && (value in RIFF_LEVELS || value === 'experto') && !isDrumLevel(value as RiffLevel) ? (value as RiffLevel) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savedDrumLevel(): DrumLevel | null {
+  try {
+    const value = window.localStorage.getItem(DRUM_LEVEL_STORAGE_KEY);
+    return value && (DRUM_LEVEL_ORDER as string[]).includes(value) ? (value as DrumLevel) : null;
   } catch {
     return null;
   }
@@ -98,12 +110,21 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // El nivel de esta visita manda; si aún no hay, el guardado (el servidor no conoce este navegador).
   const [visitLevel, setLevel] = useState<RiffLevel | null>(null);
   const storedLevel = useSyncExternalStore(neverChanges, savedLevel, noSavedLevel);
-  const level = visitLevel ?? storedLevel ?? DEFAULTS.level;
+  const guitarLevel = visitLevel ?? storedLevel ?? DEFAULTS.level;
+  // Batería (drums.ts): si la pista que se toca es la batería, su nivel es uno de los 4 de batería, que
+  // se recuerda aparte (al volver a la guitarra, sigue el de la guitarra).
+  const [visitDrumLevel, setDrumLevel] = useState<DrumLevel | null>(null);
+  const storedDrumLevel = useSyncExternalStore(neverChanges, savedDrumLevel, noSavedLevel);
+  const drumLevel = visitDrumLevel ?? storedDrumLevel ?? DRUM_LEVEL_ORDER[0];
+  const drumsTrack = tracks.some((track) => track.index === trackIndex && track.kind === 'drums');
+  const level: RiffLevel = drumsTrack ? drumLevel : guitarLevel;
   // Solo guarda lo que elige el usuario: el Tutorial, que vuelve a la base, no lo cambia.
   function chooseLevel(value: RiffLevel) {
-    setLevel(value);
+    const drums = isDrumLevel(value);
+    if (drums) setDrumLevel(value);
+    else setLevel(value);
     try {
-      window.localStorage.setItem(LEVEL_STORAGE_KEY, value);
+      window.localStorage.setItem(drums ? DRUM_LEVEL_STORAGE_KEY : LEVEL_STORAGE_KEY, value);
     } catch {
       // Sin almacenamiento: el nivel vale para esta visita.
     }
@@ -198,7 +219,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   // para los efectos (los papeles llegan como objeto literal en cada render).
   const rolesKey = JSON.stringify(trackRoles ?? {});
   const leader = useMemo(
-    () => (trackIndex === null ? null : leaderTrack(tracks.filter((track) => track.kind !== 'bass'), trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
+    () => (trackIndex === null ? null : leaderTrack(tracks.filter((track) => track.kind !== 'bass' && track.kind !== 'drums'), trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
     [tracks, trackIndex, rolesKey],
   );
 
@@ -225,9 +246,14 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
         const follow = leader === null ? undefined : reduceChart(levelChart(leader), profile, { range });
         return reduceChart(levelChart(index), profile, { follow, range });
       };
-      const built = level === 'experto'
-        ? buildChart(at, score, trackIndex, endFret)
-        : translate(trackIndex, RIFF_LEVELS[level]);
+      // Batería (drums.ts): sus golpes reales, traducidos a los pads del nivel.
+      const drumRule = current.kind === 'drums' ? DRUM_LEVEL_RULES[RIFF_LEVELS[isDrumLevel(level) ? level : DRUM_LEVEL_ORDER[0]].drums!] : null;
+      if (drumRule === null && isDrumLevel(level)) return;
+      const built = drumRule
+        ? reduceDrums(buildChart(at, score, trackIndex), drumRule)
+        : level === 'experto'
+          ? buildChart(at, score, trackIndex, endFret)
+          : translate(trackIndex, RIFF_LEVELS[level]);
       setChart(built);
       // Tramo de compases: entero al cargar OTRA canción; al cambiar de dificultad o de pista se
       // conserva el que había (bug real: en modo práctica, cambiar la dificultad devolvía el bucle a
@@ -246,8 +272,10 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
       // del usuario, 2026-11-03; antes, el metrónomo); con batería, nada.
       if (newSong) {
         setMuted([]);
-        setClick(built.drums.length === 0 ? 'auto' : 'nada');
+        setClick(built.drums.length === 0 && !built.kit ? 'auto' : 'nada');
       }
+      // Se toca la batería: sin batería automática (la batería eres tú).
+      if (built.kit) setClick((value) => (value === 'auto' ? 'nada' : value));
     });
     return () => { cancelled = true; };
   }, [source, trackIndex, endFret, level, leader]);
@@ -344,7 +372,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     stop();
   }
 
-  const hasDrums = !!chart && chart.drums.length > 0;
+  const hasDrums = !!chart && (chart.drums.length > 0 || !!chart.kit);
   function resetDefaults() {
     const preferred = tracks.find((track) => track.name === initialTrack) ?? tracks[0];
     if (preferred) setTrackIndex(preferred.index);

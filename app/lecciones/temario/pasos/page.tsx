@@ -56,6 +56,13 @@ function MapExample() {
   );
 }
 
+// Rótulo distinto SOLO para este árbol (petición del usuario), sin tocar lessonBlocks.title --
+// ese título lo reutilizan también la barra de siguiente/anterior (temarioData.ts), la portada
+// (PortadaShell.tsx) y maikaelPageIndex.ts, y un cambio ahí se saldría de "solo en el árbol".
+const TRUNK_TITLE_OVERRIDES: Partial<Record<string, string>> = {
+  tablaturas: 'Tablaturas (una cuerda)',
+};
+
 export default function PasosPage() {
   return (
     <main className="cn-page">
@@ -95,6 +102,7 @@ export default function PasosPage() {
         <ol className="cn-trunk">
           {lessonBlocks.map((lesson, index) => {
             const branches = branchMap[lesson.slug];
+            const title = TRUNK_TITLE_OVERRIDES[lesson.slug] ?? lesson.title;
 
             return (
               <li key={lesson.slug} className={`cn-node ${lessonToneClasses[index]}`}>
@@ -106,13 +114,13 @@ export default function PasosPage() {
                 >
                   <span className="cn-badge">{lesson.number}</span>
                   <Link href={`/lecciones/temario/${lesson.slug}`} className="cn-card-title">
-                    {lesson.title}
+                    {title}
                   </Link>
                 </div>
 
                 {branches ? (
                   <div className="cn-side">
-                    <ul className="cn-branches" aria-label={`Apartados de ${lesson.title}`}>
+                    <ul className="cn-branches" aria-label={`Apartados de ${title}`}>
                       {branches.map((branch) => (
                         <li key={branch.href} className="cn-branch">
                           <div className="cn-branch-card" data-pasos-target={branch.secondaryTarget}>

@@ -128,5 +128,6 @@ test('Nile - User Maat Re: la intro oriental entra en las dos guitarras (c1-4) y
     expect(new Set(chart.filled!.map((f) => f.track))).toEqual(new Set([3]));
     expect(chart.band!.filter((n) => n.track === 3)).toHaveLength(0);
   }
-  expect(listPlayableTracks(s).map((t) => t.name)).toEqual(['Dallas Toller-Wade', 'Karl Sanders']);
+  // (Y la batería, la última: también se toca, drums.ts.)
+  expect(listPlayableTracks(s).filter((t) => t.kind !== 'drums').map((t) => t.name)).toEqual(['Dallas Toller-Wade', 'Karl Sanders']);
 });

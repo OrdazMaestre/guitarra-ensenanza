@@ -680,7 +680,8 @@ test('motor: Experto en paso a paso, el acierto hace sonar ya su nota real', () 
 // --- Verificación final (Actualización 1).
 
 test('verificación: cuerdas libres SOLO en el modo trastes (no en Medio, Difícil ni Experto)', () => {
-  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.freeStrings).map(([k]) => k)).toEqual(['practica', 'facil', 'medio', 'avanzado']);
+  // (Y la batería, drums.ts: una sola "cuerda", vale cualquier fila.)
+  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.freeStrings && !p.drums).map(([k]) => k)).toEqual(['practica', 'facil', 'medio', 'avanzado']);
   // El modo trastes son justo esos niveles; el modo cuerdas, los demás.
   expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'trastes')!.levels).toEqual(['practica', 'facil', 'medio', 'avanzado']);
   expect(RIFF_LEVEL_GROUPS.find((g) => g.id === 'cuerdas')!.levels).toEqual(['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'experto']);

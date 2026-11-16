@@ -12,6 +12,7 @@ import type * as AlphaTab from '@coderline/alphatab';
 import { relocatePassages } from './relocate';
 import { absorbedTracks, gapFillPlan } from './fillGaps';
 import { buildBendCurve, type BendCurve, type BendNoteLike } from '../bendCurve';
+import { padOfMidi, spreadCymbals } from './drums';
 
 type AlphaTabModule = typeof AlphaTab;
 type Score = AlphaTab.model.Score;
@@ -136,6 +137,9 @@ export interface Chart {
   // Compases (número de la partitura) que vienen de OTRA pista para rellenar un rato largo sin tocar
   // (fillGaps.ts): compás → índice de la pista donante.
   filled?: Array<{ bar: number; track: number }>;
+  // La pista es una BATERÍA (drums.ts): cada golpe es una nota en la cuerda 6 con traste = su pad (0-5)
+  // y `midi` = su número de percusión General MIDI. Se toca como un teclado (sin hammer ni pull-off).
+  kit?: 'drums';
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -145,7 +149,7 @@ export interface Chart {
 export interface GuitarTrackInfo {
   index: number;
   name: string;
-  kind?: 'guitar' | 'bass';
+  kind?: 'guitar' | 'bass' | 'drums';
 }
 
 // Bajo: su cuerda más aguda queda por debajo de un Sol3. (No vale mirar la más grave: una guitarra
@@ -175,7 +179,11 @@ export function listPlayableTracks(score: Score): GuitarTrackInfo[] {
     .filter(({ staff }) => staff.tuning.length >= 4 && isBassTuning(staff.tuning))
     .map(({ index, name }) => ({ index, name, kind: 'bass' as const }));
   const absorbed = absorbedTracks(score);
-  return [...listGuitarTracks(score), ...basses].filter((track) => !absorbed.has(track.index));
+  // Y la batería (usuario, 2026-11-16: batería jugable, drums.ts), la última: la primera pista de
+  // percusión del archivo (la misma que suena de fondo, `chart.drums`).
+  const drumIndex = score.tracks.findIndex((track) => track.staves[0]?.isPercussion);
+  const drums = drumIndex >= 0 ? [{ index: drumIndex, name: score.tracks[drumIndex].name, kind: 'drums' as const }] : [];
+  return [...listGuitarTracks(score), ...basses].filter((track) => !absorbed.has(track.index)).concat(drums);
 }
 
 // Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
@@ -228,6 +236,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const track = score.tracks[trackIndex];
   if (!track) throw new Error(`La pista ${trackIndex} no existe`);
   const staff = track.staves[0];
+  // Se toca la batería: sus golpes son las notas (drums.ts) y no suena de fondo (la tocas tú).
+  const kit = !!staff.isPercussion;
 
   const midiFile = new at.midi.MidiFile();
   const generator = new at.midi.MidiFileGenerator(score, new at.Settings(), new at.midi.AlphaSynthMidiFileHandler(midiFile));
@@ -265,7 +275,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const bars: ChartBar[] = [];
   const beats: ChartBeat[] = [];
   const drums: ChartDrumHit[] = [];
-  const drumTrack = score.tracks.find((candidate) => candidate.staves[0]?.isPercussion);
+  const firstDrums = score.tracks.find((candidate) => candidate.staves[0]?.isPercussion);
+  const drumTrack = firstDrums === track ? undefined : firstDrums;
   // La banda: todas las pistas con altura menos la que se toca.
   const band: ChartBandNote[] = [];
   const bandTracks = score.tracks
@@ -276,18 +287,18 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   // Afinación uniformemente bajada/subida (Do#, Mi♭...): las notas se leen como en la estándar y la
   // diferencia se guarda en `soundOffset` (ver Chart). Afinaciones mixtas (Drop D...): alturas reales.
   // Se mide en las cuerdas que tiene la guitarra de 6 (en el bajo, las 6-3, una octava más abajo).
-  const bass = isBassTuning(staff.tuning);
+  const bass = !kit && isBassTuning(staff.tuning);
   const stringOf = gameStrings(staff.tuning);
   const openOf = new Map(stringOf.map((string, k) => [string, staff.tuning[k]]));
   const base = bass ? BASS_OCTAVE : 0;
   const offsets = (bass ? BASS_STRINGS : ALL_STRINGS).map((string) => (openOf.get(string) ?? NaN) - STANDARD_TUNING[string - 1] - base);
-  const soundOffset = base + (offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0);
+  const soundOffset = kit ? 0 : base + (offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0);
   const openMidi = (string: number) => (openOf.get(string) ?? NaN) - soundOffset;
   // Cuerda del juego de una nota (la cuerda 1 de alphaTab es la más grave).
   const gameString = (note: Note) => stringOf[staff.tuning.length - note.string];
   let nextId = 0;
   // Compases enteros de otras pistas que rellenan los ratos largos sin tocar de esta (fillGaps.ts).
-  const fill = gapFillPlan(score, trackIndex);
+  const fill = kit ? { bars: new Map<number, number>(), donors: new Set<number>() } : gapFillPlan(score, trackIndex);
   const filled: Array<{ bar: number; track: number }> = [];
 
   for (const lookup of lookups) {
@@ -349,6 +360,10 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     }
     const bar = staff.bars[masterBar.index];
     if (!bar) continue;
+    if (kit) {
+      readDrumBar(bar, lookup.start);
+      continue;
+    }
     readBar(bar, lookup.start, (note) => {
       const string = gameString(note);
       return string === undefined ? null : { string, fret: note.fret };
@@ -400,6 +415,29 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     }
   }
 
+  // Golpes de un compás de la batería que se toca: uno por pad y golpe (dos sonidos del mismo pad a la
+  // vez, como hihat y ride, son un solo golpe), con su nota General MIDI para que suene como en la tab.
+  function readDrumBar(bar: Bar, barStartTick: number) {
+    for (const voice of bar.voices) {
+      for (const beat of voice.beats) {
+        if (beat.isRest || beat.notes.length === 0) continue;
+        const startTick = barStartTick + beat.playbackStart;
+        const t = tickToSec(startTick);
+        const dur = tickToSec(startTick + beat.playbackDuration) - t;
+        const seen = new Set<number>();
+        for (const note of beat.notes) {
+          if (note.isDead || note.isTieDestination) continue;
+          const midi = percussionMidi(track, note);
+          if (midi === undefined) continue;
+          const pad = padOfMidi(midi);
+          if (seen.has(pad)) continue;
+          seen.add(pad);
+          notes.push({ id: nextId++, t, dur, string: 6, fret: pad, midi, palmMute: false, tech: [] });
+        }
+      }
+    }
+  }
+
   // Nota de una pista DONANTE (otra afinación, quizá): su misma cuerda del juego y el traste que da su
   // altura real en la afinación de ESTA pista; si sale negativo, la cuerda más cercana más grave donde
   // quepa; si no hay, una octava arriba. Lo que pase de maxFret se recoloca después como el resto.
@@ -419,9 +457,11 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   }
 
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
-  if (fold) foldToStandard(notes, bass);
-  const instrument = fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
-  const placed = placeAboveMaxFret(notes, bars, beats, maxFret, openMidi, instrument);
+  if (fold && !kit) foldToStandard(notes, bass);
+  // Batería que se toca: el plato fuerte solo para los acentos (drums.ts).
+  if (kit) spreadCymbals(notes);
+  const instrument = kit ? ALL_STRINGS : fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
+  const placed = kit ? { notes, moved: 0, skipped: 0 } : placeAboveMaxFret(notes, bars, beats, maxFret, openMidi, instrument);
   notes.splice(0, notes.length, ...placed.notes);
   drums.sort((a, b) => a.t - b.t);
   band.sort((a, b) => a.t - b.t);
@@ -445,6 +485,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     ...(bass ? { bass } : {}),
     ...(!fold && instrument.join() !== ALL_STRINGS.join() ? { strings: instrument } : {}),
     ...(filled.length ? { filled } : {}),
+    ...(kit ? { kit: 'drums' as const } : {}),
     movedAboveMaxFret: placed.moved,
     skippedAboveMaxFret: placed.skipped,
   };
@@ -526,7 +567,7 @@ function drumSound(midi: number): DrumSound {
   return midi < 60 ? 'snare' : 'cymbal';
 }
 
-function percussionMidi(track: AlphaTab.model.Track, note: Note): number | undefined {
+export function percussionMidi(track: AlphaTab.model.Track, note: Note): number | undefined {
   const index = note.percussionArticulation;
   if (index === undefined || index < 0) return undefined;
   const mapped = track.percussionArticulations?.[index]?.outputMidiNumber;

@@ -2170,3 +2170,60 @@ test('volumen de la partida: 0 calla, el centro es el de siempre, 200 % sube y s
   await openGame(page);
   await expect(page.getByRole('slider', { name: 'Volumen de la partida' })).toHaveValue('2');
 });
+
+// BATERÍA JUGABLE (drums.ts, usuario 2026-11-16): la batería en "Tocas", sus 4 niveles, el mástil dibujado
+// como una batería (DrumKitNeck: un instrumento por columna, bombo doble, línea de golpe, recuadros de las
+// teclas), y el teclado como un TECLADO (dos teclas a la vez, dos golpes; el bombo ilumina los dos bombos).
+test.describe('batería jugable', () => {
+  test.use({ hasTouch: false });
+  test('Pistas → Batería: 4 niveles, 6 pads, golpes a la vez y aciertos en Paso a paso', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page);
+    await choose(page, 'Pistas', 'Batería');
+    const neck = page.locator('.test-room-fretboard svg.riff-drum-neck');
+    // Sin recuadros de teclas; debajo, los números de traste (usuario, 2026-11-16).
+    await expect(neck.locator('.riff-drum-piece').first()).toBeVisible({ timeout: 10000 });
+    await expect(neck.locator('.riff-drum-key')).toHaveCount(0);
+    await expect(neck.locator('.reduced-fret-number')).toHaveText(['0', '1', '2', '3', '4', '5']);
+    expect((await neck.locator('.riff-drum-piece').evaluateAll((els) => els.map((el) => el.getAttribute('data-pad')))).sort()).toEqual(['Bombo', 'Caja', 'Plato', 'Plato fuerte', 'Tom agudo', 'Tom grave']);
+    await expect(neck.locator('.riff-drum-hitline')).toHaveCount(1);
+    await expect(neck.locator('.reduced-string')).toHaveCount(0);
+    // Sin tocar: los 6 velos pálidos visibles y ninguno intenso (animación de la batería).
+    await expect(neck.locator('.riff-drum-glow[data-on="false"]')).toHaveCount(6);
+    expect(await neck.locator('.riff-drum-glow .riff-drum-pale').evaluateAll((els) => els.map((el) => getComputedStyle(el).opacity))).toEqual(['1', '1', '1', '1', '1', '1']);
+    // El menú Nivel solo enseña los de batería.
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    const drums = page.locator('.riff-dd-menu').getByRole('group', { name: 'Batería' });
+    await expect(drums.locator('.riff-chip')).toHaveText(['Fácil', 'Medio', 'Avanzado', 'Difícil']);
+    await expect(page.locator('.riff-dd-menu').getByRole('group', { name: 'Modo cuerdas' })).toHaveCount(0);
+    await drums.getByRole('button', { name: 'Medio', exact: true }).click();
+    // Sin batería automática (la batería eres tú).
+    await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+    await expect(page.locator('.riff-dd-menu').getByRole('button', { name: /^Batería automática:/ })).toHaveCount(0);
+    await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
+    // Como un teclado: Bombo (X) y Caja (C) a la vez, dos golpes; sin hammer-on (la caja no corta el bombo).
+    await page.locator('.test-room-fretboard .midi-kb-toggle').click();
+    await page.keyboard.down('KeyX');
+    await page.keyboard.down('KeyC');
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(2);
+    // El bombo ilumina los dos bombos.
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit[data-pad="Bombo"] .riff-drum-strong circle')).toHaveCount(2);
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit[data-pad="Bombo"] g.riff-drum-strong')).toHaveCSS('opacity', '1');
+    await page.keyboard.up('KeyC');
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(1);
+    await page.keyboard.up('KeyX');
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(0);
+    // Paso a paso: los golpes del nivel cuentan.
+    await choose(page, 'Ritmo', 'Paso a paso');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    const stage = page.locator('.test-room-fretboard .riff-stage');
+    await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+    for (let i = 0; i < 6; i++) {
+      for (const key of ['KeyX', 'KeyC', 'KeyZ']) await page.keyboard.press(key);
+      await page.waitForTimeout(80);
+    }
+    expect(Number(await stage.getAttribute('data-hits'))).toBeGreaterThanOrEqual(3);
+  });
+});

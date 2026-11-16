@@ -5,6 +5,7 @@ import SongTabPlayer from '../../../components/guitar/SongTabPlayer';
 import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 import SpotlightCorners from './SpotlightCorners';
 import GamepadDetector from '../../../components/guitar/GamepadDetector';
+import KeyRolloverTester from '../../../components/guitar/KeyRolloverTester';
 import { TEST_ROOM_SONGS } from './songs';
 
 export default function SalaDePruebasPage() {
@@ -57,6 +58,12 @@ export default function SalaDePruebasPage() {
         <GamepadDetector />
       </details>
 
+      {/* 2026-11-16: qué combinaciones de Z X C V B N (pads de la batería) recibe este teclado a la vez. */}
+      <details className="test-room-rollover">
+        <summary>Probador de teclas de la batería (pruebas)</summary>
+        <KeyRolloverTester />
+      </details>
+
       <Link href="/lecciones/temario/pasos" className="test-room-back">
         Volver a Pasos
       </Link>
@@ -106,12 +113,14 @@ export default function SalaDePruebasPage() {
           margin: 12px 0 0;
         }
 
-        .test-room-gamepad {
+        .test-room-gamepad,
+        .test-room-rollover {
           margin: 24px auto 0;
           max-width: 760px;
           min-width: 0;
         }
-        .test-room-gamepad summary {
+        .test-room-gamepad summary,
+        .test-room-rollover summary {
           cursor: pointer;
           font-weight: 900;
           margin-bottom: 8px;

@@ -6,6 +6,7 @@ import type { Chart, ChartNote } from '@/app/lib/riff/chart';
 import { fretColor, RIFF_STRING_COLORS, stringFretColor } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
 import { ambientPhrase } from '@/app/lib/riff/phrases';
+import { drumSurfaceShapes } from './DrumKitNeck';
 
 // Frases de Experto: 40 % de transparencia (usuario, 2026-11-09).
 const EXPERTO_PHRASE_OPACITY = 0.6;
@@ -147,6 +148,11 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+// La pista que se toca es la batería (drums.ts): su mástil ya trae su dibujo (ver la columna iluminada).
+// Las gemas llevan el número de traste, también en la batería (usuario, 2026-11-16: sin letras).
+let gemKit: Chart['kit'];
+const gemLabel = (fret: number) => String(fret);
+
 export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeStrings, ambientPhrases, chart, countdownPhrase, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
   // Con cuerdas libres se usan las 6.
   const stringsKey = (freeStrings ? [1, 2, 3, 4, 5, 6] : activeStrings ?? [1, 2, 3, 4, 5, 6]).join(',');
@@ -227,6 +233,7 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
       };
 
       const session = sessionRef.current;
+      gemKit = (session?.chart ?? chart).kit;
       // advance() es idempotente: el temporizador de useRiffGame también lo llama.
       if (session) session.advance(getAudioCurrentTime());
       const speed = session?.options.speed ?? 1;
@@ -341,19 +348,26 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
       // Cuerdas libres: la COLUMNA entera del traste objetivo se ilumina con su color, con las mismas
       // curvas que las cuerdas, salvo la subida: dura el doble de lo que tarda en irse tras llegar la
       // nota (`mirroredFadeInSeconds`), así se ve antes dónde cae la siguiente.
+      // Batería (DrumKitNeck): el dibujo ya trae su tinte, así que aquí solo el BORDE de la columna que llega
+      // (rellenarla taparía los tambores, el canvas va encima del mástil).
+      const drumNeck = gemKit === 'drums';
       if (session && freeStrings) {
         for (let fret = minFret; fret <= maxFret; fret++) {
           const col = columnRect(fret);
           if (!col) continue;
           const color = fretColor(fret, minFret, maxFret);
-          ctx.globalAlpha = FREE_FRET_TINT_ALPHA;
-          ctx.fillStyle = color;
-          ctx.fillRect(col.x, col.y, col.w, col.h);
+          if (!drumNeck) {
+            ctx.globalAlpha = FREE_FRET_TINT_ALPHA;
+            ctx.fillStyle = color;
+            ctx.fillRect(col.x, col.y, col.w, col.h);
+          }
           const level = usageLevel(notesOnFret(chart.notes, fret), songPos, speed, 0, mirroredFadeInSeconds);
           if (level <= 0.01) continue;
-          ctx.globalAlpha = level * 0.4;
-          ctx.fillStyle = color;
-          ctx.fillRect(col.x, col.y, col.w, col.h);
+          if (!drumNeck) {
+            ctx.globalAlpha = level * 0.4;
+            ctx.fillStyle = color;
+            ctx.fillRect(col.x, col.y, col.w, col.h);
+          }
           ctx.globalAlpha = level;
           ctx.strokeStyle = color;
           ctx.lineWidth = 3;
@@ -512,6 +526,24 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
 
         const missed = !!session && z < 0;
         if (missed && -z > MISS_FADE_SECONDS) continue;
+        // Batería: el fantasma también tiñe de GRIS la pieza (plato, tambor, bombos) un instante, como la
+        // gema gris de la guitarra (usuario, 2026-11-16). Solo en el canvas: nada cambia en el SVG.
+        if (missed && geo.drumGeo && !locked) {
+          const shapes = drumSurfaceShapes(geo.drumGeo, note.fret);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(toX(shapes.clip.x, shapes.clip.y), toY(shapes.clip.x, shapes.clip.y), shapes.clip.w * ctm.a, shapes.clip.h * ctm.d);
+          ctx.clip();
+          ctx.globalAlpha = Math.max(0, 1 + z / MISS_FADE_SECONDS) * GHOST_ALPHA;
+          ctx.fillStyle = GHOST_COLOR;
+          ctx.beginPath();
+          for (const e of shapes.ellipses) {
+            ctx.moveTo(toX(e.x + e.rx, e.y), toY(e.x + e.rx, e.y));
+            ctx.ellipse(toX(e.x, e.y), toY(e.x, e.y), e.rx * Math.abs(ctm.a), e.ry * Math.abs(ctm.d), 0, 0, Math.PI * 2);
+          }
+          ctx.fill();
+          ctx.restore();
+        }
         const p = project(base.x, base.y, Math.max(z, 0));
         const w = gemW * p.s;
         const h = gemH * p.s;
@@ -529,7 +561,7 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(String(note.fret), base.x, base.y + 1);
+          ctx.fillText(gemLabel(note.fret), base.x, base.y + 1);
           ctx.globalAlpha = 1;
         }
 
@@ -614,9 +646,9 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         ctx.textBaseline = 'middle';
         ctx.lineWidth = Math.max(2, 3 * p.s);
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.strokeText(String(note.fret), p.x, p.y + 1);
+        ctx.strokeText(gemLabel(note.fret), p.x, p.y + 1);
         ctx.fillStyle = '#ffffff';
-        ctx.fillText(String(note.fret), p.x, p.y + 1);
+        ctx.fillText(gemLabel(note.fret), p.x, p.y + 1);
 
         const tags = [...note.tech.map((tech) => TECH_LABEL[tech]), note.palmMute ? 'PM' : ''].filter(Boolean).join(' ');
         if (tags && p.s > 0.45 && !missed) {

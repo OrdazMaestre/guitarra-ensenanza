@@ -1021,7 +1021,85 @@ function noiseBurst(context: BaseAudioContext, seconds: number, curve: number): 
 
 export function playMetronomeClick(scheduledAt: number, volume: number, type: 'snare' | 'kick' | 'cymbal' = 'snare'): void {
   const context = getCtx();
-  const limiter = getMetronomeLimiter(context);
+  drumLayers(context, scheduledAt, volume, type, getMetronomeLimiter(context));
+}
+
+// BATERÍA JUGABLE (app/lib/riff/drums.ts, usuario 2026-11-16): un golpe de uno de los 6 pads, con un
+// control de volumen propio (subirlo al acertar, callarlo si ya sonó al tocarlo). Bombo, caja y plato
+// son las mismas capas que la batería del juego y el metrónomo; los toms y el plato fuerte, nuevos. Por
+// el mismo limitador de batería. Pads: 0 plato, 1 bombo, 2 caja, 3 tom agudo, 4 tom grave, 5 plato fuerte.
+const PAD_SOUND: Array<DrumLayer> = ['cymbal', 'kick', 'snare', 'tomHigh', 'tomLow', 'crash'];
+export function playDrumPad(pad: number, scheduledAt: number, volume: number): GuideNoteHandle | null {
+  if (volume <= 0) return null;
+  const sound = PAD_SOUND[pad];
+  if (!sound) return null;
+  const context = getCtx();
+  const trim = context.createGain();
+  trim.gain.value = volume;
+  trim.connect(getMetronomeLimiter(context));
+  drumLayers(context, scheduledAt, 1, sound, trim);
+  // El nodo se suelta solo cuando acaba el sonido más largo (el plato fuerte, ~1,3 s).
+  window.setTimeout(() => trim.disconnect(), Math.max(0, scheduledAt - context.currentTime) * 1000 + 2000);
+  return {
+    setVolume: (next) => trim.gain.setValueAtTime(next, Math.max(context.currentTime, 0)),
+    stopAt: (time) => {
+      const at = Math.max(context.currentTime, time);
+      trim.gain.cancelScheduledValues(at);
+      trim.gain.setTargetAtTime(0, at, 0.005);
+    },
+  };
+}
+
+type DrumLayer = 'snare' | 'kick' | 'cymbal' | 'crash' | 'tomLow' | 'tomHigh';
+
+// Las capas de un golpe de batería, a `volume`, hacia `out`.
+function drumLayers(context: AudioContext, scheduledAt: number, volume: number, type: DrumLayer, out: AudioNode): void {
+  const limiter = out;
+  if (type === 'tomLow' || type === 'tomHigh') {
+    // Tom: seno que cae de tono (el cuerpo) y un golpe de ruido corto (la baqueta).
+    const [from, to, length] = type === 'tomLow' ? [125, 78, 0.34] : [215, 150, 0.24];
+    const osc = context.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(from, scheduledAt);
+    osc.frequency.exponentialRampToValueAtTime(to, scheduledAt + length * 0.7);
+    const og = context.createGain();
+    og.gain.setValueAtTime(0.0001, scheduledAt);
+    og.gain.linearRampToValueAtTime(volume * 0.26, scheduledAt + 0.004);
+    og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + length);
+    osc.connect(og); og.connect(limiter);
+    osc.start(scheduledAt); osc.stop(scheduledAt + length + 0.02);
+    const ns = context.createBufferSource();
+    ns.buffer = noiseBurst(context, 0.03, 2.2);
+    const bp = context.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = type === 'tomLow' ? 900 : 1400; bp.Q.value = 0.8;
+    const ng = context.createGain();
+    ng.gain.setValueAtTime(volume * 0.07, scheduledAt);
+    ng.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.03);
+    ns.connect(bp); bp.connect(ng); ng.connect(limiter);
+    ns.start(scheduledAt);
+    return;
+  }
+  if (type === 'crash') {
+    // Plato fuerte (abierto): ruido brillante largo, con un poco de cuerpo metálico en medios-agudos. Un
+    // 30 % más bajo que al principio (usuario, 2026-11-16: demasiado fuerte).
+    const cs = context.createBufferSource();
+    cs.buffer = noiseBurst(context, 1.3, 1.6);
+    const chp = context.createBiquadFilter(); chp.type = 'highpass'; chp.frequency.value = 3200; chp.Q.value = 0.5;
+    const cg = context.createGain();
+    cg.gain.setValueAtTime(0.0001, scheduledAt);
+    cg.gain.linearRampToValueAtTime(volume * 0.09, scheduledAt + 0.002);
+    cg.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 1.3);
+    cs.connect(chp); chp.connect(cg); cg.connect(limiter);
+    cs.start(scheduledAt);
+    const ms = context.createBufferSource();
+    ms.buffer = noiseBurst(context, 0.5, 2.0);
+    const mbp = context.createBiquadFilter(); mbp.type = 'bandpass'; mbp.frequency.value = 6500; mbp.Q.value = 1.2;
+    const mg = context.createGain();
+    mg.gain.setValueAtTime(volume * 0.042, scheduledAt);
+    mg.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.5);
+    ms.connect(mbp); mbp.connect(mg); mg.connect(limiter);
+    ms.start(scheduledAt);
+    return;
+  }
 
   if (type === 'snare') {
     const ns = context.createBufferSource();

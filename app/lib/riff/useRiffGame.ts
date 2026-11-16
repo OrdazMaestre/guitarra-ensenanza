@@ -1,10 +1,10 @@
 'use client';
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playDrumPad, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import { perfEnd, perfInput, perfReset, perfTickStart } from './perfMeter';
 import type { Chart, ChartNote } from './chart';
-import { GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
+import { drumVolume, GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
 
 // Envuelve RiffSession con el reloj real (AudioContext), el metrónomo y el estado de React.
 // El dibujo (RiffHighway) lee `sessionRef` en cada frame; aquí solo cambia el estado cuando
@@ -92,6 +92,13 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
   // ya abiertas) y, en 'paso', suenan ya las de su golpe. El mástil no suena durante la partida.
   const applyHit = useCallback((session: RiffSession, hit: ChartNote, now: number) => {
     const open = OPEN_GAIN;
+    // Batería (drums.ts): el golpe suena YA, al tocarlo, como un instrumento; si su golpe de fondo aún no
+    // ha sonado, se calla (no suena dos veces).
+    if (session.drums) {
+      for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.stopAt(now);
+      for (const note of session.playNowFor(hit)) playDrumPad(note.pad ?? 3, now, drumVolume(note.pad, true));
+      return;
+    }
     for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(open);
     for (const note of session.playNowFor(hit)) {
       if (session.bass) playOwnBass(note, now, note.duration, open);
@@ -164,6 +171,11 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
         playMetronomeClick(click.at, click.volume, click.sound);
       }
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
+        if (session.drums) {
+          const handle = playDrumPad(note.pad ?? 3, note.at, drumVolume(note.pad, note.open, note.unplayed));
+          if (handle) handles.set(note.id, { handle, end: note.at + 1.5 });
+          continue;
+        }
         const volume = note.open ? OPEN_GAIN : GUIDE_GAIN;
         const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
         void scheduled.then((handle) => {

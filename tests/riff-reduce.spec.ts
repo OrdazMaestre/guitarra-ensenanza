@@ -655,7 +655,8 @@ test('canciones de la Sala de pruebas: todas las guitarras, todos los niveles', 
     for (const real of charts) {
       expect(real.soundOffset, file).toBe(offset);
       for (const [id, profile] of Object.entries(RIFF_LEVELS)) {
-        if (!profile.available) continue;
+        // La batería no pasa por reduceChart (drums.ts).
+        if (!profile.available || profile.drums) continue;
         const reduced = reduceChart(real, profile, { range });
         const onsets = new Set(real.notes.map((n) => Math.round(n.t * 1000))).size;
         expect(reduced.notes.length, `${file} ${id}`).toBeGreaterThan(onsets * 0.3);

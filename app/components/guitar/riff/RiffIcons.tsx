@@ -99,7 +99,11 @@ function Face({ children, devil = false }: { children: ReactNode; devil?: boolea
   );
 }
 
+// Niveles de batería (drums.ts): las caras del modo trastes, en el mismo orden (Fácil = 😛 ... Difícil = 😳).
+const DRUM_LEVEL_FACE: Record<string, RiffLevel> = { 'bateria-facil': 'practica', 'bateria-medio': 'facil', 'bateria-avanzado': 'medio', 'bateria-dificil': 'avanzado' };
+
 export function LevelIcon({ level }: { level: RiffLevel }) {
+  if (DRUM_LEVEL_FACE[level]) return <LevelIcon level={DRUM_LEVEL_FACE[level]} />;
   switch (level) {
     case 'practica': // 😛
       return (

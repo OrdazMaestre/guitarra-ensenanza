@@ -13,6 +13,11 @@ export const COUNTDOWN_PHRASES: Record<RiffLevel, string> = {
   'avanzado-cuerdas': 'Vuelve al nivel anterior',
   dificil: 'Estás loco',
   experto: 'Se acabó el juego',
+  // Batería (drums.ts).
+  'bateria-facil': 'Marca el ritmo',
+  'bateria-medio': 'Bombo, caja y plato',
+  'bateria-avanzado': 'Todo a la vez',
+  'bateria-dificil': 'Eres la batería',
 };
 
 // Experto: además, frases que van apareciendo ENCIMA de las notas mientras se toca, en orden

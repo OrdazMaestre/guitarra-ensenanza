@@ -8,6 +8,7 @@
 
 import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
 import { thinRepeatedBass } from './band';
+import { KICK } from './drums';
 import { autoDrums, type AutoDrumHit } from './autoDrums';
 
 import { bendAutomation, type BendCurve } from '../bendCurve';
@@ -125,6 +126,10 @@ export interface ScheduledGuideNote {
   voice: string;
   // Curva de bend ya en segundos reales (solo si la nota dobla).
   bend?: ScheduledBend;
+  // Batería (drums.ts): el pad del golpe (suena con su sonido de batería, no de guitarra).
+  pad?: number;
+  // Batería: golpe de un pad que el nivel no toca (suena de fondo, más bajo; ver drumVolume).
+  unplayed?: boolean;
 }
 
 export interface JudgeResult {
@@ -135,7 +140,7 @@ export interface JudgeResult {
   // Nota del chart acertada, o null.
   hit: ChartNote | null;
   // En 'paso a paso' (sin fondo): notas reales que deben sonar YA al acertar.
-  playNow: { midi: number; duration: number }[];
+  playNow: { midi: number; duration: number; pad?: number }[];
 }
 
 type Click = { t: number; sound: DrumSound; volume: number };
@@ -147,6 +152,19 @@ export const MAX_INPUT_LAG_SECONDS = 0.25;
 // Las dos baterías del juego (real y automática) un 20 % más bajas frente al resto de instrumentos
 // (usuario, 2026-11-15; también la del reproductor de tablaturas). El metrónomo y la cuenta, no.
 export const DRUM_LEVEL = 0.8;
+// Mantener en carriles independientes (batería): hueco máximo, en segundos REALES, entre una nota y la
+// siguiente del mismo carril para que siga contando sola (usuario, 2026-11-16: de momento 0,5 s).
+export const LANE_HOLD_MAX_GAP_SECONDS = 0.5;
+
+// Volumen de un golpe de la batería que se TOCA (drums.ts): el mismo que la batería de fondo (0,8 ×
+// DRUM_LEVEL, bombo × KICK_BOOST); bajito (GUIDE_GAIN) si aún no se ha acertado, como las notas de fondo
+// de la guitarra.
+// `unplayed`: un golpe de un pad que el nivel NO usa (o que el límite de golpes a la vez quita), que suena
+// de fondo: a la mitad (DRUM_UNPLAYED_GAIN, usuario 2026-11-16; en Fácil, todo menos bombo y caja).
+export const DRUM_UNPLAYED_GAIN = 0.5;
+export function drumVolume(pad: number | undefined, open: boolean, unplayed = false): number {
+  return 0.8 * DRUM_LEVEL * (pad === KICK ? KICK_BOOST : 1) * (open ? OPEN_GAIN : GUIDE_GAIN) * (unplayed ? DRUM_UNPLAYED_GAIN : 1);
+}
 
 export interface NoteScore {
   points: number;
@@ -487,14 +505,21 @@ export class RiffSession {
       if (note.t > horizon) break;
       if (note.t >= this.songPos - 0.05) {
         const owner = this.ownerOf.get(note.id);
+        // Batería: un golpe ya acertado sonó al tocarlo (no se repite); uno sin dueña (un pad que el
+        // nivel no toca) suena como la banda, a volumen normal.
+        if (this.drums && owner !== undefined && this.hitAt.has(owner)) {
+          this.nextGuide++;
+          continue;
+        }
         out.push({
           id: note.id,
           at: now + Math.max(0, note.t - this.songPos) / this.options.speed,
           duration: note.dur / this.options.speed,
           midi: this.soundingMidi(note),
-          open: owner !== undefined && this.hitAt.has(owner),
+          open: owner === undefined ? this.drums : this.hitAt.has(owner),
           palmMute: note.palmMute,
-          voice: `own/${note.string}`,
+          voice: this.drums ? `pad/${note.fret}` : `own/${note.string}`,
+          ...(this.drums ? { pad: note.fret, ...(owner === undefined ? { unplayed: true } : {}) } : {}),
           ...this.scheduledBend(note.bend, note.t),
         });
       }
@@ -542,6 +567,8 @@ export class RiffSession {
   // ¿A UNA casilla? Con cuerdas libres: el traste de al lado (cualquier cuerda). Si no, la misma
   // rejilla que los slides: misma cuerda ±1 traste, o cuerda vecina en el mismo traste.
   private isNear(note: ChartNote, event: PracticeNoteEvent): boolean {
+    // En la batería, el pad de al lado no es "casi": es otro instrumento.
+    if (this.drums) return false;
     if (this.options.freeStrings) return Math.abs(note.fret - event.fret) === 1;
     return isAdjacentSlide(note, event);
   }
@@ -637,8 +664,19 @@ export class RiffSession {
     return !!this.chart.bass;
   }
 
+  // Se toca la BATERÍA (drums.ts): sus golpes suenan con sonidos de batería, un acierto suena YA (como un
+  // instrumento), y los golpes de pads que el nivel no toca suenan de fondo a volumen normal.
+  get drums(): boolean {
+    return this.chart.kit === 'drums';
+  }
+
   // Sin fondo ('paso'), un acierto hace sonar ya las notas reales de su golpe.
-  playNowFor(hit: ChartNote): { midi: number; palmMute: boolean; duration: number; bend?: ScheduledBend }[] {
+  // Batería: en los dos modos, los golpes reales de los que es dueña la nota acertada (suenan al tocarla).
+  playNowFor(hit: ChartNote): { midi: number; palmMute: boolean; duration: number; bend?: ScheduledBend; pad?: number }[] {
+    if (this.drums) {
+      const ids = new Set(hit.sourceIds ?? [hit.id]);
+      return this.guideNotes.filter((note) => ids.has(note.id)).map((note) => ({ midi: note.midi, palmMute: false, duration: 0.3, pad: note.fret }));
+    }
     if (this.options.mode !== 'paso') return [];
     return this.guideNotes
       .filter((note) => Math.abs(note.t - hit.t) < 0.005)
@@ -672,6 +710,14 @@ export class RiffSession {
   // distancia, si no hay otra nota por medio (en su cuerda; con cuerdas libres, ninguna). Así se toca, p. ej., el compás
   // 42 de Master of Puppets (9 Mi al aire rapidísimos) manteniendo el traste 0. Soltar corta la
   // cadena. `held` = posiciones que suenan ahora en el mástil. Devuelve las notas acertadas así.
+  // CARRILES INDEPENDIENTES (batería, drums.ts; y un futuro modo piano; usuario 2026-11-16): se pueden
+  // mantener varios pads a la vez (hasta los 6); cada carril (traste) cuenta solo sus notas, las de otros
+  // carriles no lo cortan, pero si la siguiente de ESE carril llega a más de LANE_HOLD_MAX_GAP_SECONDS
+  // reales de la anterior, el carril deja de valer y hay que volver a pulsarlo.
+  get independentLanes(): boolean {
+    return this.drums;
+  }
+
   autoHold(held: { string: number; fret: number }[]): ChartNote[] {
     if (this.status !== 'playing' && this.status !== 'countin') return [];
     const heldKeys = new Set(held.map((pos) => this.holdKey(pos)));
@@ -689,10 +735,17 @@ export class RiffSession {
           const note = this.notes[i];
           if (note.t < prev.t + 0.005) continue;
           if (this.holdKey(note) === key) { nextIndex = i; break; }
-          // Otra nota por medio (en su cuerda, o cualquiera con cuerdas libres): se corta.
+          // Otra nota por medio (en su cuerda, o cualquiera con cuerdas libres): se corta. Con carriles
+          // independientes, no: solo cuenta su carril.
+          if (this.independentLanes) continue;
           if (this.options.freeStrings || note.string === prev.string) break;
         }
         const next = this.notes[nextIndex];
+        // Carriles independientes: demasiado lejos de la anterior, ese carril deja de valer.
+        if (next && this.independentLanes && (next.t - prev.t) / this.options.speed > LANE_HOLD_MAX_GAP_SECONDS) {
+          this.holdChains.delete(key);
+          break;
+        }
         if (!next || next.t > this.songPos + 1e-6 || this.hitAt.has(next.id) || this.locked.has(next.id)) break;
         this.hitAt.set(next.id, this.songPos);
         const points = holdPoints((next.t - prev.t) / this.options.speed);

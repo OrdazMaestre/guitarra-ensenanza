@@ -1,6 +1,13 @@
 'use client';
 import { type MutableRefObject, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { type GuitarTone, playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
+import { getAudioCurrentTime, type GuitarTone, playDrumPad, playNote, preloadSamples, releaseNote, switchNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import DrumKitNeck, { DrumHits, DrumHitStyles, type DrumNeckGeometry } from './riff/DrumKitNeck';
+
+// Batería (usuario, 2026-11-16): en pantallas anchas el mástil no pasa de este ancho, centrado; con 6 columnas
+// a todo lo ancho los tambores salían demasiado estirados. La autopista sigue sus bordes (getScreenCTM).
+const DRUM_NECK_MAX_PX = 760;
+// Lo que pueden bajar los bombos bajo el mástil: la barra MIDI (2 px de margen + su alto, ~38 px).
+const DRUM_KICK_OVERHANG_PX = 40;
 import { FRETBOARD_KEYMAP, FRETBOARD_KEYMAP_LEFTY, FRETBOARD_KEYMAP_UPPER, FRETBOARD_KEYMAP_UPPER_LEFTY, hasKeyboardGhosting } from '@/app/lib/fretboardKeymap';
 import { useMetronome } from '@/app/lib/useMetronome';
 import { useNoteMarks } from '@/app/lib/useNoteMarks';
@@ -129,6 +136,8 @@ export interface FretboardGeometry {
   openColumn?: [number, number];
   startFret: number;
   endFret: number;
+  // Batería (DrumKitNeck): su geometría, para el "fantasma" gris de las piezas en la autopista.
+  drumGeo?: DrumNeckGeometry;
 }
 
 interface ReducedFretboardDiagramProps {
@@ -387,20 +396,6 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // La publica siempre en `localGeometryRef` (la usa la autopista del juego) y, si la pasan, también
   // en la prop `geometryRef`.
   const localGeometryRef = useRef<FretboardGeometry | null>(null);
-  useEffect(() => {
-    const geometry: FretboardGeometry = {
-      svg: svgRef.current,
-      fretX,
-      stringY,
-      laneY,
-      fretLineXs: Array.from({ length: fretCount + 1 }, (_, index) => drawX(boardX + index * fretWidth)),
-      openColumn: openWidth === null ? undefined : [drawX(boardLeftEdge), drawX(boardX)],
-      startFret,
-      endFret,
-    };
-    localGeometryRef.current = geometry;
-    if (geometryRef) geometryRef.current = geometry;
-  });
   const passedFrets = new Set(guideDots.map((d) => d.fret));
   const mergedGuideDots = [
     ...guideDots.filter((d) => d.fret >= startFret && d.fret <= endFret),
@@ -436,6 +431,27 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // una cuerda al arrastrar el dedo a otra, que no pasa por emitNoteEvent.
   const riffPlayingRef = useRef(false);
   useEffect(() => { riffPlayingRef.current = riff.playing; }, [riff.playing]);
+  // BATERÍA (app/lib/riff/drums.ts, usuario 2026-11-16): con JUGAR y la pista de batería, el mástil es una
+  // batería de 6 pads (columnas 0-5) que funciona como un TECLADO: cada tecla o dedo es un golpe propio,
+  // sin hammer-on ni pull-off, y lo que se toca a la vez suena a la vez. Golpes con tecla o dedo pulsados:
+  // `drumKeysRef` (tecla -> pad) y `drumPtRef` (puntero -> pad), para "mantener" (autoHold) y el slide.
+  const drumKit = !!riffGame && gameOpen && riff.chart?.kit === 'drums';
+  const drumKitRef = useRef(drumKit);
+  // Solo en el cliente (la batería sale tras abrir JUGAR): en pantallas táctiles, sin las teclas.
+  const touchOnlyScreen = drumKit && typeof window !== 'undefined' && isTouchOnly();
+  const drumKeysRef = useRef(new Map<string, number>());
+  const drumPtRef = useRef(new Map<number, number>());
+  useEffect(() => {
+    drumKitRef.current = drumKit;
+    drumKeysRef.current.clear();
+    drumPtRef.current.clear();
+    kbMarksRef.current?.([]);
+    ptMarksRef.current?.([]);
+  }, [drumKit]);
+  const syncDrumMarks = useCallback(() => {
+    kbMarksRef.current?.([...new Set(drumKeysRef.current.values())].map((fret) => ({ string: 6, fret })));
+    ptMarksRef.current?.([...new Set(drumPtRef.current.values())].map((fret) => ({ string: 6, fret })));
+  }, []);
   // Teclado en los niveles de 2 y 3 cuerdas (usuario, 2026-11-14): las filas de teclas de cuerdas que el
   // nivel no tiene, por ENCIMA de su cuerda más aguda, cuentan como esa cuerda, con su mismo traste (2
   // cuerdas: las filas Q y de números tocan la La; 3 cuerdas: la de números toca la Re). Así cada mano
@@ -611,12 +627,22 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         const entry = ptHeldRef.current.get(pid);
         if (entry) held.push({ string: entry.string, fret: entry.fret });
       }
+      // Batería: los pads pulsados (cuerdas libres: basta el traste).
+      for (const fret of new Set([...drumKeysRef.current.values(), ...drumPtRef.current.values()])) held.push({ string: 6, fret });
       return held;
     };
   }, []);
   const [kbGhostWarn, setKbGhostWarn] = useState(false);
   const volumeRef = useRef(volume);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
+  // Un golpe de un pad en el propio mástil (fuera de partida, o en pausa; jugando, `gain` es 0 y suena el
+  // golpe de la canción al acertar, ver useRiffGame).
+  const playDrumHit = useCallback((pad: number, gain: number) => {
+    const level = volumeRef.current * gain;
+    if (level <= 0) return;
+    touchAudioContext();
+    playDrumPad(pad, getAudioCurrentTime(), level * 0.64);
+  }, []);
   const paintModeRef = useRef(paintMode);
   useEffect(() => { paintModeRef.current = paintMode; }, [paintMode]);
   // Sonido (opt-in vía `allowOverdrive`): 'clean' o 'overdrive', ver getOverdriveBus en
@@ -665,9 +691,18 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
     async function down(e: KeyboardEvent) {
       e.preventDefault();
-      if (e.repeat || kbKeysHeldRef.current.has(e.code)) return;
+      if (e.repeat || kbKeysHeldRef.current.has(e.code) || drumKeysRef.current.has(e.code)) return;
       const raw = activeMap[e.code];
       if (!raw) return;
+      // Batería: la tecla de la columna 0-5 de CUALQUIER fila es un golpe de ese pad, independiente.
+      if (drumKitRef.current) {
+        if (raw.fret > 5) return;
+        drumKeysRef.current.set(e.code, raw.fret);
+        setKbGhostWarn(drumKeysRef.current.size >= 3);
+        syncDrumMarks();
+        playDrumHit(raw.fret, emitNoteEvent({ string: 6, fret: raw.fret, kind: 'pluck', timeStamp: e.timeStamp }));
+        return;
+      }
       const top = kbTopStringRef.current;
       const entry = top !== null && raw.string < top ? { string: top, fret: raw.fret, midi: OPEN_STRING_MIDI[top] + raw.fret } : raw;
       const cur = kbStringVoiceRef.current.get(entry.string);
@@ -698,6 +733,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
     async function up(e: KeyboardEvent) {
       e.preventDefault();
+      if (drumKeysRef.current.delete(e.code)) {
+        setKbGhostWarn(drumKeysRef.current.size >= 3);
+        syncDrumMarks();
+        return;
+      }
       const entry = kbKeysHeldRef.current.get(e.code);
       if (!entry) return;
       kbKeysHeldRef.current.delete(e.code);
@@ -727,10 +767,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbStringVoiceRef.current.forEach(({ voiceId }) => { if (voiceId >= 0) releaseNote(voiceId); });
       kbStringVoiceRef.current.clear();
       kbKeysHeldRef.current.clear();
+      drumKeysRef.current.clear();
       kbMarksRef.current?.([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange, lefty, emitNoteEvent]);
+  }, [kbMode, kbRange, lefty, emitNoteEvent, playDrumHit, syncDrumMarks]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -801,6 +842,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
+    // Batería: cada dedo, un golpe propio en la columna que toca (vale cualquier fila).
+    if (drumKitRef.current) {
+      if (pos.fret > 5) return;
+      drumPtRef.current.set(e.pointerId, pos.fret);
+      syncDrumMarks();
+      playDrumHit(pos.fret, emitNoteEvent({ string: 6, fret: pos.fret, kind: 'pluck', timeStamp: e.timeStamp }));
+      return;
+    }
     if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret, centsRef.current[pos.string]));
     const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string]);
     const cur = ptStringVoiceRef.current.get(pos.string);
@@ -829,6 +878,16 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
   }
   async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    // Batería: arrastrar a otra columna es un SLIDE desde la anterior (solo cuenta a la vecina).
+    const drumFrom = drumPtRef.current.get(e.pointerId);
+    if (drumFrom !== undefined) {
+      const pos = getPos(e);
+      if (!pos || pos.fret > 5 || pos.fret === drumFrom) return;
+      drumPtRef.current.set(e.pointerId, pos.fret);
+      syncDrumMarks();
+      playDrumHit(pos.fret, emitNoteEvent({ string: 6, fret: pos.fret, kind: 'slide', from: { string: 6, fret: drumFrom }, timeStamp: e.timeStamp }));
+      return;
+    }
     const curEntry = ptHeldRef.current.get(e.pointerId);
     if (!curEntry) return;
     const pos = getPos(e, { string: curEntry.string, fret: curEntry.fret });
@@ -902,6 +961,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
   }
   async function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (drumPtRef.current.delete(e.pointerId)) {
+      syncDrumMarks();
+      return;
+    }
     const curEntry = ptHeldRef.current.get(e.pointerId);
     if (!curEntry) return;
     ptHeldRef.current.delete(e.pointerId);
@@ -1026,7 +1089,57 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     return riffStats.subscribe(write);
   }, [riffStats, showStats]);
 
+  // Batería: el mástil dibujado como una batería (DrumKitNeck), con la línea de golpe donde caen las notas.
+  const drumGeo: DrumNeckGeometry | null = drumKit
+    ? {
+        cx: fretX,
+        colWidth: fretWidth,
+        left: boardLeftEdge,
+        right: boardX + boardWidth,
+        top: boardY,
+        height: boardHeight,
+        hitY: laneY(6),
+        touch: touchOnlyScreen,
+        // Bombos ENTEROS (usuario, 2026-11-16): se salen del mástil por abajo y quedan DETRÁS de la barra
+        // MIDI, sin bajarla: como mucho hasta el fondo de la barra (DRUM_KICK_OVERHANG_PX bajo el <svg>,
+        // pasado a unidades del viewBox con el ancho real del mástil).
+        maxBottom: viewBoxHeight + DRUM_KICK_OVERHANG_PX * viewBoxWidth / Math.max(1, Math.min((riff.hostWidth ?? DRUM_NECK_MAX_PX) * svgWidthPercent / 100, DRUM_NECK_MAX_PX)),
+      }
+    : null;
+
+  // Geometría publicada para la autopista (después de `drumGeo`, que va dentro).
+  useEffect(() => {
+    const geometry: FretboardGeometry = {
+      svg: svgRef.current,
+      fretX,
+      stringY,
+      laneY,
+      fretLineXs: Array.from({ length: fretCount + 1 }, (_, index) => drawX(boardX + index * fretWidth)),
+      openColumn: openWidth === null ? undefined : [drawX(boardLeftEdge), drawX(boardX)],
+      startFret,
+      endFret,
+      drumGeo: drumGeo ?? undefined,
+    };
+    localGeometryRef.current = geometry;
+    if (geometryRef) geometryRef.current = geometry;
+  });
+
+  // Números de traste bajo el mástil (también con la batería, usuario 2026-11-16).
+  const fretNumbers = showFretNumbers && Array.from(
+    { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
+    (_, index) => {
+      const fret = startFret === 0 ? index : startFret + index;
+      return (
+        <text className="reduced-fret-number" key={`fretnum-${fret}`} x={fretX(fret)} y={bottomLabelY}>
+          {fret}
+        </text>
+      );
+    }
+  );
+
   function interactionOverlay(posList: MarkPos[]) {
+    // Batería: siempre montada (los velos pálidos y la línea de golpe); golpear solo cambia `data-on`.
+    if (drumGeo) return <DrumHits g={drumGeo} on={new Set(posList.map((p) => p.fret))} />;
     if (posList.length === 0) return null;
     return (
       <>
@@ -1110,14 +1223,15 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     >
     {showHighway && <div aria-hidden="true" className="riff-highway-space" />}
     {riffGame && gameOpen && <RiffPerfBox status={riff.game.status} />}
-    <div className="reduced-fretboard-wrap" ref={scrollRef}>
+    {/* Batería: sin recortar por abajo (los bombos se salen del mástil, ver `maxBottom`). */}
+    <div className={`reduced-fretboard-wrap${drumKit ? ' riff-drum-wrap' : ''}`} ref={scrollRef}>
     <svg
       ref={svgRef}
-      className="reduced-fretboard"
+      className={`reduced-fretboard${drumKit ? ' riff-drum-neck' : ''}`}
       viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
       role="img"
       aria-label={ariaLabel}
-      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none', WebkitTapHighlightColor: 'transparent', maxWidth: `${svgWidthPercent}%`, width: `${svgWidthPercent}%` }}
+      style={{ touchAction: 'none', cursor: 'pointer', userSelect: 'none', WebkitTapHighlightColor: 'transparent', maxWidth: drumKit ? `min(${svgWidthPercent}%, ${DRUM_NECK_MAX_PX}px)` : `${svgWidthPercent}%`, width: `${svgWidthPercent}%`, ...(drumKit ? { marginInline: 'auto', overflow: 'visible' } : null) }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -1127,6 +1241,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       // El mástil solo usa eventos de puntero, que ya han llegado; esto anula lo demás.
       onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); }}
     >
+      {drumGeo && <><DrumHitStyles /><DrumKitNeck g={drumGeo} /></>}
+      {!drumGeo && <>
       <rect className="reduced-board-bg" x={boardLeftEdge} y={boardY} width={boardX + boardWidth - boardLeftEdge} height={boardHeight} />
       {Array.from({ length: 6 }, (_, index) => (
         <line className="reduced-string" key={`string-${index + 1}`} x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
@@ -1180,6 +1296,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           ) : null}
         </g>
       ))}
+      </>}
       {fretLabelsAbove && Array.from(
         { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
         (_, index) => {
@@ -1196,17 +1313,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           {romanFretLabels[fret]}
         </text>
       ))}
-      {showFretNumbers && Array.from(
-        { length: startFret === 0 ? endFret + 1 : endFret - startFret + 1 },
-        (_, index) => {
-          const fret = startFret === 0 ? index : startFret + index;
-          return (
-            <text className="reduced-fret-number" key={`fretnum-${fret}`} x={fretX(fret)} y={bottomLabelY}>
-              {fret}
-            </text>
-          );
-        }
-      )}
+      {/* También con la batería (usuario, 2026-11-16: números de traste debajo, sin teclas en el dibujo). */}
+      {!drumKit && fretNumbers}
       <NoteMarksOverlay
         endFret={endFret}
         getNoteName={(string, fret) => noteNameForFret(string, fret, cents[string])}
@@ -1229,6 +1337,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       {kbMode
         ? <PressMarks key="kb" render={interactionOverlay} setterRef={kbMarksRef} />
         : <PressMarks key="pt" render={interactionOverlay} setterRef={ptMarksRef} />}
+      {/* Batería: los números, por encima de los bombos (que bajan hasta su fila) y de sus golpes. */}
+      {drumKit && fretNumbers}
     </svg>
     </div>
     <PracticeFeedback feedback={practice.feedback} />
@@ -1491,6 +1601,25 @@ export function ReducedFretboardStyles() {
         font-size: 15px;
         font-weight: 700;
         text-anchor: middle;
+      }
+
+      /* Batería (DrumKitNeck): su dibujo ya es oscuro; en el tema oscuro se contra-invierte siempre (también
+         antes de empezar, cuando el mástil aún no es "riff-live"). */
+      /* Batería: el contenedor no recorta (con overflow-x: auto también recortaba por abajo los bombos). */
+      .reduced-fretboard-wrap.riff-drum-wrap {
+        overflow: visible;
+      }
+
+      /* Los números de traste pasan por encima de los bombos (oscuros): con contorno blanco se leen. */
+      svg.riff-drum-neck .reduced-fret-number {
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 4px;
+        stroke-linejoin: round;
+      }
+
+      html[data-theme='dark'] svg.reduced-fretboard.riff-drum-neck {
+        filter: invert(1) hue-rotate(180deg);
       }
 
       .reduced-fret-number-above {
