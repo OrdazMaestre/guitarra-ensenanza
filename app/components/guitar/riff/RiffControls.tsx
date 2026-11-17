@@ -326,6 +326,7 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
         <p className="riff-note" role="status">Concierto en pausa. Esta partida no cuenta. ¿Lo intentamos otra vez?</p>
       )}
       {riff.loadError && <p className="riff-note">No se pudo cargar la tablatura.</p>}
+      {riff.missingKind && <p className="riff-note">Esta canción no tiene batería.</p>}
       {songNotice && <p className="riff-note" role="status">{songNotice}</p>}
       {riff.narrow && (
         <p className="riff-narrow-warning" role="status">

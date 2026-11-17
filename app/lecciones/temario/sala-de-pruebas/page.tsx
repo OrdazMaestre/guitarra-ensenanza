@@ -32,6 +32,7 @@ export default function SalaDePruebasPage() {
             startFret={0}
             endFret={12}
             fretLabels
+            instrumentChoice
             notes={[]}
             riffGame={{ songs: TEST_ROOM_SONGS, initialSong: 'black-gilmur' }}
             tutorial
@@ -39,6 +40,22 @@ export default function SalaDePruebasPage() {
         </div>
 
         <MiniKeyboard className="test-room-keyboard" tutorial />
+
+        {/* Batería MIDI suelta (usuario, 2026-11-17): la del modo batería de Riff-Hero; su JUGAR abre la partida
+            con la batería de la canción. */}
+        <div className="test-room-drums">
+          <ReducedFretboardDiagram
+            allowLeftHanded
+            ariaLabel="Batería interactiva"
+            startFret={0}
+            endFret={5}
+            fretLabels
+            instrument="drums"
+            notes={[]}
+            riffGame={{ songs: TEST_ROOM_SONGS, initialSong: 'black-gilmur' }}
+            tutorial={false}
+          />
+        </div>
       </section>
 
       <section className="test-room-tuning">
@@ -153,7 +170,8 @@ export default function SalaDePruebasPage() {
           width: 100%;
         }
 
-        .test-room-fretboard {
+        .test-room-fretboard,
+        .test-room-drums {
           min-width: 0;
         }
 

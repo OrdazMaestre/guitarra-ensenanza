@@ -12,7 +12,7 @@ import type * as AlphaTab from '@coderline/alphatab';
 import { relocatePassages } from './relocate';
 import { absorbedTracks, gapFillPlan } from './fillGaps';
 import { buildBendCurve, type BendCurve, type BendNoteLike } from '../bendCurve';
-import { padOfMidi, spreadCymbals } from './drums';
+import { drumSoundOfMidi, padOfMidi, spreadCymbals } from './drums';
 
 type AlphaTabModule = typeof AlphaTab;
 type Score = AlphaTab.model.Score;
@@ -62,7 +62,8 @@ export interface ChartBar {
   end: number;
 }
 
-export type DrumSound = 'kick' | 'snare' | 'cymbal';
+// Los 6 sonidos de batería (los de la batería jugable; `DrumLayer` en guitarAudioEngine.ts).
+export type DrumSound = 'kick' | 'snare' | 'cymbal' | 'crash' | 'tomLow' | 'tomHigh';
 
 export interface ChartDrumHit {
   t: number;
@@ -552,20 +553,8 @@ function relocate(
   return null;
 }
 
-// Mapa GM de percusión -> los 3 sonidos que sintetiza playMetronomeClick. Copia deliberada del de
-// AlphaTabPlayer.tsx (percussionClickType/resolvePercussionMidi), que no se toca por ser delicado:
-// si uno cambia, cambiar el otro.
-const KICK_MIDI = new Set([35, 36, 41, 43, 45]);
-const SNARE_MIDI = new Set([31, 33, 34, 37, 38, 40, 47, 48, 50]);
-const CYMBAL_MIDI = new Set([26, 27, 28, 29, 30, 39, 42, 44, 46, 49, 51, 52, 53, 54, 55, 56, 57, 58, 59]);
-
-function drumSound(midi: number): DrumSound {
-  if (KICK_MIDI.has(midi)) return 'kick';
-  if (SNARE_MIDI.has(midi)) return 'snare';
-  if (CYMBAL_MIDI.has(midi)) return 'cymbal';
-  if (midi < 42) return 'kick';
-  return midi < 60 ? 'snare' : 'cymbal';
-}
+// Mapa GM de percusión -> los 6 sonidos de la batería jugable (drums.ts, el mismo que usan las tablaturas).
+const drumSound = drumSoundOfMidi;
 
 export function percussionMidi(track: AlphaTab.model.Track, note: Note): number | undefined {
   const index = note.percussionArticulation;

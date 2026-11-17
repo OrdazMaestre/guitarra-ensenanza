@@ -161,7 +161,7 @@ test('velocidad del carril: varias cuerdas +25 %, tutorial +15 % por paso', () =
   for (const level of ['practica', 'facil', 'medio', 'avanzado'] as const) expect(laneSpeedFactor(level), level).toBe(1);
   for (const level of ['medio-cuerdas', 'avanzado-cuerdas', 'dificil', 'hibrido', 'experto'] as const) expect(laneSpeedFactor(level), level).toBe(1.25);
   // Batería (usuario, 2026-11-16): un 50 % más rápido en todos sus niveles.
-  for (const level of ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil'] as const) expect(laneSpeedFactor(level), level).toBe(1.5);
+  for (const level of ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil', 'bateria-experto'] as const) expect(laneSpeedFactor(level), level).toBe(1.5);
   expect(laneLookaheadSeconds(3.8, 0.5, true, 1.25)).toBeCloseTo(3.04);
   expect(laneLookaheadSeconds(3.8, 1, true, 1.25)).toBeCloseTo(3.8 * 0.5625 / 1.25);
   expect(RIFF_TUTORIAL.map((part) => part.laneSpeed)).toEqual([1, 1.15, 1.15 ** 2]);

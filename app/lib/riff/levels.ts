@@ -7,7 +7,7 @@
 // '-cuerdas' (los dos modos tienen un "Medio" y un "Avanzado", decisión del usuario).
 export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto' | DrumLevel;
 // Niveles de BATERÍA (drums.ts, usuario 2026-11-16): solo cuando la pista que se toca es la batería.
-export type DrumLevel = 'bateria-facil' | 'bateria-medio' | 'bateria-avanzado' | 'bateria-dificil';
+export type DrumLevel = 'bateria-facil' | 'bateria-medio' | 'bateria-avanzado' | 'bateria-dificil' | 'bateria-experto';
 
 export interface LevelProfile {
   label: string;
@@ -53,7 +53,7 @@ export interface LevelProfile {
   // teclado físico, ver FRETBOARD_KEYMAP -- Mi hasta el 10, La hasta el 11, Re y Sol hasta el 12).
   maxFretByString?: Record<number, number>;
   // Nivel de BATERÍA: la regla de drums.ts (DRUM_LEVEL_RULES) que lo traduce.
-  drums?: 'facil' | 'medio' | 'avanzado' | 'dificil';
+  drums?: 'facil' | 'medio' | 'avanzado' | 'dificil' | 'experto';
 }
 
 const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 };
@@ -116,10 +116,11 @@ export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = 
   'bateria-medio': { label: 'Medio', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'medio' },
   'bateria-avanzado': { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'avanzado' },
   'bateria-dificil': { label: 'Difícil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'dificil' },
+  'bateria-experto': { label: 'Experto', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'experto' },
 };
 
 // Los cuatro niveles de batería, de menos a más (el menú Nivel solo enseña estos con la batería).
-export const DRUM_LEVEL_ORDER: DrumLevel[] = ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil'];
+export const DRUM_LEVEL_ORDER: DrumLevel[] = ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil', 'bateria-experto'];
 export function isDrumLevel(level: RiffLevel): level is DrumLevel {
   return level.startsWith('bateria-');
 }

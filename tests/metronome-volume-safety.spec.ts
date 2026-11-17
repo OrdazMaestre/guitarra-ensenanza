@@ -11,13 +11,14 @@ import { test, expect } from '@playwright/test';
 // limiter existed — it must stay silent/transparent at this level — and
 // (b) at the new maximum (volume=2.0, i.e. metroVolume=1.0) nothing clips.
 test('metronome click stays clipping-free at 2x, and unchanged at the old default', async ({ page }) => {
+  await page.addInitScript({ path: 'tests/helpers/guitarTone.js' });
   await page.goto('/lecciones/temario/notacion-musical');
 
   const result = await page.evaluate(async () => {
     const SR = 44100;
     const DURATION = 0.2;
 
-    function renderClick(volume: number, type: 'snare' | 'kick' | 'cymbal') {
+    function renderClick(volume: number, type: 'snare' | 'kick' | 'cymbal', kickGain = 1.8) {
       const ctx = new OfflineAudioContext(1, Math.floor(SR * DURATION), SR);
       const scheduledAt = 0;
 
@@ -66,7 +67,7 @@ test('metronome click stays clipping-free at 2x, and unchanged at the old defaul
         const clkSrc = ctx.createBufferSource(); clkSrc.buffer = clkBuf;
         const clkBp = ctx.createBiquadFilter(); clkBp.type = 'bandpass'; clkBp.frequency.value = 1200; clkBp.Q.value = 1.5;
         const clkG = ctx.createGain();
-        clkG.gain.setValueAtTime(volume * 0.28, scheduledAt);
+        clkG.gain.setValueAtTime(volume * kickGain * 0.28, scheduledAt);
         clkG.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.008);
         clkSrc.connect(clkBp); clkBp.connect(clkG); clkG.connect(limiter);
         clkSrc.start(scheduledAt);
@@ -78,7 +79,7 @@ test('metronome click stays clipping-free at 2x, and unchanged at the old defaul
         const ohp = ctx.createBiquadFilter(); ohp.type = 'highpass'; ohp.frequency.value = 60; ohp.Q.value = 0.5;
         const og = ctx.createGain();
         og.gain.setValueAtTime(0.0001, scheduledAt);
-        og.gain.linearRampToValueAtTime(volume * 0.20, scheduledAt + 0.003);
+        og.gain.linearRampToValueAtTime(volume * kickGain * 0.20, scheduledAt + 0.003);
         og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.08);
         osc.connect(ohp); ohp.connect(og); og.connect(limiter);
         osc.start(scheduledAt); osc.stop(scheduledAt + 0.09);
@@ -91,7 +92,7 @@ test('metronome click stays clipping-free at 2x, and unchanged at the old defaul
         const bbp = ctx.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 280; bbp.Q.value = 0.9;
         const bg = ctx.createGain();
         bg.gain.setValueAtTime(0.0001, scheduledAt);
-        bg.gain.linearRampToValueAtTime(volume * 0.10, scheduledAt + 0.002);
+        bg.gain.linearRampToValueAtTime(volume * kickGain * 0.10, scheduledAt + 0.002);
         bg.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.035);
         bs.connect(bbp); bbp.connect(bg); bg.connect(limiter);
         bs.start(scheduledAt);
@@ -126,16 +127,41 @@ test('metronome click stays clipping-free at 2x, and unchanged at the old defaul
       peaksAtOldDefault[type] = peakAbs((await renderClick(1.0, type)).getChannelData(0));
       peaksAtNewMax[type] = peakAbs((await renderClick(2.0, type)).getChannelData(0));
     }
-    return { peaksAtOldDefault, peaksAtNewMax };
+    // Bombo +80 % (KICK_BASE_GAIN 1.8, usuario 2026-11-17): cuánto sube DE VERDAD tras el limitador, en LUFS
+    // (cascos, portátil, móvil), a los volúmenes reales de cada sitio: metrónomo por defecto (1) y al máximo (2),
+    // bombo original del juego (0,8 × 0,8 × 1,4 = 0,896), doble pedal de la automática (0,6) y tablatura (1,04).
+    const tone = (window as unknown as { __guitarTone: { lufs: (x: Float32Array, sr: number, o?: { model?: string }) => number } }).__guitarTone;
+    const kickGain: Record<string, Record<string, number>> = {};
+    const kickPeak: Record<string, number> = {};
+    for (const [name, volume] of [['metronomo', 1], ['metronomo max', 2], ['juego', 0.896], ['doble pedal', 0.6], ['tab', 1.04]] as const) {
+      // El mismo ruido antes y después (semilla fija), si no la diferencia mide el azar del ruido.
+      const seeded = () => { let x = 12345; Math.random = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648); };
+      seeded();
+      const before = (await renderClick(volume, 'kick', 1)).getChannelData(0);
+      seeded();
+      const after = (await renderClick(volume, 'kick', 1.8)).getChannelData(0);
+      kickPeak[name] = peakAbs(after);
+      kickGain[name] = {};
+      for (const model of ['headphones', 'laptop', 'phone']) kickGain[name][model] = tone.lufs(after, SR, { model }) - tone.lufs(before, SR, { model });
+    }
+    return { peaksAtOldDefault, peaksAtNewMax, kickGain, kickPeak };
   });
+  console.log('Bombo +80 %: subida real (LU) y pico', JSON.stringify(result.kickGain), JSON.stringify(result.kickPeak));
+  // +80 % = +5,1 dB sin limitador; con él, al menos +3,5 LU en todos los sitios y escuchas, y nunca clip.
+  for (const name of Object.keys(result.kickGain)) {
+    for (const model of ['headphones', 'laptop', 'phone']) expect(result.kickGain[name][model], `${name} ${model}`).toBeGreaterThan(3.5);
+    expect(result.kickPeak[name], name).toBeLessThan(0.95);
+  }
 
   // Old default (metroVolume=0.5 → volume=1.0): limiter threshold (-3dB ≈
-  // 0.708) sits above every click type's historical peak, so it must stay
-  // completely transparent — peaks should match the original unlimited
-  // values (snare ~0.255, kick ~0.58, cymbal ~0.12), comfortably under 0.7.
-  for (const type of ['snare', 'kick', 'cymbal']) {
+  // 0.708) sits above snare's and cymbal's historical peak, so it must stay
+  // completely transparent for them (snare ~0.255, cymbal ~0.12). The kick is
+  // +80 % since 2026-11-17 (KICK_BASE_GAIN, user request), ~1.04 unlimited, so
+  // the limiter now works on its first millisecond: it must not clip.
+  for (const type of ['snare', 'cymbal']) {
     expect(result.peaksAtOldDefault[type]).toBeLessThan(0.7);
   }
+  expect(result.peaksAtOldDefault.kick).toBeLessThan(0.95);
 
   // New maximum (metroVolume=1.0 → volume=2.0): nothing may clip, with a
   // safety margin under full scale.

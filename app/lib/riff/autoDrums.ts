@@ -52,7 +52,8 @@ const ONSET_GRID = 24;
 // como los demás (elección del usuario: volumen antes que ese acento).
 const AUTO_DRUM_GAIN = 0.8 * 0.7;
 const DRUM_HIT_MAX = 0.8;
-const ELEMENT_GAIN: Record<DrumSound, number> = { kick: 1.9, snare: 1.4, cymbal: 5.8 };
+// La batería automática solo usa bombo, caja y plato (los demás, por completar el tipo).
+const ELEMENT_GAIN: Record<DrumSound, number> = { kick: 1.9, snare: 1.4, cymbal: 5.8, crash: 5.8, tomLow: 1.9, tomHigh: 1.4 };
 const hitVolume = (sound: DrumSound, accent: number) => Math.min(DRUM_HIT_MAX, AUTO_DRUM_GAIN * ELEMENT_GAIN[sound] * accent);
 // Dentro de una negra (960 ticks): tresillo 320/640, semicorchea 240/720, corchea 480.
 const TICKS = 960;

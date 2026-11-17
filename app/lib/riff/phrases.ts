@@ -17,7 +17,8 @@ export const COUNTDOWN_PHRASES: Record<RiffLevel, string> = {
   'bateria-facil': 'Marca el ritmo',
   'bateria-medio': 'Bombo, caja y plato',
   'bateria-avanzado': 'Todo a la vez',
-  'bateria-dificil': 'Eres la batería',
+  'bateria-dificil': 'Dos platos y a correr',
+  'bateria-experto': 'Eres la batería',
 };
 
 // Experto: además, frases que van apareciendo ENCIMA de las notas mientras se toca, en orden

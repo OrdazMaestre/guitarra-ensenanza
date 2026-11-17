@@ -4,7 +4,7 @@ import { buildChart, listGuitarTracks, listPlayableTracks, loadScore, type Chart
 import { DRUM_LEVEL_ORDER, isDrumLevel, RIFF_LEVELS, type DrumLevel, type RiffLevel } from '@/app/lib/riff/levels';
 import { DRUM_LEVEL_RULES, reduceDrums } from '@/app/lib/riff/drums';
 import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
-import { leaderTrack, type TrackRole } from '@/app/lib/riff/roles';
+import { leaderTrack, trackRole, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
 import { buildRemix } from '@/app/lib/riff/remix';
@@ -34,6 +34,18 @@ const DEFAULTS = { level: 'practica' as RiffLevel, speed: 1, mode: 'ritmo' as Ri
 const LEVEL_STORAGE_KEY = 'riff-ultimo-nivel';
 // Y el de la batería, aparte (drums.ts, 2026-11-16): sus niveles son otros.
 const DRUM_LEVEL_STORAGE_KEY = 'riff-ultimo-nivel-bateria';
+// Y el INSTRUMENTO que se tocó (usuario, 2026-11-17), como la dificultad: guitarra solista o rítmica, bajo o
+// batería. Al abrir una canción se elige su pista de ese tipo, si la tiene; si no, la de siempre.
+const INSTRUMENT_STORAGE_KEY = 'riff-ultimo-instrumento';
+type Instrument = 'S' | 'R' | 'bass' | 'drums';
+function savedInstrument(): Instrument | null {
+  try {
+    const value = window.localStorage.getItem(INSTRUMENT_STORAGE_KEY);
+    return value === 'S' || value === 'R' || value === 'bass' || value === 'drums' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 const neverChanges = () => () => {};
 const noSavedLevel = () => null;
@@ -80,9 +92,17 @@ interface Options {
   measureRef: RefObject<HTMLElement | null>;
   // Posiciones que suenan ahora en el mástil (notas repetidas con la pulsación mantenida).
   heldRef?: HeldPositionsRef;
+  // Instrumento del mástil (usuario, 2026-11-17, Sala de pruebas): la partida abre con la pista de ese tipo.
+  // 'bass' sin bajo en la canción → la guitarra de siempre; 'drums' (la batería suelta) solo ofrece la batería
+  // y, si la canción no tiene, no se puede empezar (`missingKind`). Sin él, como siempre.
+  kind?: NeckKind;
+  // false: elegir pista NO se recuerda (la batería suelta; si no, el mástil abriría la próxima vez en batería).
+  remember?: boolean;
 }
 
-export function useRiffController({ source, initialTrack, trackRoles, startFret, endFret, measureRef, heldRef }: Options) {
+export type NeckKind = 'guitar' | 'bass' | 'drums';
+
+export function useRiffController({ source, initialTrack, trackRoles, startFret, endFret, measureRef, heldRef, kind, remember = true }: Options) {
   const [tracks, setTracks] = useState<GuitarTrackInfo[]>([]);
   const [trackIndex, setTrackIndex] = useState<number | null>(null);
   const [chart, setChart] = useState<Chart | null>(null);
@@ -208,16 +228,57 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
         if (cancelled) return;
         const list = listPlayableTracks(score);
         setTracks(list);
-        const preferred = list.find((track) => track.name === initialTrack) ?? list[0];
+        const preferred = pickTrack(list, kind);
         setTrackIndex(preferred ? preferred.index : null);
       })
       .catch(() => { if (!cancelled) setLoadError(true); });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, initialTrack]);
 
   // Guitarra que manda en los riffs compartidos (la rítmica, si la elegida no lo es). Clave estable
   // para los efectos (los papeles llegan como objeto literal en cada render).
   const rolesKey = JSON.stringify(trackRoles ?? {});
+  // La pista con la que se abre: la del instrumento del mástil (`kind`) o, sin él, la del instrumento
+  // recordado; si no la hay, la inicial de la canción. La batería suelta solo acepta batería.
+  function pickTrack(list: GuitarTrackInfo[], neck: NeckKind | undefined): GuitarTrackInfo | undefined {
+    const remembered = savedInstrument();
+    const roles = JSON.parse(rolesKey) as Record<string, TrackRole>;
+    const guitarRole = remembered === 'S' || remembered === 'R' ? remembered : null;
+    const wanted: Instrument | null = neck === 'drums' || neck === 'bass' ? neck : neck === 'guitar' ? guitarRole : remembered;
+    const matches = (track: GuitarTrackInfo) => (wanted === 'drums' || wanted === 'bass'
+      ? track.kind === wanted
+      : (track.kind ?? 'guitar') === 'guitar' && trackRole(track.name, roles) === wanted);
+    const initial = list.find((track) => track.name === initialTrack);
+    if (neck === 'drums') return list.find(matches);
+    // El instrumento pedido (la pista inicial si ya lo es), si no, la de siempre.
+    return (wanted && (initial && matches(initial) ? initial : list.find(matches))) || initial || list[0];
+  }
+  // Cambia el instrumento del mástil (selector de la Sala de pruebas): si la pista elegida no es de ese tipo,
+  // se elige la que toque. Elegir en Tocas cambia el selector (ReducedFretboardDiagram), así que no se pisa.
+  const trackKindNow = tracks.find((track) => track.index === trackIndex)?.kind ?? 'guitar';
+  const [pickedFor, setPickedFor] = useState<NeckKind | undefined>(kind);
+  if (kind !== pickedFor) {
+    setPickedFor(kind);
+    if (kind && tracks.length > 0 && trackKindNow !== kind) {
+      const next = pickTrack(tracks, kind);
+      if (next && next.index !== trackIndex) setTrackIndex(next.index);
+    }
+  }
+  // La batería suelta con una canción sin batería: no hay nada que tocar.
+  const missingKind = kind === 'drums' && tracks.length > 0 && !tracks.some((track) => track.kind === 'drums');
+  // Elegir pista desde "Pistas": se recuerda el instrumento (ver INSTRUMENT_STORAGE_KEY).
+  function chooseTrack(index: number) {
+    setTrackIndex(index);
+    const track = tracks.find((candidate) => candidate.index === index);
+    if (!track || !remember) return;
+    const instrument: Instrument = track.kind === 'drums' || track.kind === 'bass' ? track.kind : trackRole(track.name, trackRoles);
+    try {
+      window.localStorage.setItem(INSTRUMENT_STORAGE_KEY, instrument);
+    } catch {
+      // Sin almacenamiento: vale para esta visita.
+    }
+  }
   const leader = useMemo(
     () => (trackIndex === null ? null : leaderTrack(tracks.filter((track) => track.kind !== 'bass' && track.kind !== 'drums'), trackIndex, JSON.parse(rolesKey) as Record<string, TrackRole>)),
     [tracks, trackIndex, rolesKey],
@@ -417,7 +478,9 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
 
   return {
     level, chooseLevel, profile,
-    tracks, trackIndex, setTrackIndex,
+    // La batería suelta solo ofrece la batería en "Tocas".
+    tracks: kind === 'drums' ? tracks.filter((track) => track.kind === 'drums') : tracks, trackIndex, setTrackIndex: chooseTrack,
+    missingKind,
     chart: activeChart, loadError,
     speed: playSpeed, setSpeed,
     mode: playMode, setMode,
@@ -439,7 +502,7 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     paused,
     canContinue,
     hasStarted,
-    canStart: !!chart && !narrow && !playing,
+    canStart: !!chart && !narrow && !playing && !missingKind,
     pause: game.pause,
     resume,
     resetDefaults,

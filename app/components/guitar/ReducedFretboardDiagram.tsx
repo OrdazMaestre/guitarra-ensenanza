@@ -38,6 +38,8 @@ import TuningPeg from '../tuningGame/TuningPeg';
 import { centsToMidiOffset } from '@/app/lib/tuningGame/pitch';
 import { KeyboardToggleLabel } from './InstrumentIcons';
 import { RiffPerfBox } from './riff/RiffPerfBox';
+import NeckInstrumentPicker from './NeckInstrumentPicker';
+import { claimOpenGame, onOpenGameClaim } from '@/app/lib/riff/openGame';
 
 // Standard tuning: MIDI for each open string (string 1 = high E)
 const OPEN_STRING_MIDI: Record<number, number> = {
@@ -45,6 +47,30 @@ const OPEN_STRING_MIDI: Record<number, number> = {
   // Cuerdas graves de los instrumentos de más de 6 (Experto, ver `gameStrings` en chart.ts).
   7: 35, 8: 30, 9: 25,
 };
+
+// BAJO de 4 cuerdas en el mástil (usuario, 2026-11-17): las cuerdas internas 6-3 (como `gameStrings` en
+// chart.ts), una octava por debajo de la guitarra y afinado en Mi: E1 A1 D2 G2.
+const BASS_OPEN_MIDI: Record<number, number> = { 3: 43, 4: 38, 5: 33, 6: 28 };
+const BASS_STRINGS = [3, 4, 5, 6];
+const GUITAR_STRINGS = [1, 2, 3, 4, 5, 6];
+// Clave del instrumento recordado, la misma que la partida (useRiffController).
+const NECK_INSTRUMENT_STORAGE_KEY = 'riff-ultimo-instrumento';
+const noNeckChanges = () => () => {};
+function savedNeckIsBass(): boolean {
+  try {
+    return window.localStorage.getItem(NECK_INSTRUMENT_STORAGE_KEY) === 'bass';
+  } catch {
+    return false;
+  }
+}
+function rememberNeck(kind: 'guitar' | 'bass') {
+  try {
+    if (kind === 'bass') window.localStorage.setItem(NECK_INSTRUMENT_STORAGE_KEY, 'bass');
+    else if (savedNeckIsBass()) window.localStorage.removeItem(NECK_INSTRUMENT_STORAGE_KEY);
+  } catch {
+    // Sin almacenamiento: vale para esta visita.
+  }
+}
 
 const TUTORIAL_LANE_SPEEDS = RIFF_TUTORIAL.map((part) => part.laneSpeed);
 
@@ -76,8 +102,8 @@ const chromaticNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A
 // función) -- mismo motivo que TuningBoard.tsx: así sirve tanto desde el render (pasando
 // `cents[string]`) como desde los manejadores de puntero/teclado asíncronos (pasando
 // `centsRef.current[string]`, el valor más reciente tras un `await`). Ver `allowTuning` más abajo.
-function effectiveMidi(string: number, fret: number, centsValue: number): number {
-  return OPEN_STRING_MIDI[string] + fret + centsToMidiOffset(centsValue ?? 0);
+function effectiveMidi(string: number, fret: number, centsValue: number, bass = false): number {
+  return (bass ? BASS_OPEN_MIDI[string] ?? OPEN_STRING_MIDI[string] - 12 : OPEN_STRING_MIDI[string]) + fret + centsToMidiOffset(centsValue ?? 0);
 }
 
 function noteNameForFret(string: number, fret: number, centsValue: number) {
@@ -166,6 +192,11 @@ interface ReducedFretboardDiagramProps {
   // instrumentos MIDI de la web lo llevan, petición del usuario); `false` lo quita.
   tutorial?: boolean;
   startFret: number;
+  // 'drums' (usuario, 2026-11-17, Sala de pruebas): la BATERÍA suelta, siempre dibujada como la del modo
+  // batería (DrumKitNeck) y con JUGAR en modo batería. Por defecto, la guitarra.
+  instrument?: 'guitar' | 'drums';
+  // Selector Guitarra / Bajo en la barra (Sala de pruebas): el bajo de 4 cuerdas, con el sonido del bajo.
+  instrumentChoice?: boolean;
 }
 
 const romanFretLabels: Record<number, string> = {
@@ -231,7 +262,7 @@ const TALL_NECK_SCREEN = 0.4;
 // Por debajo de este ancho de ventana el escenario del juego llega a los bordes también con ratón.
 const BLEED_MAX_VIEWPORT = 1000;
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret, instrument = 'guitar', instrumentChoice = false }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
   // partida en sí la arranca "Empezar". El mástil ocupa siempre lo mismo en pantalla; en los niveles
   // de 6 trastes (0-5) se ESTIRA en el eje X (decisión del usuario): solo se dibujan esos trastes y
@@ -248,7 +279,37 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const song = riffGame ? songChoice.song : undefined;
   // Se mide el ESCENARIO del juego (no el host): con JUGAR abierto se estira hasta los bordes de la
   // pantalla (`bleed`), y es ese ancho real el que decide qué niveles caben y el modo estrecho.
-  const riff = useRiffController({ source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: stageRef, heldRef: heldPositionsRef });
+  // INSTRUMENTO del mástil (usuario, 2026-11-17): guitarra o bajo con el selector (`instrumentChoice`, se
+  // recuerda con la misma clave que la partida), o la batería suelta (`instrument="drums"`). Con JUGAR abierto
+  // manda la pista que se toca (Tocas), y elegirla en Tocas cambia también el selector.
+  const savedBass = useSyncExternalStore(noNeckChanges, savedNeckIsBass, () => false);
+  const [pickedNeck, setPickedNeck] = useState<'guitar' | 'bass' | null>(null);
+  const neckChoice: 'guitar' | 'bass' = instrumentChoice ? (pickedNeck ?? (savedBass ? 'bass' : 'guitar')) : 'guitar';
+  const chooseNeck = (kind: 'guitar' | 'bass') => {
+    setPickedNeck(kind);
+    rememberNeck(kind);
+  };
+  const riffCore = useRiffController({
+    source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: stageRef, heldRef: heldPositionsRef,
+    kind: instrument === 'drums' ? 'drums' : instrumentChoice ? neckChoice : undefined,
+    remember: instrument !== 'drums',
+  });
+  // Elegir pista en Tocas pone el selector en su instrumento (la batería no está en el selector).
+  const riff = instrumentChoice
+    ? {
+        ...riffCore,
+        setTrackIndex: (index: number) => {
+          riffCore.setTrackIndex(index);
+          const kind = riffCore.tracks.find((track) => track.index === index)?.kind ?? 'guitar';
+          if (kind !== 'drums') setPickedNeck(kind);
+        },
+      }
+    : riffCore;
+  const chartKind = riffGame && gameOpen && riff.chart ? (riff.chart.kit === 'drums' ? 'drums' : riff.chart.bass ? 'bass' : 'guitar') : null;
+  const instrumentNow: 'guitar' | 'bass' | 'drums' = instrument === 'drums' ? 'drums' : chartKind ?? neckChoice;
+  const bassNeck = instrumentNow === 'bass';
+  const bassRef = useRef(bassNeck);
+  useEffect(() => { bassRef.current = bassNeck; }, [bassNeck]);
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
   const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
@@ -271,7 +332,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // usuario: casillas iguales y aprovechar todo el espacio), en vez de la franja estrecha de antes
   // de la cejuela. Casilla del 0 + tablero ocupan lo mismo que el mástil normal con sus márgenes,
   // con solo un borde pequeño (así el mástil sigue midiendo lo mismo en pantalla). Sin clavijas.
-  const gameLayout = !!riffGame && gameOpen && startFret === 0;
+  const gameLayout = (instrument === 'drums' || (!!riffGame && gameOpen)) && startFret === 0;
   const pegsShown = !!allowTuning && showTuning && !gameLayout;
   const GAME_EDGE = 4;
   const baseViewBoxWidth = 2 * 42 + 58 * fullFretCount;
@@ -325,7 +386,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   const centerX = (boardLeftEdge + boardX + fretCount * fretWidth) / 2;
   const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
   const fretX = (fret: number) => drawX(fretMarkerX(boardX, fretWidth, startFret, fret, openWidth));
-  const allRomanFrets = Object.keys(romanFretLabels)
+  // La batería suelta no lleva números romanos (no hay trastes): solo los números 0-5 debajo.
+  const allRomanFrets = instrument === 'drums' ? [] : Object.keys(romanFretLabels)
     .map(Number)
     .filter((fret) => fret >= startFret && fret <= endFret);
   const romansGoAbove = !!fretLabels && allRomanFrets.length > 0;
@@ -378,7 +440,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       setCents(centsForPreset({ id: 'song', label: '', shiftSemitones: songTuningShift }));
     }
   }
-  const stringY = (string: number) => boardY + (string - 1) * stringGap;
+  // Bajo: sus 4 cuerdas (6-3) repartidas por la misma altura de mástil.
+  const bassRowGap = boardHeight / 3;
+  const neckStrings = bassNeck ? BASS_STRINGS : GUITAR_STRINGS;
+  const stringY = (string: number) => (bassNeck
+    ? boardY + (Math.min(6, Math.max(3, string)) - 3) * bassRowGap
+    : boardY + (string - 1) * stringGap);
   // Altura a la que caen las notas del juego (lanes.ts, decisión del usuario): en Experto, su
   // cuerda real; en el resto de niveles, sus cuerdas repartidas por el centro del mástil (los dos Mi
   // quedan para Experto). Mientras se juega (o en pausa) el mástil se TOCA igual: cada cuerda del
@@ -435,7 +502,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // batería de 6 pads (columnas 0-5) que funciona como un TECLADO: cada tecla o dedo es un golpe propio,
   // sin hammer-on ni pull-off, y lo que se toca a la vez suena a la vez. Golpes con tecla o dedo pulsados:
   // `drumKeysRef` (tecla -> pad) y `drumPtRef` (puntero -> pad), para "mantener" (autoHold) y el slide.
-  const drumKit = !!riffGame && gameOpen && riff.chart?.kit === 'drums';
+  const drumKit = instrumentNow === 'drums';
   const drumKitRef = useRef(drumKit);
   // Solo en el cliente (la batería sale tras abrir JUGAR): en pantallas táctiles, sin las teclas.
   const touchOnlyScreen = drumKit && typeof window !== 'undefined' && isTouchOnly();
@@ -603,6 +670,21 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
     setGameOpen((open) => !open);
   }
+  // Una sola partida abierta en la página (mástil y batería suelta de la Sala de pruebas): abrir JUGAR aquí
+  // cierra la de los demás, por el mismo camino que SALIR.
+  const [gameId] = useState(() => Symbol('juego'));
+  const closeGameRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    closeGameRef.current = () => {
+      if (!gameOpen) return;
+      riff.exitTutorial();
+      setGameOpen(false);
+    };
+  });
+  useEffect(() => {
+    if (gameOpen) claimOpenGame(gameId);
+  }, [gameOpen, gameId]);
+  useEffect(() => onOpenGameClaim((owner) => { if (owner !== gameId) closeGameRef.current(); }), [gameId]);
   const showHighway = !!riffGame && gameOpen && !riff.narrow && !!riff.chart;
 
   useEffect(() => {
@@ -648,8 +730,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // Sonido (opt-in vía `allowOverdrive`): 'clean' o 'overdrive', ver getOverdriveBus en
   // guitarAudioEngine.ts. Ref por el mismo motivo que volumeRef/paintModeRef.
   const [tone, setTone] = useState<GuitarTone>('clean');
-  const toneRef = useRef(tone);
-  useEffect(() => { toneRef.current = tone; }, [tone]);
+  const toneRef = useRef<GuitarTone>(tone);
+  // Bajo: todas las notas con su sonido (GuitarTone 'bass' en guitarAudioEngine.ts).
+  useEffect(() => { toneRef.current = bassNeck ? 'bass' : tone; }, [tone, bassNeck]);
   const metr = useMetronome();
   useEffect(() => {
     if (!kbMode && !metr.on) return;
@@ -670,9 +753,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     // tecla. `lefty` entra en las deps de este efecto (no un ref) a propósito: cambiar de mano
     // mientras se toca reinicia limpiamente las teclas mantenidas en vez de dejarlas sonando con el
     // mapa viejo -- comportamiento deseado, no un descuido.
+    const range = bassNeck || drumKit ? 'lower' : kbRange;
     const activeMap = lefty
-      ? (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
-      : (kbRange === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
+      ? (range === 'upper' ? FRETBOARD_KEYMAP_UPPER_LEFTY : FRETBOARD_KEYMAP_LEFTY)
+      : (range === 'upper' ? FRETBOARD_KEYMAP_UPPER : FRETBOARD_KEYMAP);
     function getHighestOnString(stringNum: number) {
       let best: { code: string; entry: { string: number; fret: number; midi: number } } | null = null;
       for (const [code, entry] of kbKeysHeldRef.current) {
@@ -692,17 +776,20 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     async function down(e: KeyboardEvent) {
       e.preventDefault();
       if (e.repeat || kbKeysHeldRef.current.has(e.code) || drumKeysRef.current.has(e.code)) return;
-      const raw = activeMap[e.code];
-      if (!raw) return;
-      // Batería: la tecla de la columna 0-5 de CUALQUIER fila es un golpe de ese pad, independiente.
+      // Batería: la tecla de la columna 0-5 de CUALQUIER fila es un golpe de ese pad, independiente. Zurdo: la
+      // columna espejo (5 - columna). El mapa zurdo de la guitarra no vale aquí: lleva Z al traste 10.
       if (drumKitRef.current) {
-        if (raw.fret > 5) return;
-        drumKeysRef.current.set(e.code, raw.fret);
+        const key = FRETBOARD_KEYMAP[e.code];
+        if (!key || key.fret > 5) return;
+        const pad = lefty ? 5 - key.fret : key.fret;
+        drumKeysRef.current.set(e.code, pad);
         setKbGhostWarn(drumKeysRef.current.size >= 3);
         syncDrumMarks();
-        playDrumHit(raw.fret, emitNoteEvent({ string: 6, fret: raw.fret, kind: 'pluck', timeStamp: e.timeStamp }));
+        playDrumHit(pad, emitNoteEvent({ string: 6, fret: pad, kind: 'pluck', timeStamp: e.timeStamp }));
         return;
       }
+      const raw = activeMap[e.code];
+      if (!raw) return;
       const top = kbTopStringRef.current;
       const entry = top !== null && raw.string < top ? { string: top, fret: raw.fret, midi: OPEN_STRING_MIDI[top] + raw.fret } : raw;
       const cur = kbStringVoiceRef.current.get(entry.string);
@@ -714,7 +801,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'pluck' , timeStamp: e.timeStamp });
         kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
         syncPositions();
-        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
+        const id = await playNote(effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string], bassRef.current), false, volumeRef.current * gain, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
         else releaseNote(id);
@@ -724,7 +811,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           const gain = emitNoteEvent({ string: entry.string, fret: entry.fret, kind: 'hammer' , timeStamp: e.timeStamp });
           kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: -1 });
           syncPositions();
-          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string]), false, volumeRef.current * gain, toneRef.current);
+          const id = await switchNote(cur.voiceId, effectiveMidi(entry.string, entry.fret, centsRef.current[entry.string], bassRef.current), false, volumeRef.current * gain, toneRef.current);
           const sv = kbStringVoiceRef.current.get(entry.string);
           if (sv?.code === e.code) kbStringVoiceRef.current.set(entry.string, { code: e.code, voiceId: id });
           else releaseNote(id);
@@ -749,7 +836,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         const gain = emitNoteEvent({ string: next.entry.string, fret: next.entry.fret, kind: 'pulloff' , timeStamp: e.timeStamp });
         kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: -1 });
         syncPositions();
-        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string]), false, volumeRef.current * gain, toneRef.current);
+        const id = await switchNote(cur.voiceId, effectiveMidi(next.entry.string, next.entry.fret, centsRef.current[next.entry.string], bassRef.current), false, volumeRef.current * gain, toneRef.current);
         const sv = kbStringVoiceRef.current.get(entry.string);
         if (sv?.code === next.code) kbStringVoiceRef.current.set(entry.string, { code: next.code, voiceId: id });
         else releaseNote(id);
@@ -771,7 +858,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbMarksRef.current?.([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange, lefty, emitNoteEvent, playDrumHit, syncDrumMarks]);
+  }, [kbMode, kbRange, lefty, emitNoteEvent, playDrumHit, syncDrumMarks, bassNeck, drumKit]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -785,10 +872,17 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const x = drawX(coords.x);
     const { y } = coords;
 
-    const halfGap = stringGap / 2;
+    // Bajo (fuera de la partida en curso): 4 filas, cuerdas 3-6.
+    const bassRows = bassNeck && !liveLanes;
+    const rowGap = bassRows ? bassRowGap : stringGap;
+    const halfGap = rowGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const row = (y - boardY) / stringGap + 1;
-    const string = liveLanes ? laneAt(liveLanes, row) : Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    const string = liveLanes
+      ? laneAt(liveLanes, row)
+      : bassRows
+        ? 3 + Math.max(0, Math.min(3, Math.round((y - boardY) / bassRowGap)))
+        : Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
 
     let fret: number;
     if (x < boardX) {
@@ -802,12 +896,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
 
     if (!held) return { string, fret };
     const EXP = 0.18;
-    const rawSF = (y - boardY) / stringGap;
+    const rawSF = (y - boardY) / rowGap;
     const rawFF = (x - boardX) / fretWidth;
     const heldLane = liveLanes?.get(held.string);
     const rStr = liveLanes
       ? (heldLane !== undefined && Math.abs(row - heldLane) <= Math.abs(row - liveLanes.get(string)!) + EXP ? held.string : string)
-      : (Math.abs(rawSF - (held.string - 1)) < 0.5 + EXP ? held.string : string);
+      : (Math.abs(rawSF - (held.string - (bassRows ? 3 : 1))) < 0.5 + EXP ? held.string : string);
     const heldCol = startFret === 0 ? held.fret - 1 : held.fret - startFret;
     const rFret = held.fret === 0 ? (rawFF < EXP ? 0 : fret) : (Math.abs(rawFF - (heldCol + 0.5)) < 0.5 + EXP ? held.fret : fret);
     return { string: rStr, fret: rFret };
@@ -851,7 +945,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       return;
     }
     if (paintMode) toggleMark(noteNameForFret(pos.string, pos.fret, centsRef.current[pos.string]));
-    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string]);
+    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string], bassRef.current);
     const cur = ptStringVoiceRef.current.get(pos.string);
     if (!cur) {
       if (ptStringVoiceRef.current.size >= 3) return;
@@ -893,7 +987,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const pos = getPos(e, { string: curEntry.string, fret: curEntry.fret });
     if (!pos) return;
     if (pos.string === curEntry.string && pos.fret === curEntry.fret) return;
-    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string]);
+    const midi = effectiveMidi(pos.string, pos.fret, centsRef.current[pos.string], bassRef.current);
     if (pos.string === curEntry.string) {
       ptHeldRef.current.set(e.pointerId, { string: pos.string, fret: pos.fret, midi });
       const sv = ptStringVoiceRef.current.get(pos.string);
@@ -1098,7 +1192,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         right: boardX + boardWidth,
         top: boardY,
         height: boardHeight,
-        hitY: laneY(6),
+        // Sin partida no hay carriles: la línea de golpe, en el centro (donde caen las notas en batería).
+        hitY: lanes ? laneY(6) : boardY + 2.5 * stringGap,
         touch: touchOnlyScreen,
         // Bombos ENTEROS (usuario, 2026-11-16): se salen del mástil por abajo y quedan DETRÁS de la barra
         // MIDI, sin bajarla: como mucho hasta el fondo de la barra (DRUM_KICK_OVERHANG_PX bajo el <svg>,
@@ -1244,8 +1339,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       {drumGeo && <><DrumHitStyles /><DrumKitNeck g={drumGeo} /></>}
       {!drumGeo && <>
       <rect className="reduced-board-bg" x={boardLeftEdge} y={boardY} width={boardX + boardWidth - boardLeftEdge} height={boardHeight} />
-      {Array.from({ length: 6 }, (_, index) => (
-        <line className="reduced-string" key={`string-${index + 1}`} x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(index + 1)} y2={stringY(index + 1)} />
+      {neckStrings.map((string) => (
+        <line className="reduced-string" key={`string-${string}`} x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(string)} y2={stringY(string)} />
       ))}
       {Array.from({ length: fretCount + 1 }, (_, index) => {
         const isNut = startFret === 0 && index === 0;
@@ -1264,13 +1359,13 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       })}
       {mergedGuideDots.flatMap((dot): Array<{ fret: number; string?: number }> =>
         dot.fret === 12
-          ? [{ fret: 12, string: 2 }, { fret: 12, string: 5 }]
+          ? (bassNeck ? [{ fret: 12, string: 3.5 }, { fret: 12, string: 5.5 }] : [{ fret: 12, string: 2 }, { fret: 12, string: 5 }])
           : [dot]
       ).map((dot) => (
         <circle
           className="reduced-guide-dot"
           cx={fretX(dot.fret)}
-          cy={stringY(dot.string ?? 3.5)}
+          cy={stringY(dot.string ?? (bassNeck ? 4.5 : 3.5))}
           key={`guide-${dot.fret}-${dot.string ?? 'center'}`}
           r="7"
         />
@@ -1322,6 +1417,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         getY={stringY}
         marks={marks}
         startFret={startFret}
+        firstString={neckStrings[0]}
       />
       {pegsShown && [1, 2, 3, 4, 5, 6].map((string) => (
         <TuningPeg
@@ -1428,7 +1524,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           CLEAN/OVERDRIVE. Afinación, colores, volumen del mástil y metrónomo no se usan en el juego
           (el panel tiene su propio Vol). */}
       {allowLeftHanded && !gamePlayingBar && <HandednessToggleButton lefty={lefty} onClick={() => setLefty(l => !l)} />}
-      {allowTuning && !gameOpenBar && (
+      {/* Selector de instrumento (Sala de pruebas): guitarra o bajo de 4 cuerdas. Con JUGAR abierto manda Tocas. */}
+      {instrumentChoice && !gameOpenBar && <NeckInstrumentPicker kind={neckChoice} onPick={chooseNeck} />}
+      {allowTuning && !gameOpenBar && !bassNeck && (
         <div className="midi-anchor">
           <button
             onClick={() => setShowTuning(s => !s)}
@@ -1457,7 +1555,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           )}
         </div>
       )}
-      {allowOverdrive && !gamePlayingBar && (
+      {allowOverdrive && !gamePlayingBar && !bassNeck && (
         <button
           onClick={() => setTone(t => (t === 'clean' ? 'overdrive' : 'clean'))}
           aria-pressed={tone === 'overdrive'}
@@ -1467,7 +1565,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           {tone === 'overdrive' ? 'OVERDRIVE' : 'CLEAN'}
         </button>
       )}
-      {!gameOpenBar && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
+      {!gameOpenBar && !drumKit && <PaletteToggleButton active={paintMode} onClick={() => setPaintMode(p => !p)} />}
       {/* KEYBOARD se queda también jugando (usuario, 2026-11-15; en táctil lo esconde el CSS). */}
       {<div className="midi-anchor">
         <button
@@ -1479,7 +1577,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         >
           <KeyboardToggleLabel />
         </button>
-        {kbMode && (
+        {kbMode && !bassNeck && !drumKit && (
           <div className="midi-dropdown">
             {(['lower', 'upper'] as const).map(range => (
               <button key={range} onClick={() => setKbRange(range)} aria-pressed={kbRange === range}
@@ -1495,7 +1593,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           Vol {Math.round(volume * 100)}
         </span>
         <input
-          aria-label="Volumen de la guitarra"
+          aria-label={drumKit ? 'Volumen de la batería' : bassNeck ? 'Volumen del bajo' : 'Volumen de la guitarra'}
           max="1" min="0" step="0.05"
           style={{ accentColor: '#047857', cursor: 'pointer', width: '112px' }}
           type="range"
@@ -1608,6 +1706,19 @@ export function ReducedFretboardStyles() {
       /* Batería: el contenedor no recorta (con overflow-x: auto también recortaba por abajo los bombos). */
       .reduced-fretboard-wrap.riff-drum-wrap {
         overflow: visible;
+        /* Su propia capa, por DEBAJO de la barra MIDI (usuario, 2026-11-17: los botones deben verse
+           delante del doble bombo, que baja detrás de ella). */
+        position: relative;
+        z-index: 0;
+      }
+
+      .midi-instrument-host.riff-game-open .midi-float-controls {
+        z-index: 150;
+      }
+
+      /* En el móvil la barra va en el flujo (is-in-flow, static): sin posición, su z-index no contaría. */
+      .midi-instrument-host.riff-game-open .midi-float-controls.is-in-flow {
+        position: relative;
       }
 
       /* Los números de traste pasan por encima de los bombos (oscuros): con contorno blanco se leen. */

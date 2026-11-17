@@ -8,7 +8,7 @@
 
 import type { Chart, ChartNote, DrumSound, ChartBandNote } from './chart';
 import { thinRepeatedBass } from './band';
-import { KICK } from './drums';
+import { HIHAT, KICK } from './drums';
 import { autoDrums, type AutoDrumHit } from './autoDrums';
 
 import { bendAutomation, type BendCurve } from '../bendCurve';
@@ -162,8 +162,12 @@ export const LANE_HOLD_MAX_GAP_SECONDS = 0.5;
 // `unplayed`: un golpe de un pad que el nivel NO usa (o que el límite de golpes a la vez quita), que suena
 // de fondo: a la mitad (DRUM_UNPLAYED_GAIN, usuario 2026-11-16; en Fácil, todo menos bombo y caja).
 export const DRUM_UNPLAYED_GAIN = 0.5;
+// Y el plato de la X, otra mitad más cuando el nivel no lo toca (usuario, 2026-11-17: se oía demasiado en
+// Fácil, Medio y Avanzado; queda al 25 %).
+export const HIHAT_UNPLAYED_GAIN = 0.5;
 export function drumVolume(pad: number | undefined, open: boolean, unplayed = false): number {
-  return 0.8 * DRUM_LEVEL * (pad === KICK ? KICK_BOOST : 1) * (open ? OPEN_GAIN : GUIDE_GAIN) * (unplayed ? DRUM_UNPLAYED_GAIN : 1);
+  return 0.8 * DRUM_LEVEL * (pad === KICK ? KICK_BOOST : 1) * (open ? OPEN_GAIN : GUIDE_GAIN)
+    * (unplayed ? DRUM_UNPLAYED_GAIN * (pad === HIHAT ? HIHAT_UNPLAYED_GAIN : 1) : 1);
 }
 
 export interface NoteScore {

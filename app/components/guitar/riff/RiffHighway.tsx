@@ -467,9 +467,11 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         ctx.stroke();
       };
       for (const group of chordGroups.values()) {
-        if (group.length < 2 || freeStrings) continue;
+        // Cuerdas libres: sin conectores, salvo en la BATERÍA (usuario, 2026-11-17: los golpes a la vez,
+        // unidos con la línea blanca como los acordes de Experto; todos en la cuerda 6, en orden de pad).
+        if (group.length < 2 || (freeStrings && gemKit !== 'drums')) continue;
         for (const note of group) chordIds.add(note.id);
-        const sorted = [...group].sort((x, y) => x.string - y.string);
+        const sorted = [...group].sort((x, y) => x.string - y.string || x.fret - y.fret);
         const z = zOf(sorted[0].t);
         const pts = sorted.map((note) => {
           const base = fretPx(note.fret, note.string);

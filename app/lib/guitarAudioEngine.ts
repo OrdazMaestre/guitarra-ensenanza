@@ -23,6 +23,8 @@ type ActiveVoice = {
   source: AudioScheduledSourceNode; // BufferSourceNode (fretboard) or OscillatorNode (keyboard)
   gain: GainNode;
   startedAt: number;
+  // Otras fuentes de la misma voz que también hay que parar (el oscilador grave del bajo del mástil).
+  extra?: AudioScheduledSourceNode[];
 };
 
 let ctx: AudioContext | null = null;
@@ -162,10 +164,12 @@ function killVoice(voice: ActiveVoice, context: AudioContext, fadeTime: number):
   if (voice.source instanceof AudioBufferSourceNode) {
     voice.source.loop = false;
   }
-  try {
-    voice.source.stop(now + fadeTime + 0.02);
-  } catch {
-    // source may have already ended naturally
+  for (const source of [voice.source, ...(voice.extra ?? [])]) {
+    try {
+      source.stop(now + fadeTime + 0.02);
+    } catch {
+      // source may have already ended naturally
+    }
   }
 }
 
@@ -290,7 +294,9 @@ function startOscillatorVoice(midi: number, context: AudioContext, volume = 1.0)
 // estas cadenas exactas offline y las miden en LUFS (también con modelos de
 // altavoz de portátil y móvil). Si cambias cualquier valor aquí, cámbialo
 // allí también.
-export type GuitarTone = 'clean' | 'overdrive';
+// 'bass' (usuario, 2026-11-17): el mástil como BAJO (Sala de pruebas y el modo bajo del juego en pausa), con
+// el mismo sintetizador que el bajo de la banda (`createBassVoice`) pero sostenido y polifónico.
+export type GuitarTone = 'clean' | 'overdrive' | 'bass';
 
 const FLAT_Q = -3.01; // Q en dB de un lowpass/highpass Butterworth (ver arriba)
 
@@ -855,10 +861,26 @@ export function playBassNote(
   // `detune` so the sub follows the main voice. Omitted = unchanged.
   bend?: ScheduledBend | null
 ): GuideNoteHandle | null {
-  const context = getCtx();
   if (volume <= 0) return null;
-  cutBassVoicesBefore(scheduledAt, context);
-  enforceBassPolyphony(context);
+  return createBassVoice(getCtx(), scheduledAt, midiNote, durationSeconds, volume, palmMuted, bend, true).handle;
+}
+
+// El patch del bajo, compartido por el bajo de la banda/tablatura (`band`: monofónico, con sus cortes y su
+// tope de voces) y el bajo que se toca en el mástil (`band` false: polifónico, lo para `releaseNote`).
+function createBassVoice(
+  context: AudioContext,
+  scheduledAt: number,
+  midiNote: number,
+  durationSeconds: number,
+  volume: number,
+  palmMuted: boolean,
+  bend: ScheduledBend | null | undefined,
+  band: boolean
+): { handle: GuideNoteHandle; osc: OscillatorNode; sub: OscillatorNode; ampGain: GainNode } {
+  if (band) {
+    cutBassVoicesBefore(scheduledAt, context);
+    enforceBassPolyphony(context);
+  }
 
   const freq = 440 * 2 ** ((midiNote - 69) / 12);
 
@@ -968,20 +990,39 @@ export function playBassNote(
 
   const id = bassVoiceCounter++;
   const voice: ActiveBassVoice = { id, osc, sub, gain: ampGain, startedAt: scheduledAt, endsAt: voiceStop };
-  bassVoices.push(voice);
+  if (band) bassVoices.push(voice);
   osc.addEventListener('ended', () => {
     const idx = bassVoices.indexOf(voice);
     if (idx !== -1) bassVoices.splice(idx, 1);
     // Fuera del grafo en cuanto acaba (no esperar al recolector con cientos de nodos por minuto).
     for (const node of [osc, sub, oscGain, subGain, filter, preGain, shaper, postGain, ampGain, trim]) node.disconnect();
   });
-  return {
+  const handle: GuideNoteHandle = {
     setVolume(next) {
       trim.gain.setTargetAtTime(next / volume, context.currentTime, 0.015);
     },
     // El bajo es monofónico: la nota siguiente ya corta esta (cutBassVoicesBefore).
     stopAt() {},
   };
+  return { handle, osc, sub, ampGain };
+}
+
+// Bajo TOCADO en el mástil: suena mientras se mantiene (hasta `BASS_HOLD_SECONDS`, como una cuerda que se
+// apaga sola) y `releaseNote`/`switchNote` lo paran como a la guitarra (va en `voices`, con su oscilador grave
+// en `extra`).
+const BASS_HOLD_SECONDS = 6;
+function startBassHeldVoice(midi: number, context: AudioContext, volume: number): number {
+  enforcePolyphony(context);
+  const now = context.currentTime;
+  const { osc, sub, ampGain } = createBassVoice(context, now, midi, BASS_HOLD_SECONDS, volume, false, null, false);
+  const id = voiceCounter++;
+  const voice: ActiveVoice = { id, source: osc, gain: ampGain, startedAt: now, extra: [sub] };
+  voices.push(voice);
+  osc.addEventListener('ended', () => {
+    const idx = voices.indexOf(voice);
+    if (idx !== -1) voices.splice(idx, 1);
+  });
+  return id;
 }
 
 export function touchAudioContext(): void {
@@ -1019,7 +1060,9 @@ function noiseBurst(context: BaseAudioContext, seconds: number, curve: number): 
   return buffer;
 }
 
-export function playMetronomeClick(scheduledAt: number, volume: number, type: 'snare' | 'kick' | 'cymbal' = 'snare'): void {
+// Cualquiera de los 6 sonidos de batería (usuario, 2026-11-17: las tabs y la batería de fondo del juego suenan
+// como la batería jugable, con sus toms y su plato fuerte); el metrónomo sigue usando caja/bombo/plato.
+export function playMetronomeClick(scheduledAt: number, volume: number, type: DrumLayer = 'snare'): void {
   const context = getCtx();
   drumLayers(context, scheduledAt, volume, type, getMetronomeLimiter(context));
 }
@@ -1027,8 +1070,8 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: 's
 // BATERÍA JUGABLE (app/lib/riff/drums.ts, usuario 2026-11-16): un golpe de uno de los 6 pads, con un
 // control de volumen propio (subirlo al acertar, callarlo si ya sonó al tocarlo). Bombo, caja y plato
 // son las mismas capas que la batería del juego y el metrónomo; los toms y el plato fuerte, nuevos. Por
-// el mismo limitador de batería. Pads: 0 plato, 1 bombo, 2 caja, 3 tom agudo, 4 tom grave, 5 plato fuerte.
-const PAD_SOUND: Array<DrumLayer> = ['cymbal', 'kick', 'snare', 'tomHigh', 'tomLow', 'crash'];
+// el mismo limitador de batería. Pads: 0 bombo, 1 plato, 2 caja, 3 tom agudo, 4 tom grave, 5 plato fuerte.
+const PAD_SOUND: Array<DrumLayer> = ['kick', 'cymbal', 'snare', 'tomHigh', 'tomLow', 'crash'];
 export function playDrumPad(pad: number, scheduledAt: number, volume: number): GuideNoteHandle | null {
   if (volume <= 0) return null;
   const sound = PAD_SOUND[pad];
@@ -1050,7 +1093,13 @@ export function playDrumPad(pad: number, scheduledAt: number, volume: number): G
   };
 }
 
-type DrumLayer = 'snare' | 'kick' | 'cymbal' | 'crash' | 'tomLow' | 'tomHigh';
+export type DrumLayer = 'snare' | 'kick' | 'cymbal' | 'crash' | 'tomLow' | 'tomHigh';
+
+// Volumen BASE del bombo (usuario, 2026-11-17: siempre sonó flojo): +80 % en sus tres capas, en TODOS los bombos
+// de la web a la vez (tablaturas, batería de fondo y jugable de Riff-Hero, metrónomos), porque todos pasan por
+// aquí; cada sitio conserva sus propias bajadas. El limitador de batería recorta el primer milisegundo cuando el
+// pico pasa de 0,708: medido en tests/metronome-volume-safety.spec.ts.
+export const KICK_BASE_GAIN = 1.8;
 
 // Las capas de un golpe de batería, a `volume`, hacia `out`.
 function drumLayers(context: AudioContext, scheduledAt: number, volume: number, type: DrumLayer, out: AudioNode): void {
@@ -1128,7 +1177,7 @@ function drumLayers(context: AudioContext, scheduledAt: number, volume: number, 
     const clkSrc = context.createBufferSource(); clkSrc.buffer = noiseBurst(context, 0.008, 1.5);
     const clkBp = context.createBiquadFilter(); clkBp.type = 'bandpass'; clkBp.frequency.value = 1200; clkBp.Q.value = 1.5;
     const clkG = context.createGain();
-    clkG.gain.setValueAtTime(volume * 0.28, scheduledAt);
+    clkG.gain.setValueAtTime(volume * KICK_BASE_GAIN * 0.28, scheduledAt);
     clkG.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.008);
     clkSrc.connect(clkBp); clkBp.connect(clkG); clkG.connect(limiter);
     clkSrc.start(scheduledAt);
@@ -1141,7 +1190,7 @@ function drumLayers(context: AudioContext, scheduledAt: number, volume: number, 
     const ohp = context.createBiquadFilter(); ohp.type = 'highpass'; ohp.frequency.value = 60; ohp.Q.value = 0.5;
     const og = context.createGain();
     og.gain.setValueAtTime(0.0001, scheduledAt);
-    og.gain.linearRampToValueAtTime(volume * 0.20, scheduledAt + 0.003);
+    og.gain.linearRampToValueAtTime(volume * KICK_BASE_GAIN * 0.20, scheduledAt + 0.003);
     og.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.08);
     osc.connect(ohp); ohp.connect(og); og.connect(limiter);
     osc.start(scheduledAt); osc.stop(scheduledAt + 0.09);
@@ -1151,7 +1200,7 @@ function drumLayers(context: AudioContext, scheduledAt: number, volume: number, 
     const bbp = context.createBiquadFilter(); bbp.type = 'bandpass'; bbp.frequency.value = 280; bbp.Q.value = 0.9;
     const bg = context.createGain();
     bg.gain.setValueAtTime(0.0001, scheduledAt);
-    bg.gain.linearRampToValueAtTime(volume * 0.10, scheduledAt + 0.002);
+    bg.gain.linearRampToValueAtTime(volume * KICK_BASE_GAIN * 0.10, scheduledAt + 0.002);
     bg.gain.exponentialRampToValueAtTime(0.0001, scheduledAt + 0.035);
     bs.connect(bbp); bbp.connect(bg); bg.connect(limiter);
     bs.start(scheduledAt);
@@ -1184,6 +1233,7 @@ export async function playNote(midi: number, forKeyboard = false, volume = 1.0, 
   if (forKeyboard) {
     return startOscillatorVoice(midi, context, volume);
   }
+  if (tone === 'bass') return startBassHeldVoice(midi, context, volume);
 
   await ensureSamples();
   const sample = chooseSample(midi);

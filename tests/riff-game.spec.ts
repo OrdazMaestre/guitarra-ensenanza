@@ -2187,7 +2187,8 @@ test.describe('batería jugable', () => {
     await expect(neck.locator('.riff-drum-key')).toHaveCount(0);
     await expect(neck.locator('.reduced-fret-number')).toHaveText(['0', '1', '2', '3', '4', '5']);
     expect((await neck.locator('.riff-drum-piece').evaluateAll((els) => els.map((el) => el.getAttribute('data-pad')))).sort()).toEqual(['Bombo', 'Caja', 'Plato', 'Plato fuerte', 'Tom agudo', 'Tom grave']);
-    await expect(neck.locator('.riff-drum-hitline')).toHaveCount(1);
+    // Sin la línea verde de golpe (usuario, 2026-11-17).
+    await expect(neck.locator('.riff-drum-hitline')).toHaveCount(0);
     await expect(neck.locator('.reduced-string')).toHaveCount(0);
     // Sin tocar: los 6 velos pálidos visibles y ninguno intenso (animación de la batería).
     await expect(neck.locator('.riff-drum-glow[data-on="false"]')).toHaveCount(6);
@@ -2195,24 +2196,24 @@ test.describe('batería jugable', () => {
     // El menú Nivel solo enseña los de batería.
     await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
     const drums = page.locator('.riff-dd-menu').getByRole('group', { name: 'Batería' });
-    await expect(drums.locator('.riff-chip')).toHaveText(['Fácil', 'Medio', 'Avanzado', 'Difícil']);
+    await expect(drums.locator('.riff-chip')).toHaveText(['Fácil', 'Medio', 'Avanzado', 'Difícil', 'Experto']);
     await expect(page.locator('.riff-dd-menu').getByRole('group', { name: 'Modo cuerdas' })).toHaveCount(0);
     await drums.getByRole('button', { name: 'Medio', exact: true }).click();
     // Sin batería automática (la batería eres tú).
     await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
     await expect(page.locator('.riff-dd-menu').getByRole('button', { name: /^Batería automática:/ })).toHaveCount(0);
     await page.locator('.riff-dd-toggle', { hasText: 'Pistas' }).click();
-    // Como un teclado: Bombo (X) y Caja (C) a la vez, dos golpes; sin hammer-on (la caja no corta el bombo).
+    // Como un teclado: Bombo (Z) y Caja (C) a la vez, dos golpes; sin hammer-on (la caja no corta el bombo).
     await page.locator('.test-room-fretboard .midi-kb-toggle').click();
-    await page.keyboard.down('KeyX');
+    await page.keyboard.down('KeyZ');
     await page.keyboard.down('KeyC');
     await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(2);
     // El bombo ilumina los dos bombos.
-    await expect(page.locator('.test-room-fretboard .riff-drum-hit[data-pad="Bombo"] .riff-drum-strong circle')).toHaveCount(2);
+    await expect(page.locator('.test-room-fretboard .riff-drum-hit[data-pad="Bombo"] .riff-drum-strong ellipse')).toHaveCount(2);
     await expect(page.locator('.test-room-fretboard .riff-drum-hit[data-pad="Bombo"] g.riff-drum-strong')).toHaveCSS('opacity', '1');
     await page.keyboard.up('KeyC');
     await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(1);
-    await page.keyboard.up('KeyX');
+    await page.keyboard.up('KeyZ');
     await expect(page.locator('.test-room-fretboard .riff-drum-hit')).toHaveCount(0);
     // Paso a paso: los golpes del nivel cuentan.
     await choose(page, 'Ritmo', 'Paso a paso');
@@ -2220,10 +2221,38 @@ test.describe('batería jugable', () => {
     await page.getByRole('button', { name: 'Empezar' }).click();
     const stage = page.locator('.test-room-fretboard .riff-stage');
     await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+    // La barra MIDI (PAUSA, KEYBOARD) se ve DELANTE del doble bombo, que baja detrás de ella (usuario, 2026-11-17).
+    const covered = await page.evaluate(() => [...document.querySelectorAll('.test-room-fretboard .midi-float-pill button')]
+      // Los que están en pantalla (el desplegable Graves/Agudas del teclado queda por debajo, fuera).
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.bottom <= window.innerHeight; })
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return !el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+      }).length);
+    expect(covered).toBe(0);
     for (let i = 0; i < 6; i++) {
       for (const key of ['KeyX', 'KeyC', 'KeyZ']) await page.keyboard.press(key);
       await page.waitForTimeout(80);
     }
     expect(Number(await stage.getAttribute('data-hits'))).toBeGreaterThanOrEqual(3);
   });
+});
+
+// La web recuerda el INSTRUMENTO que se tocó, como la dificultad (usuario, 2026-11-17).
+test('se recuerda el instrumento: la batería elegida vuelve al recargar y en otra canción con batería', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(URL);
+  await openGame(page);
+  await choose(page, 'Pistas', 'Batería');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Batería/);
+  await page.reload();
+  await openGame(page);
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Batería/, { timeout: 10000 });
+  await choose(page, 'Canción', 'Iron Rain');
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Batería/, { timeout: 10000 });
+  // Volver a la guitarra rítmica también se recuerda.
+  await choose(page, 'Pistas', 'Guitarra rítmica');
+  await page.reload();
+  await openGame(page);
+  await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Guitarra rítmica/, { timeout: 10000 });
 });

@@ -1,8 +1,8 @@
 // MÁSTIL EN MODO BATERÍA (usuario, 2026-11-16, a partir de su imagen): con la pista de batería en Riff-Hero el
 // mástil se dibuja como una batería vista de frente, cada instrumento en SU columna (la que se toca):
-//   Z plato · X bombo · C caja · V tom agudo · B tom grave · N plato fuerte
-// El bombo es DOBLE, grande y en el centro, detrás de todo: del izquierdo solo asoma una parte en la
-// columna X (lo único dibujado en X), como en la imagen. Colores = el arcoíris de las gemas (`fretColor`).
+//   Z bombo · X plato · C caja · V tom agudo · B tom grave · N plato fuerte
+// El bombo es DOBLE, grande, entero y detrás de todo (usuario, 2026-11-17): el derecho en V y el izquierdo,
+// girado con perspectiva, con el parche en X-C y el casco hasta la columna Z. Colores = el arcoíris de las gemas (`fretColor`).
 // SVG fijo dentro del `<svg>` del mástil (coordenadas del viewBox); la animación de los golpes va aparte, en
 // `DrumHits` (siempre montada, solo cambia `data-on`), sin re-render del mástil (PressMarks).
 import { fretColor } from '../../../lib/riff/colors';
@@ -39,20 +39,35 @@ function layout(g: DrumNeckGeometry) {
   const w = g.colWidth;
   const h = g.height;
   const s = Math.min(w, h);
-  // Bombos enteros: su centro está 0,55 r bajo la línea de golpe y el halo llega a r + 10.
-  const kickR = g.maxBottom === undefined ? 0.75 * w : Math.max(0.3 * w, Math.min(0.75 * w, (g.maxBottom - g.hitY - 10) / 1.55));
-  const center = (g.left + g.right) / 2;
+  // DOBLE BOMBO (usuario, 2026-11-17): de una columna de radio, entero (sin cortes por arriba ni por abajo: el
+  // halo llega a r + 10) y su centro 0,35 r bajo la línea de golpe; por abajo puede bajar hasta `maxBottom`
+  // (detrás de la barra MIDI). Una columna más a la derecha que el borde de la Z: el izquierdo, en X y C, y el
+  // derecho, en V. El IZQUIERDO va GIRADO, con perspectiva como en una batería de verdad: su parche se ve
+  // estrecho (`rx` < `ry`) y su casco (`back`) se alarga hacia la izquierda hasta ocupar la columna Z.
+  const bottomRoom = (g.maxBottom ?? g.top + h) - g.hitY - 10;
+  const topRoom = g.hitY - g.top - 10;
+  const kickR = Math.max(0.3 * w, Math.min(w, bottomRoom / 1.35, topRoom / 0.65));
+  const kickY = g.hitY + kickR * 0.35;
+  // Hacia dónde crecen las columnas (zurdo: al revés).
+  const dir = Math.sign(g.cx(1) - g.cx(0)) || 1;
+  const firstKick = g.cx(KICK) + dir * (w / 2) + dir * kickR;
   const keyH = Math.min(h * 0.17, w * 0.32, 40);
   const keyY = g.top + h - keyH - Math.min(6, h * 0.04);
   return {
     w,
     h,
-    kicks: [center - kickR, center + kickR].map((x) => ({ x, y: g.hitY + kickR * 0.55, r: kickR })),
+    kicks: [
+      // Girado: parche al 70 % de ancho y casco hacia fuera (hacia la Z), su fondo más pequeño (más lejos).
+      { x: firstKick, y: kickY, r: kickR, rx: kickR * 0.7, ry: kickR, back: { x: firstKick - dir * 1.2 * w, rx: kickR * 0.5, ry: kickR * 0.9 } },
+      { x: firstKick + dir * 2 * kickR, y: kickY, r: kickR, rx: kickR, ry: kickR, back: null },
+    ],
     keyH,
     keyY,
-    floor: Math.min(keyY - 4, g.hitY + s * 0.45),
+    // El "suelo" de la batería: el borde de abajo de los bombos (ahí apoyan también los pies de los platos).
+    floor: kickY + kickR,
     drum: (pad: number) => {
-      const scale = pad === SNARE ? 0.72 : pad === HIGH_TOM ? 0.6 : 0.8;
+      // Tom agudo (V) entre la caja (C) y el tom grave (B) (usuario, 2026-11-17).
+      const scale = pad === SNARE ? 0.72 : pad === HIGH_TOM ? 0.76 : 0.8;
       const rx = (w * scale) / 2;
       const shell = rx * 0.75;
       return { x: g.cx(pad), y: g.hitY - s * 0.06 - shell, rx, ry: rx * 0.32, shell };
@@ -70,9 +85,9 @@ function Drum({ g, pad }: { g: DrumNeckGeometry; pad: number }) {
   const head = pad === SNARE ? '#e5e7eb' : '#1f2937';
   return (
     <g data-pad={DRUM_PADS[pad].name} className="riff-drum-piece">
-      <rect x={d.x - d.rx} y={d.y} width={d.rx * 2} height={d.shell} fill="#111827" stroke={color} strokeWidth={2} />
-      <ellipse cx={d.x} cy={d.y + d.shell} rx={d.rx} ry={d.ry} fill="#111827" stroke={color} strokeWidth={2} />
-      <rect x={d.x - d.rx + 1} y={d.y} width={d.rx * 2 - 2} height={d.shell} fill="#111827" />
+      <rect x={d.x - d.rx} y={d.y} width={d.rx * 2} height={d.shell} fill={wall(color)} stroke={color} strokeWidth={2} />
+      <ellipse cx={d.x} cy={d.y + d.shell} rx={d.rx} ry={d.ry} fill={wall(color)} stroke={color} strokeWidth={2} />
+      <rect x={d.x - d.rx + 1} y={d.y} width={d.rx * 2 - 2} height={d.shell} fill={wall(color)} />
       {[0.25, 0.5, 0.75].map((k) => (
         <line key={k} x1={d.x - d.rx + 2 * d.rx * k} x2={d.x - d.rx + 2 * d.rx * k} y1={d.y + 2} y2={d.y + d.shell} stroke="#9ca3af" strokeWidth={1.5} opacity={0.6} />
       ))}
@@ -89,9 +104,18 @@ function Cymbal({ g, pad }: { g: DrumNeckGeometry; pad: number }) {
   const floor = l.floor;
   return (
     <g data-pad={DRUM_PADS[pad].name} className="riff-drum-piece">
-      <line x1={c.x} x2={c.x} y1={c.y} y2={floor} stroke="#9ca3af" strokeWidth={3} />
-      <line x1={c.x} x2={c.x - c.rx * 0.35} y1={floor - 14} y2={floor} stroke="#9ca3af" strokeWidth={2} />
-      <line x1={c.x} x2={c.x + c.rx * 0.35} y1={floor - 14} y2={floor} stroke="#9ca3af" strokeWidth={2} />
+      {/* Pie del plato en el color de su columna, con el mismo contorno semitransparente que el plato y los
+          parches (usuario, 2026-11-17): primero el contorno ancho y transparente, encima el pie. */}
+      {[
+        [c.x, c.y, c.x, floor, 3],
+        [c.x, floor - 14, c.x - c.rx * 0.35, floor, 2],
+        [c.x, floor - 14, c.x + c.rx * 0.35, floor, 2],
+      ].map(([x1, y1, x2, y2, width], i) => (
+        <g key={i}>
+          <line x1={x1} x2={x2} y1={y1} y2={y2} stroke={color} strokeWidth={width + 7} strokeLinecap="round" opacity={0.3} />
+          <line x1={x1} x2={x2} y1={y1} y2={y2} stroke={color} strokeWidth={width} strokeLinecap="round" />
+        </g>
+      ))}
       <ellipse cx={c.x} cy={c.y} rx={c.rx + 5} ry={c.ry + 3} fill="none" stroke={color} strokeWidth={9} opacity={0.3} />
       <ellipse cx={c.x} cy={c.y} rx={c.rx} ry={c.ry} fill="url(#riff-drum-gold)" stroke={color} strokeWidth={3} />
       <ellipse cx={c.x} cy={c.y} rx={c.rx * 0.55} ry={c.ry * 0.55} fill="none" stroke="#a16207" strokeWidth={1} opacity={0.6} />
@@ -126,9 +150,21 @@ export default function DrumKitNeck({ g }: { g: DrumNeckGeometry }) {
       <g clipPath={`url(#${CLIP_ID})`} data-pad={DRUM_PADS[KICK].name} className="riff-drum-piece">
         {l.kicks.map((k, i) => (
           <g key={i}>
-            <circle cx={k.x} cy={k.y} r={k.r + 5} fill="none" stroke={kickColor} strokeWidth={10} opacity={0.3} />
-            <circle cx={k.x} cy={k.y} r={k.r} fill="#0f172a" stroke={kickColor} strokeWidth={4} />
-            <circle cx={k.x} cy={k.y} r={k.r * 0.86} fill="none" stroke="#475569" strokeWidth={2} />
+            {/* Casco del bombo girado: el fondo (elipse lejana) unido al parche por arriba y por abajo. */}
+            {k.back && (
+              <>
+                <ellipse cx={k.back.x} cy={k.y} rx={k.back.rx} ry={k.back.ry} fill={wall(kickColor)} stroke={kickColor} strokeWidth={3} />
+                <path d={`M ${k.back.x} ${k.y - k.back.ry} L ${k.x} ${k.y - k.ry} L ${k.x} ${k.y + k.ry} L ${k.back.x} ${k.y + k.back.ry} Z`} fill={wall(kickColor)} />
+                <line x1={k.back.x} y1={k.y - k.back.ry} x2={k.x} y2={k.y - k.ry} stroke={kickColor} strokeWidth={3} />
+                <line x1={k.back.x} y1={k.y + k.back.ry} x2={k.x} y2={k.y + k.ry} stroke={kickColor} strokeWidth={3} />
+                {[0.33, 0.66].map((t) => (
+                  <line key={t} x1={k.back.x + (k.x - k.back.x) * t} x2={k.back.x + (k.x - k.back.x) * t} y1={k.y - (k.back.ry + (k.ry - k.back.ry) * t) + 3} y2={k.y + (k.back.ry + (k.ry - k.back.ry) * t) - 3} stroke="#9ca3af" strokeWidth={1.5} opacity={0.5} />
+                ))}
+              </>
+            )}
+            <ellipse cx={k.x} cy={k.y} rx={k.rx + 5} ry={k.ry + 5} fill="none" stroke={kickColor} strokeWidth={10} opacity={0.3} />
+            <ellipse cx={k.x} cy={k.y} rx={k.rx} ry={k.ry} fill="#0f172a" stroke={kickColor} strokeWidth={4} />
+            <ellipse cx={k.x} cy={k.y} rx={k.rx * 0.86} ry={k.ry * 0.86} fill="none" stroke="#475569" strokeWidth={2} />
             {i === 0 && (
               <path
                 d={`M ${k.x + k.r * 0.08} ${k.y - k.r * 0.62} L ${k.x - k.r * 0.18} ${k.y - k.r * 0.12} L ${k.x + k.r * 0.02} ${k.y - k.r * 0.12} L ${k.x - k.r * 0.1} ${k.y + k.r * 0.3} L ${k.x + k.r * 0.22} ${k.y - k.r * 0.22} L ${k.x + k.r * 0.02} ${k.y - k.r * 0.22} Z`}
@@ -148,6 +184,14 @@ export default function DrumKitNeck({ g }: { g: DrumNeckGeometry }) {
   );
 }
 
+// PAREDES de los tambores (bombos, caja y toms) en el color de su columna, oscurecido para que el parche y
+// los tornillos se sigan leyendo (usuario, 2026-11-17).
+function wall(hex: string): string {
+  const c = [1, 3, 5].map((j) => parseInt(hex.slice(j, j + 2), 16));
+  const dark = [0x11, 0x18, 0x27];
+  return `#${c.map((v, i) => Math.round(dark[i] + (v - dark[i]) * 0.55).toString(16).padStart(2, '0')).join('')}`;
+}
+
 // Velo de un color mezclado hacia blanco (`k` = cuánto blanco).
 function pale(hex: string, k: number): string {
   const c = [1, 3, 5].map((j) => parseInt(hex.slice(j, j + 2), 16));
@@ -160,7 +204,7 @@ function pale(hex: string, k: number): string {
 export function drumSurfaceShapes(g: DrumNeckGeometry, pad: number): { ellipses: Array<{ x: number; y: number; rx: number; ry: number }>; clip: { x: number; y: number; w: number; h: number } } {
   const l = layout(g);
   const clip = { x: g.left, y: g.top, w: g.right - g.left, h: drawBottom(g) - g.top };
-  if (pad === KICK) return { clip, ellipses: l.kicks.map((k) => ({ x: k.x, y: k.y, rx: k.r * 0.86, ry: k.r * 0.86 })) };
+  if (pad === KICK) return { clip, ellipses: l.kicks.map((k) => ({ x: k.x, y: k.y, rx: k.rx * 0.86, ry: k.ry * 0.86 })) };
   if (pad === HIHAT || pad === CRASH) {
     const c = l.cymbal(pad);
     return { clip, ellipses: [{ x: c.x, y: c.y, rx: c.rx, ry: c.ry }] };
@@ -175,7 +219,7 @@ function surface(g: DrumNeckGeometry, pad: number, props: React.SVGProps<SVGElem
   if (pad === KICK) {
     return (
       <g clipPath={`url(#${CLIP_ID})`}>
-        {l.kicks.map((k, i) => <circle key={i} cx={k.x} cy={k.y} r={k.r * 0.86} {...(props as React.SVGProps<SVGCircleElement>)} />)}
+        {l.kicks.map((k, i) => <ellipse key={i} cx={k.x} cy={k.y} rx={k.rx * 0.86} ry={k.ry * 0.86} {...(props as React.SVGProps<SVGEllipseElement>)} />)}
       </g>
     );
   }
@@ -206,8 +250,7 @@ export function DrumHits({ g, on }: { g: DrumNeckGeometry; on: Set<number> }) {
           </g>
         );
       })}
-      <line x1={g.left} x2={g.right} y1={g.hitY} y2={g.hitY} stroke="#22c55e" strokeWidth={12} opacity={0.25} />
-      <line className="riff-drum-hitline" x1={g.left} x2={g.right} y1={g.hitY} y2={g.hitY} stroke="#4ade80" strokeWidth={4} />
+      {/* Sin la línea verde de golpe que cruzaba la batería (usuario, 2026-11-17). */}
       {/* Sin recuadros de las teclas (usuario, 2026-11-16): bajo el mástil vuelven los números de traste. */}
     </g>
   );

@@ -100,7 +100,7 @@ function Face({ children, devil = false }: { children: ReactNode; devil?: boolea
 }
 
 // Niveles de batería (drums.ts): las caras del modo trastes, en el mismo orden (Fácil = 😛 ... Difícil = 😳).
-const DRUM_LEVEL_FACE: Record<string, RiffLevel> = { 'bateria-facil': 'practica', 'bateria-medio': 'facil', 'bateria-avanzado': 'medio', 'bateria-dificil': 'avanzado' };
+const DRUM_LEVEL_FACE: Record<string, RiffLevel> = { 'bateria-facil': 'practica', 'bateria-medio': 'facil', 'bateria-avanzado': 'medio', 'bateria-dificil': 'avanzado', 'bateria-experto': 'experto' };
 
 export function LevelIcon({ level }: { level: RiffLevel }) {
   if (DRUM_LEVEL_FACE[level]) return <LevelIcon level={DRUM_LEVEL_FACE[level]} />;
@@ -335,6 +335,11 @@ export function DrumIcon() {
 // Bajo: el clavijero de las guitarras, con 2 + 2 clavijas y una B.
 export function BassIcon() {
   return <Headstock letter="B" pegs={[8.5, 13]} />;
+}
+
+// Guitarra (selector de instrumento del mástil): el clavijero con 3 + 3 clavijas y una G.
+export function GuitarIcon() {
+  return <Headstock letter="G" pegs={[7, 11, 15]} />;
 }
 
 // Altavoz: suena (con ondas) o silenciado (tachado).

@@ -44,9 +44,10 @@ test('chart de Master of Puppets: pistas de guitarra, tempo 212 y notas fuera de
   // Compás 2 empieza a 4 negras de 212 bpm.
   expect(james.bars[1].t).toBeCloseTo((4 * 60) / 212, 5);
 
-  // Batería del propio archivo, para el acompañamiento "Batería".
+  // Batería del propio archivo, para el acompañamiento "Batería": con los 6 sonidos de la batería jugable
+  // (toms y plato fuerte propios, usuario 2026-11-17).
   expect(james.drums.length).toBeGreaterThan(100);
-  expect(new Set(james.drums.map((d) => d.sound))).toEqual(new Set(['kick', 'snare', 'cymbal']));
+  expect(new Set(james.drums.map((d) => d.sound))).toEqual(new Set(['kick', 'snare', 'cymbal', 'crash', 'tomHigh', 'tomLow']));
 
   // Kirk llega al traste 22: sus pasajes altos se recolocan ENTEROS (relocate.ts: cuerda más aguda u
   // octava abajo; se mueven también las notas de 12 o menos de esos pasajes) y ninguna se pierde.

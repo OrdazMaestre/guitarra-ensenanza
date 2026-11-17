@@ -2,29 +2,30 @@
 //
 // La batería se toca en el mástil como un TECLADO, no como una guitarra: una sola "cuerda" (la 6) y seis
 // columnas fijas, una por pad (siempre en su sitio, en todos los niveles, para que lo aprendido valga):
-//   0 Plato (Z) · 1 Bombo (X) · 2 Caja (C) · 3 Tom agudo (V) · 4 Tom grave (B) · 5 Plato fuerte (N)
-// (orden del usuario, 2026-11-16: el de una batería vista de frente; el plato normal, el que más se toca, en la Z).
+//   0 Bombo (Z) · 1 Plato (X) · 2 Caja (C) · 3 Tom agudo (V) · 4 Tom grave (B) · 5 Plato fuerte (N)
+// (orden del usuario, 2026-11-16, el de una batería vista de frente; el 2026-11-17 cambió bombo y plato:
+// bombo en la Z y plato en la X).
 // Sin hammer-on, pull-off ni tapping: cada golpe es independiente y lo que se toca a la vez suena a la vez.
 //
 // TRADUCCIÓN (regla del usuario: la misma en las tabs, en Riff-Hero y en un futuro instrumento MIDI): el
 // plato "normal" es un hihat cerrado; los platos se reparten entre él y el plato fuerte (lo abierto:
 // crash, china, splash, hihat abierto); los toms graves van al tom grave y los agudos al tom agudo; y
 // donde no hay toms ni plato fuerte (3 pads), los toms graves son bombo, los agudos caja y todos los
-// platos, el plato normal. El reproductor de tablatura ya sigue esa regla con sus 3 sonidos
-// (KICK_MIDI/SNARE_MIDI/CYMBAL_MIDI en chart.ts).
-import type { Chart, ChartNote } from './chart';
+// platos, el plato normal. SONIDO (usuario, 2026-11-17): `drumSoundOfMidi` da a cada golpe el de su pad, y
+// así suenan la batería jugable, la de fondo de Riff-Hero (chart.drums) y la de las tablaturas (AlphaTabPlayer).
+import type { Chart, ChartNote, DrumSound } from './chart';
 
 export type DrumPad = 0 | 1 | 2 | 3 | 4 | 5;
-export const HIHAT: DrumPad = 0;
-export const KICK: DrumPad = 1;
+export const KICK: DrumPad = 0;
+export const HIHAT: DrumPad = 1;
 export const SNARE: DrumPad = 2;
 export const HIGH_TOM: DrumPad = 3;
 export const LOW_TOM: DrumPad = 4;
 export const CRASH: DrumPad = 5;
 
 export const DRUM_PADS: Array<{ pad: DrumPad; name: string; short: string; key: string }> = [
-  { pad: HIHAT, name: 'Plato', short: 'Plato', key: 'Z' },
-  { pad: KICK, name: 'Bombo', short: 'Bombo', key: 'X' },
+  { pad: KICK, name: 'Bombo', short: 'Bombo', key: 'Z' },
+  { pad: HIHAT, name: 'Plato', short: 'Plato', key: 'X' },
   { pad: SNARE, name: 'Caja', short: 'Caja', key: 'C' },
   { pad: HIGH_TOM, name: 'Tom agudo', short: 'Tom A.', key: 'V' },
   { pad: LOW_TOM, name: 'Tom grave', short: 'Tom G.', key: 'B' },
@@ -54,6 +55,22 @@ export function padOfMidi(midi: number): DrumPad {
   return HIHAT;
 }
 
+// El SONIDO de un golpe General MIDI, el mismo en todas partes (usuario, 2026-11-17): la batería jugable, la
+// batería de fondo de Riff-Hero y la de las tablaturas (AlphaTabPlayer) suenan igual, con toms y plato fuerte
+// propios. Sigue a `padOfMidi`.
+const PAD_SOUND: Record<DrumPad, DrumSound> = { [HIHAT]: 'cymbal', [KICK]: 'kick', [SNARE]: 'snare', [HIGH_TOM]: 'tomHigh', [LOW_TOM]: 'tomLow', [CRASH]: 'crash' } as Record<DrumPad, DrumSound>;
+export function drumSoundOfMidi(midi: number): DrumSound {
+  return PAD_SOUND[padOfMidi(midi)];
+}
+
+// Con los 3 controles de batería de las tablaturas (bombo, caja, platillo): la regla de 3 pads (`threePad`).
+export function threePadSound(sound: DrumSound): 'kick' | 'snare' | 'cymbal' {
+  if (sound === 'tomLow') return 'kick';
+  if (sound === 'tomHigh') return 'snare';
+  if (sound === 'crash') return 'cymbal';
+  return sound;
+}
+
 // Reparto de los platos de la batería que se toca (en orden de tiempo): ver CRASH_RUN_SECONDS.
 export function spreadCymbals(notes: Array<{ t: number; fret: number }>): void {
   let lastCrash = -Infinity;
@@ -66,6 +83,23 @@ export function spreadCymbals(notes: Array<{ t: number; fret: number }>): void {
 }
 
 // Con solo bombo, caja y plato (Medio, Avanzado y el juego de ritmo de Conceptos básicos).
+// Medio y Avanzado: bombo, caja y SOLO el plato de la N (usuario, 2026-11-17: el plato de la X, el que marca
+// el tiempo, era demasiado para estos niveles; no se juntan: sus golpes no se tocan y suenan de fondo). Los
+// toms, como en `threePad`: los graves al bombo y los agudos a la caja.
+// Difícil (usuario, 2026-11-17): los DOS platos, bombo y caja, sin toms (los graves al bombo y los agudos a
+// la caja, como en `threePad`).
+function noToms(pad: DrumPad): DrumPad {
+  if (pad === LOW_TOM) return KICK;
+  if (pad === HIGH_TOM) return SNARE;
+  return pad;
+}
+
+function threePadCrash(pad: DrumPad): DrumPad | null {
+  if (pad === HIHAT) return null;
+  if (pad === CRASH) return CRASH;
+  return threePad(pad);
+}
+
 export function threePad(pad: DrumPad): DrumPad {
   if (pad === CRASH) return HIHAT;
   if (pad === LOW_TOM) return KICK;
@@ -84,20 +118,22 @@ export interface DrumLevelRule {
   priority: DrumPad[];
 }
 
-export const DRUM_LEVEL_RULES: Record<'facil' | 'medio' | 'avanzado' | 'dificil', DrumLevelRule> = {
+export const DRUM_LEVEL_RULES: Record<'facil' | 'medio' | 'avanzado' | 'dificil' | 'experto', DrumLevelRule> = {
   // "Bombo o caja": uno a la vez; si van juntos, la caja (el acento).
   facil: { pads: [KICK, SNARE], map: (pad) => { const p = threePad(pad); return p === HIHAT ? null : p; }, maxHits: 1, priority: [SNARE, KICK] },
   // Bombo, caja y plato, de dos en dos.
-  medio: { pads: [KICK, SNARE, HIHAT], map: threePad, maxHits: 2, priority: [KICK, SNARE, HIHAT] },
+  medio: { pads: [KICK, SNARE, CRASH], map: threePadCrash, maxHits: 2, priority: [KICK, SNARE, CRASH] },
   // Los mismos tres; de momento también de dos en dos (usuario, 2026-11-16: máximo 2 golpes a la vez en
   // todos los niveles), así que hoy es igual que Medio.
-  avanzado: { pads: [KICK, SNARE, HIHAT], map: threePad, maxHits: 2, priority: [KICK, SNARE, HIHAT] },
+  avanzado: { pads: [KICK, SNARE, CRASH], map: threePadCrash, maxHits: 2, priority: [KICK, SNARE, CRASH] },
   // Los seis, de dos en dos (de momento). Cuál se queda cuando la tab junta 3 o más: como una batería de
   // verdad, un PIE y una MANO -- el bombo siempre (la base del ritmo) y el golpe de mano más importante:
   // el plato fuerte (el acento que abre una frase), la caja (el contratiempo), los toms (los redobles) y
   // por último el plato normal (el relleno continuo, lo que menos se echa en falta). Sin bombo, las dos
   // primeras manos de esa lista. Lo que se quita sigue sonando de fondo.
-  dificil: { pads: [CRASH, LOW_TOM, KICK, SNARE, HIGH_TOM, HIHAT], map: (pad) => pad, maxHits: 2, priority: [KICK, CRASH, SNARE, HIGH_TOM, LOW_TOM, HIHAT] },
+  dificil: { pads: [KICK, HIHAT, SNARE, CRASH], map: noToms, maxHits: 2, priority: [KICK, CRASH, SNARE, HIHAT] },
+  // EXPERTO (usuario, 2026-11-17: el antiguo Difícil): los seis pads, de dos en dos.
+  experto: { pads: [CRASH, LOW_TOM, KICK, SNARE, HIGH_TOM, HIHAT], map: (pad) => pad, maxHits: 2, priority: [KICK, CRASH, SNARE, HIGH_TOM, LOW_TOM, HIHAT] },
 };
 
 // El chart de un nivel de batería a partir del chart REAL de la pista (chart.ts: cada golpe es una nota

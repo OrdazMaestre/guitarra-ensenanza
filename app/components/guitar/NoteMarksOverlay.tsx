@@ -48,6 +48,7 @@ export function NoteMarksOverlay({
   radius = 16,
   startFret,
   stringCount = 6,
+  firstString = 1,
 }: {
   endFret: number;
   fontSize?: number;
@@ -58,11 +59,13 @@ export function NoteMarksOverlay({
   radius?: number;
   startFret: number;
   stringCount?: number;
+  // Primera cuerda a recorrer (el bajo del mástil solo tiene las 3-6).
+  firstString?: number;
 }) {
   if (Object.keys(marks).length === 0) return null;
 
   const elements: React.ReactNode[] = [];
-  for (let string = 1; string <= stringCount; string++) {
+  for (let string = firstString; string <= stringCount; string++) {
     for (let fret = startFret; fret <= endFret; fret++) {
       const name = getNoteName(string, fret);
       const color = marks[name];

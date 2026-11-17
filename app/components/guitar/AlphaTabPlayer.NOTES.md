@@ -579,6 +579,16 @@ Revisión del sonido de guitarra en todo el sitio, con guitar-music-advisor, alp
 - Trampa de Web Audio: en `lowpass`/`highpass` el `Q` está en dB. El Q 0.55 de `toneFilter` da un realce de ~+1.6 dB justo bajo cada corte. Se deja tal cual porque es el timbre ya ajustado, pero cualquier filtro NUEVO que deba ser plano usa Q -3.01.
 - Las sonoridades se comparan en LUFS con `tests/helpers/guitarTone.js` (medidor BS.1770 + réplicas exactas de las cadenas), nunca en pico ni en RMS plano.
 
+## Batería con 6 sonidos (2026-11-17)
+
+Petición del usuario: la batería de las tablaturas suena como la batería jugable de Riff-Hero, con toms y plato fuerte propios. Antes, los toms se traducían a bombo o caja y todos los platos sonaban igual.
+
+- El mapa General MIDI → sonido ya no vive aquí: `percussionClickType` llama a `drumSoundOfMidi` (`app/lib/riff/drums.ts`, la misma regla que `padOfMidi`). Las copias de 3 sonidos (`PERCUSSION_KICK_MIDI`… aquí y `KICK_MIDI`… en chart.ts) se quitaron.
+- `percussionHits` lleva los 6 sonidos (`DrumLayer`: kick, snare, cymbal, crash, tomLow, tomHigh) y `playDrumClick` (= `playMetronomeClick`) los sintetiza todos, por el mismo limitador de batería.
+- Los controles por elemento (Bombo, Caja, Platillo) no cambian. Agrupan los 6 con `threePadSound`: tom grave → Bombo, tom agudo → Caja, plato fuerte → Platillo.
+- El volumen de cada golpe es el de siempre (`DRUM_TRACK_VOLUME_BOOST` × pista × elemento).
+- Bombo +80 % (mismo día, petición del usuario): `KICK_BASE_GAIN` 1.8 en `drumLayers` del motor, así que sube igual en la tablatura, en el juego y en los metrónomos; medido +4,5 a +4,9 LU, pico ≤ 0,12 (`tests/metronome-volume-safety.spec.ts`).
+
 ## Historial
 
 - **2026-09-23 (sesión posterior a la del bajo/batería +30%/-50%)**: el bajo pasa a ser seleccionable como pista principal/visible (`canView` y `selectVisibleTrack` ganan `'bass'` junto a `'guitar'`) — `buildEventsFromScore` elige el extractor de notas según `classifyTrackKind` del track pedido en vez de asumir siempre guitarra, y `playEvent` gana una rama `playBassNote` (con el reloj propio de `guitarAudioEngine.ts`, sin `chordDelay`) para cuando la pista principal es de bajo, gateada por `multiTrack` para no afectar a ninguna página existente. Ver "Bajo como pista principal" arriba para el detalle completo y las cifras de verificación (Playwright, `scrollDelta` +393px con bajo de pista principal, 0 regresión en páginas sin `multiTrack`). Se investigó también, a fondo y con Playwright real (8 experimentos: `renderTracks`/`renderScore` en solitario y combinada con guitarra, en ambos órdenes, `staveProfile` Tab/TabMixed, y forzar `showTablature`/`showStandardNotation` a mano) si es posible ver la notación de la pista de batería — conclusión: no, con `@coderline/alphatab@1.8.2` no hay ninguna combinación que la muestre (sola revienta con una excepción real del SDK, combinada con otra pista se descarta en silencio sin dibujar nada). Ver "Investigación de partitura de batería" arriba para la causa raíz localizada en el código fuente del SDK y el razonamiento sobre por qué la batería no encajaría de todos modos en el modelo de cursor secuencial actual si algún día se consiguiera mostrar.

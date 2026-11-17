@@ -67,7 +67,7 @@ for (const file of ['prueba-master-of-puppets.gp', 'iron-rain.gp', 'electric-war
     const small = new Set(onsets(real).flatMap((pads, k) => (pads.length <= 2 ? [k] : [])));
     const keyOf = (c: Chart) => onsets(c).map((pads) => [...pads].sort().join('+'));
     const realKeys = keyOf(real);
-    const hardKeys = keyOf(reduceDrums(real, DRUM_LEVEL_RULES.dificil));
+    const hardKeys = keyOf(reduceDrums(real, DRUM_LEVEL_RULES.experto));
     expect(hardKeys.filter((_, k) => small.has(k))).toEqual(realKeys.filter((_, k) => small.has(k)));
     console.log(`${file}: golpes de 3 o más pads en la tab: ${realKeys.length - small.size}`);
   });
@@ -75,7 +75,7 @@ for (const file of ['prueba-master-of-puppets.gp', 'iron-rain.gp', 'electric-war
 
 test('Difícil, como mucho 2: el bombo siempre y la mano más importante (plato fuerte > caja > toms > plato)', () => {
   const chord = (...frets: number[]) => ({ trackName: 'x', bpm: 120, duration: 4, notes: frets.map((fret, id) => ({ id, t: 1, dur: 0.1, string: 6, fret, midi: 0, palmMute: false, tech: [] })), bars: [{ number: 1, t: 0, end: 2 }], beats: [], drums: [], kit: 'drums' as const, movedAboveMaxFret: 0, skippedAboveMaxFret: 0 });
-  const hard = (...frets: number[]) => reduceDrums(chord(...frets), DRUM_LEVEL_RULES.dificil).notes.map((n) => n.fret).sort();
+  const hard = (...frets: number[]) => reduceDrums(chord(...frets), DRUM_LEVEL_RULES.experto).notes.map((n) => n.fret).sort();
   expect(hard(KICK, SNARE, HIHAT)).toEqual([KICK, SNARE].sort());
   expect(hard(KICK, CRASH, HIHAT)).toEqual([KICK, CRASH].sort());
   expect(hard(SNARE, CRASH, HIHAT)).toEqual([SNARE, CRASH].sort());
@@ -136,7 +136,8 @@ test('sesión: los golpes de pads que el nivel no toca suenan de fondo a volumen
 
 test('sesión: mantener un pad cuenta los golpes repetidos; el slide solo vale a la columna vecina', () => {
   const real = drumChart('iron-rain.gp');
-  const chart = reduceDrums(real, DRUM_LEVEL_RULES.medio);
+  // (Difícil: el plato de la X; en Medio y Avanzado el plato va en la N.)
+  const chart = reduceDrums(real, DRUM_LEVEL_RULES.dificil);
   // Dos golpes seguidos del plato sin nada en medio.
   const index = chart.notes.findIndex((note, k) => note.fret === HIHAT && chart.notes[k + 1]?.fret === HIHAT && chart.notes[k + 1].t > note.t + 0.05);
   expect(index).toBeGreaterThanOrEqual(0);
@@ -147,9 +148,9 @@ test('sesión: mantener un pad cuenta los golpes repetidos; el slide solo vale a
   expect(session.judge({ string: 6, fret: HIHAT, kind: 'pluck' }, a.t + offset).hit?.id).toBe(a.id);
   session.advance(b.t + offset + 0.01);
   expect(session.autoHold([{ string: 6, fret: HIHAT }]).map((n) => n.id)).toContain(b.id);
-  // Slide: de la caja (3) al plato (5) no es vecino -> no cuenta.
+  // Slide: del tom agudo (3) al plato (1) no es vecino -> no cuenta.
   const later = chart.notes.find((n) => n.t > b.t + 1 && n.fret === HIHAT)!;
-  expect(session.judge({ string: 6, fret: HIHAT, kind: 'slide', from: { string: 6, fret: SNARE } }, later.t + offset).hit).toBeNull();
+  expect(session.judge({ string: 6, fret: HIHAT, kind: 'slide', from: { string: 6, fret: HIGH_TOM } }, later.t + offset).hit).toBeNull();
 });
 
 test('platos: un crash seguido (menos de 0,4 s) marca el tiempo y va al plato Z; el plato Z predomina', () => {
@@ -223,7 +224,9 @@ test('fondo: los golpes de pads que el nivel no toca suenan a la mitad; el bombo
   // En Fácil, el plato no se toca: de fondo y marcado `unplayed`; bombo y caja, no.
   expect(guide.filter((n) => n.pad === HIHAT).every((n) => n.unplayed)).toBe(true);
   expect(guide.filter((n) => n.pad === KICK || n.pad === SNARE).some((n) => n.unplayed)).toBe(false);
-  expect(drumVolume(HIHAT, true, true)).toBeCloseTo(drumVolume(HIHAT, true) / 2, 6);
+  // El plato de la X sin tocar, a un cuarto (otra mitad, usuario 2026-11-17); el resto, a la mitad.
+  expect(drumVolume(HIHAT, true, true)).toBeCloseTo(drumVolume(HIHAT, true) / 4, 6);
+  expect(drumVolume(CRASH, true, true)).toBeCloseTo(drumVolume(CRASH, true) / 2, 6);
   expect(drumVolume(KICK, true)).toBeGreaterThan(drumVolume(SNARE, true));
 });
 
@@ -240,4 +243,31 @@ test('fantasma: superficies de cada pieza dentro de su columna (los bombos, dos)
     expect(e.y).toBeGreaterThan(g.top);
     expect(e.y).toBeLessThan(g.hitY);
   }
+});
+
+test('Medio y Avanzado tocan SOLO el plato de la N: los golpes del plato X no se tocan (usuario, 2026-11-17)', () => {
+  for (const file of ['iron-rain.gp', 'black-gilmur.gp']) {
+    const real = drumChart(file);
+    for (const rule of [DRUM_LEVEL_RULES.medio, DRUM_LEVEL_RULES.avanzado]) {
+      const level = reduceDrums(real, rule);
+      expect(level.notes.some((n) => n.fret === HIHAT), file).toBe(false);
+      // Solo los golpes que en la tab ya eran del plato fuerte: el plato X no se pasa a la N.
+      const crashes = level.notes.filter((n) => n.fret === CRASH);
+      expect(crashes.length, file).toBeGreaterThan(0);
+      expect(crashes.every((n) => n.sourceIds!.every((id) => real.notes[id].fret === CRASH)), file).toBe(true);
+      expect(crashes.length, file).toBeLessThanOrEqual(real.notes.filter((n) => n.fret === CRASH).length);
+    }
+    expect(reduceDrums(real, DRUM_LEVEL_RULES.dificil).notes.some((n) => n.fret === HIHAT), file).toBe(true);
+    // Difícil: los dos platos, bombo y caja; sin toms (van al bombo y a la caja). Experto: los seis.
+    expect(reduceDrums(real, DRUM_LEVEL_RULES.dificil).notes.some((n) => n.fret === LOW_TOM || n.fret === HIGH_TOM), file).toBe(false);
+    expect(reduceDrums(real, DRUM_LEVEL_RULES.experto).notes.some((n) => n.fret === LOW_TOM), file).toBe(true);
+  }
+});
+
+// Sonido de cada golpe, el mismo en las tablaturas, la batería de fondo y la jugable (usuario, 2026-11-17):
+// toms y plato fuerte con sonido propio; los 3 controles de batería de las tabs los agrupan como `threePad`.
+test('sonidos: 6 sonidos por General MIDI y su grupo de 3 en los controles de las tabs', async () => {
+  const { drumSoundOfMidi, threePadSound } = await import('../app/lib/riff/drums');
+  expect([36, 38, 41, 48, 49, 42, 46].map(drumSoundOfMidi)).toEqual(['kick', 'snare', 'tomLow', 'tomHigh', 'crash', 'cymbal', 'cymbal']);
+  expect((['kick', 'snare', 'cymbal', 'crash', 'tomLow', 'tomHigh'] as const).map(threePadSound)).toEqual(['kick', 'snare', 'cymbal', 'cymbal', 'kick', 'snare']);
 });

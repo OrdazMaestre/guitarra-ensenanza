@@ -24,7 +24,9 @@ import {
   playBassNote,
   playMetronomeClick as playDrumClick,
   touchAudioContext,
+  type DrumLayer,
 } from '@/app/lib/guitarAudioEngine';
+import { drumSoundOfMidi, threePadSound } from '@/app/lib/riff/drums';
 
 interface AlphaTabPlayerProps {
   // Opt-in: adds a CLEAN/OVERDRIVE toolbar button that routes every guitar
@@ -353,7 +355,8 @@ interface TrackDisplayInfo {
 interface AuxTrackEvent {
   bassNotes?: TabNote[];
   guitarNotes?: TabNote[];
-  percussionHits?: DrumClickType[];
+  // Los 6 sonidos (DrumLayer); los controles de batería los agrupan en 3 con `threePadSound`.
+  percussionHits?: DrumLayer[];
   quarterNotes: number;
   quarterStart: number;
 }
@@ -886,32 +889,15 @@ function choosePrimaryTrackIndex(score: AlphaTabScoreLike) {
   return guitarIndex >= 0 ? guitarIndex : 0;
 }
 
-// GM percussion map, grouped into the 3 drum sounds the metronome engine
-// already knows how to synthesize (playMetronomeClick in guitarAudioEngine.ts).
-// Kick/snare are the notes the user explicitly asked for; toms are folded
-// into whichever of the two they read closer to (low toms -> kick's low
-// thump, mid/high toms -> snare's sharper transient); everything else
-// (hi-hats, crashes, rides, latin percussion, etc.) falls back to 'cymbal'.
-// Not a perfect GM mapping, deliberately — see AlphaTabPlayer.NOTES.md.
-const PERCUSSION_KICK_MIDI = new Set([35, 36, 41, 43, 45]);
-const PERCUSSION_SNARE_MIDI = new Set([31, 33, 34, 37, 38, 40, 47, 48, 50]);
-const PERCUSSION_CYMBAL_MIDI = new Set([26, 27, 28, 29, 30, 39, 42, 44, 46, 49, 51, 52, 53, 54, 55, 56, 57, 58, 59]);
-
-function percussionClickType(midiNumber: number): DrumClickType {
-  if (PERCUSSION_KICK_MIDI.has(midiNumber)) {
-    return 'kick';
-  }
-  if (PERCUSSION_SNARE_MIDI.has(midiNumber)) {
-    return 'snare';
-  }
-  if (PERCUSSION_CYMBAL_MIDI.has(midiNumber)) {
-    return 'cymbal';
-  }
-  // Coarse fallback for anything not explicitly listed above.
-  if (midiNumber < 42) {
-    return 'kick';
-  }
-  return midiNumber < 60 ? 'snare' : 'cymbal';
+// GM percussion map -> the 6 drum sounds of Riff-Hero's playable kit (user
+// request 2026-11-17: tabs, the game's background drums and the playable kit
+// all sound the same, with real toms and a crash). The single rule lives in
+// app/lib/riff/drums.ts (`drumSoundOfMidi`, following `padOfMidi`); the 3
+// per-element controls (bombo/caja/platillo) group the 6 with `threePadSound`
+// (low tom -> bombo, high tom -> caja, crash -> platillo). See
+// "Batería con 6 sonidos" in AlphaTabPlayer.NOTES.md.
+function percussionClickType(midiNumber: number): DrumLayer {
+  return drumSoundOfMidi(midiNumber);
 }
 
 function resolvePercussionMidi(track: AlphaTabScoreLike['tracks'][number], note: AlphaTabNoteLike) {
@@ -923,7 +909,7 @@ function resolvePercussionMidi(track: AlphaTabScoreLike['tracks'][number], note:
   return typeof mapped === 'number' ? mapped : index;
 }
 
-function extractPercussionHitsFromBeat(beat: AlphaTabBeatLike, track: AlphaTabScoreLike['tracks'][number]): DrumClickType[] {
+function extractPercussionHitsFromBeat(beat: AlphaTabBeatLike, track: AlphaTabScoreLike['tracks'][number]): DrumLayer[] {
   if (beat.isRest) {
     return [];
   }
@@ -3599,12 +3585,13 @@ export default function AlphaTabPlayer({
         } else if (track.kind === 'percussion' && auxEvent.percussionHits) {
           const drumStartTime = auxEngineNow + auxLeadSeconds + offsetSeconds;
           const trackVolume = getTrackVolume(track.index);
-          for (const clickType of auxEvent.percussionHits) {
-            if (!isDrumElementAudible(clickType)) continue;
+          for (const sound of auxEvent.percussionHits) {
+            const element = threePadSound(sound);
+            if (!isDrumElementAudible(element)) continue;
             playDrumClick(
               drumStartTime,
-              volumeRef.current * DRUM_TRACK_VOLUME_BOOST * trackVolume * getDrumElementVolume(clickType),
-              clickType
+              volumeRef.current * DRUM_TRACK_VOLUME_BOOST * trackVolume * getDrumElementVolume(element),
+              sound
             );
           }
         }
