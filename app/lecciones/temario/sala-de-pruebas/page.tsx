@@ -31,6 +31,7 @@ export default function SalaDePruebasPage() {
             ariaLabel="Mástil de guitarra interactivo del 0 al 12"
             startFret={0}
             endFret={12}
+            darkGameLook
             fretLabels
             instrumentChoice
             notes={[]}

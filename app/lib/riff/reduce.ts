@@ -1123,6 +1123,28 @@ function sameNotesInRepeatedBars(onsets: Onset[], kept: Onset[], barIndex: (t: n
   return out;
 }
 
+// El FILTRO DE TIEMPO de los niveles (rejilla, huecos, ventanas rápidas, vueltas iguales), sin colocar
+// nada: los golpes que se quedan, cada uno con todas sus notas. Lo usa el teclado (keys.ts), que filtra
+// por tiempo como el modo trastes y luego coloca las notas reales en sus teclas. `lead`: la nota guía
+// de cada golpe (por defecto, la de leadOf).
+export function thinOnsets(chart: Chart, profile: LevelProfile, lead?: (notes: ChartNote[]) => ChartNote): Array<{ t: number; notes: ChartNote[]; lead: ChartNote }> {
+  const { pos } = makeBeatPosition(chart);
+  const onsets = groupOnsets(chart, pos);
+  if (lead) for (const onset of onsets) onset.lead = lead(onset.notes);
+  const barIndex = (t: number) => {
+    let lo = 0;
+    let hi = chart.bars.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (chart.bars[mid].t <= t + 1e-6) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  const barStartPos = (bar: number) => pos(chart.bars[bar].t);
+  return sameNotesInRepeatedBars(onsets, capFastWindows(pickByGrid(onsets, gridSlots(chart, profile.gridBeats, profile.minSlotSeconds), profile), chart, profile), barIndex, chart, profile, barStartPos);
+}
+
 export function reduceChart(chart: Chart, profile: LevelProfile, options: ReduceOptions = {}): Chart {
   if (profile.compose) return composeChart(chart, profile, options);
   // BAJAR UNA CUERDA (lowerStrings.ts, usuario 2026-11-15): se coloca sobre la tab virtual, pero lo que

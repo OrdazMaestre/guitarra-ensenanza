@@ -999,7 +999,7 @@ test.describe('pantalla táctil', () => {
   test('jugando, un toque corto con el dedo en PAUSA no hace nada; mantenerlo 1 s, sí', async ({ page }) => {
     await page.goto(URL);
     await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
-    await page.getByRole('button', { name: 'JUGAR', exact: true }).tap();
+    await page.locator('.test-room-fretboard').getByRole('button', { name: 'JUGAR', exact: true }).tap();
     await expect(page.getByRole('button', { name: 'Empezar' })).toBeEnabled({ timeout: 10000 });
     // Sin teclado físico no hay botón KEYBOARD, ni flecha hacia él.
     await expect(page.locator('.test-room-fretboard [data-testid="riff-kb-arrow"]')).toBeHidden();
@@ -1105,7 +1105,7 @@ test('partida de prueba: cerrar JUGAR la abandona', async ({ page }) => {
   // Jugando solo está PAUSA en la barra: primero se pausa.
   await hold(page, page.getByRole('button', { name: 'PAUSA' }));
   await page.getByRole('button', { name: 'SALIR', exact: true }).click();
-  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  await page.locator('.test-room-fretboard').getByRole('button', { name: 'JUGAR', exact: true }).click();
   await expect(page.locator('.riff-tutorial-card')).toHaveCount(0);
   await expect(page.locator('.riff-panel')).toBeVisible();
 });
@@ -1195,7 +1195,7 @@ test('cambiar de canción con el disco: en el juego y en la tablatura de debajo 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  await page.locator('.test-room-fretboard').getByRole('button', { name: 'JUGAR', exact: true }).click();
   const disc = page.locator('.riff-dd-toggle', { hasText: 'Canción' });
   await expect(disc).toHaveAttribute('aria-label', 'Canción: Black Gilmur');
   // Una sola guitarra, pero con bajo y batería: "Pistas" está para silenciarlas. 44 compases.
@@ -2061,7 +2061,7 @@ test('pantalla encendida: se pide al jugar y se suelta en pausa y al salir', asy
   // Salir: jugando solo está PAUSA (suelta); luego SALIR ya no tiene nada que soltar.
   await hold(page, page.getByRole('button', { name: 'PAUSA' }));
   await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
-  await page.locator('.riff-open-toggle').click();
+  await page.locator('.test-room-fretboard .riff-open-toggle').click();
   await expect(page.locator('.riff-panel')).toHaveCount(0);
   await expect.poll(wake).toBe('pedida,soltada,pedida,soltada');
 });
@@ -2145,12 +2145,12 @@ test('volumen de la partida: 0 calla, el centro es el de siempre, 200 % sube y s
     await slider.fill(value);
     const start = page.locator('.riff-action-start');
     await start.click();
-    await expect(page.locator('.riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 15000 });
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', /countin|playing/, { timeout: 15000 });
     await page.evaluate(() => { (window as unknown as { __peak: number }).__peak = 0; });
     await page.waitForTimeout(4000);
     const peak = await page.evaluate(() => (window as unknown as { __peak: number }).__peak);
     await page.keyboard.press('Space');
-    await expect(page.locator('.riff-stage')).toHaveAttribute('data-status', 'paused');
+    await expect(page.locator('.test-room-fretboard .riff-stage')).toHaveAttribute('data-status', 'paused');
     await page.waitForTimeout(400);
     return peak;
   };
@@ -2255,4 +2255,81 @@ test('se recuerda el instrumento: la batería elegida vuelve al recargar y en ot
   await page.reload();
   await openGame(page);
   await expect(page.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Guitarra rítmica/, { timeout: 10000 });
+});
+
+// TECLADO jugable (keys.ts, usuario 2026-11-18): una pista de piano se toca en un teclado dibujado sobre el
+// mástil; blancas abajo (rojo), negras arriba (verde); teclas del MiniKeyboard llevadas a la octava del nivel.
+test.describe('teclado jugable', () => {
+  test.use({ hasTouch: false });
+  test('Pistas → Teclado: 4 niveles, teclado dibujado, Z = Do, ShiftIzq/BloqMayús en Avanzado y aciertos', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(URL);
+    await openGame(page);
+    await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();
+    await page.getByRole('button', { name: 'Buscar mis canciones', exact: true }).click();
+    await page.getByTestId('local-song-files').setInputFiles([{ name: 'teclado-prueba.musicxml', mimeType: 'application/xml', buffer: fs.readFileSync('tests/fixtures/teclado-prueba.musicxml') }]);
+    await page.locator('.riff-dd-menu').getByRole('button', { name: 'teclado-prueba', exact: true }).click();
+    await expect(page.locator('.riff-dd-toggle[aria-label^="Canción"]')).toHaveAttribute('aria-label', /teclado-prueba/, { timeout: 30000 });
+    await choose(page, 'Pistas', 'Teclado');
+    const neck = page.locator('.test-room-fretboard svg.reduced-fretboard');
+    await expect(neck.locator('.riff-keys-neck')).toBeVisible({ timeout: 10000 });
+    await expect(neck.locator('.reduced-string')).toHaveCount(0);
+    // Principiante: Do4-Do5 = 13 teclas, 8 blancas con su nombre debajo.
+    await expect(neck.locator('.riff-keys-neck [data-key]')).toHaveCount(13);
+    await expect(neck.locator('.reduced-fret-number')).toHaveText(['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Si', 'Do']);
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    const keys = page.locator('.riff-dd-menu').getByRole('group', { name: 'Teclado' });
+    await expect(keys.locator('.riff-chip')).toHaveText(['Principiante', 'Fácil', 'Medio', 'Avanzado']);
+    await expect(page.locator('.riff-dd-menu').getByRole('group', { name: 'Modo cuerdas' })).toHaveCount(0);
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    // Z = Do (la primera blanca), S = Do# (la primera negra); a la vez, dos teclas encendidas.
+    await page.locator('.test-room-fretboard .midi-kb-toggle').click();
+    await page.keyboard.down('KeyZ');
+    await page.keyboard.down('KeyS');
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveCount(2);
+    expect(await neck.locator('.riff-key-glow[data-on="true"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-key')).sort())).toEqual(['60', '61']);
+    await page.keyboard.up('KeyS');
+    await page.keyboard.up('KeyZ');
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveCount(0);
+    // Fila aguda (usuario, 2026-11-18): la E (Mi5) se ve en la tecla Mi del trozo.
+    await page.keyboard.down('KeyE');
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveAttribute('data-key', '64');
+    await page.keyboard.up('KeyE');
+    // Avanzado: La3-Fa5 (21 teclas); ShiftIzq = La3 y BloqMayús = La#3.
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    await keys.getByRole('button', { name: 'Avanzado', exact: true }).click();
+    await expect(neck.locator('.riff-keys-neck [data-key]')).toHaveCount(21);
+    await page.keyboard.down('ShiftLeft');
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveAttribute('data-key', '57');
+    await page.keyboard.up('ShiftLeft');
+    await page.keyboard.down('CapsLock');
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveAttribute('data-key', '58');
+    await page.keyboard.up('CapsLock');
+    // El ratón: la negra arriba, la blanca abajo.
+    const black = neck.locator('.riff-keys-neck [data-key="61"] rect').first();
+    const box = (await black.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + 10);
+    await page.mouse.down();
+    await expect(neck.locator('.riff-key-glow[data-on="true"]')).toHaveAttribute('data-key', '61');
+    await page.mouse.up();
+    // Paso a paso en Principiante: las notas cuentan.
+    await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
+    await keys.getByRole('button', { name: 'Principiante', exact: true }).click();
+    await choose(page, 'Ritmo', 'Paso a paso');
+    await page.locator('.riff-actions').scrollIntoViewIfNeeded();
+    await page.getByRole('button', { name: 'Empezar' }).click();
+    const stage = page.locator('.test-room-fretboard .riff-stage');
+    await expect(stage).toHaveAttribute('data-status', 'playing', { timeout: 15000 });
+    // La primera nota es Do4: la Q (Do5, fila aguda) no vale aunque se ilumine el mismo Do (nota exacta).
+    await page.keyboard.press('KeyQ');
+    await page.waitForTimeout(150);
+    expect(Number(await stage.getAttribute('data-hits'))).toBe(0);
+    for (const key of ['KeyZ', 'KeyX', 'KeyC', 'KeyV']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(120);
+    }
+    expect(Number(await stage.getAttribute('data-hits'))).toBeGreaterThanOrEqual(3);
+    // Se recuerda el instrumento: al volver a cargar, sigue en Teclado... con otra canción sin teclado, la de siempre.
+    expect(await page.evaluate(() => localStorage.getItem('riff-ultimo-instrumento'))).toBe('keys');
+  });
 });

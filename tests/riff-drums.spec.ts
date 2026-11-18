@@ -271,3 +271,29 @@ test('sonidos: 6 sonidos por General MIDI y su grupo de 3 en los controles de la
   expect([36, 38, 41, 48, 49, 42, 46].map(drumSoundOfMidi)).toEqual(['kick', 'snare', 'tomLow', 'tomHigh', 'crash', 'cymbal', 'cymbal']);
   expect((['kick', 'snare', 'cymbal', 'crash', 'tomLow', 'tomHigh'] as const).map(threePadSound)).toEqual(['kick', 'snare', 'cymbal', 'cymbal', 'kick', 'snare']);
 });
+
+// Notas con la forma de su pieza (usuario, 2026-11-18): bombo = círculo, platos = elipse con campana, caja y
+// toms = cilindro; y TODAS centradas en la misma y (la del carril): el dibujo cambia, la altura de caída no.
+test('notas con forma: cada pad su pieza, todas centradas en la línea de siempre', async () => {
+  const { drumGemKind, drumGemPath } = await import('../app/lib/riff/drumGems');
+  const y = 100;
+  for (const pad of [KICK, HIHAT, SNARE, HIGH_TOM, LOW_TOM, CRASH]) {
+    const extents: number[] = [];
+    const rec = {
+      beginPath() {}, closePath() {}, moveTo() {}, lineTo(_x: number, py: number) { extents.push(py); },
+      ellipse(_x: number, ey: number, _rx: number, ry: number) { extents.push(ey - ry, ey + ry); },
+    };
+    const out = drumGemPath(rec, pad, 50, y, 40, 20, 19);
+    expect(out.kind).toBe(drumGemKind(pad));
+    // Centrada: lo que sube por arriba es lo que baja por abajo.
+    expect(Math.abs((Math.min(...extents) + Math.max(...extents)) / 2 - y), `pad ${pad}`).toBeLessThan(0.01);
+  }
+  expect([KICK, HIHAT, SNARE, HIGH_TOM, LOW_TOM, CRASH].map(drumGemKind)).toEqual(['kick', 'cymbal', 'drum', 'drum', 'drum', 'cymbal']);
+});
+
+test('bombos detrás: siluetas de las otras 5 piezas para recortar su marca', async () => {
+  const { drumOccluders } = await import('../app/components/guitar/riff/DrumKitNeck');
+  const g = { cx: (pad: number) => 64 + pad * 128, colWidth: 128, left: 0, right: 768, top: 28, height: 158, hitY: 107, touch: false };
+  const shapes = drumOccluders(g);
+  expect(shapes.map((s) => s.kind)).toEqual(['cylinder', 'cylinder', 'cylinder', 'ellipse', 'ellipse']);
+});

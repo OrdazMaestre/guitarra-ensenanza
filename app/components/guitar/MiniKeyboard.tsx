@@ -1,5 +1,6 @@
 'use client';
 
+import { isLatchingQuirk, LATCH_RELEASE_MS, PIANO_KEYMAP } from '@/app/lib/pianoKeymap';
 import { useEffect, useRef, useState } from 'react';
 import { playNote, preloadSamples, releaseNote, switchNote } from '@/app/lib/guitarAudioEngine';
 import { useMetronome } from '@/app/lib/useMetronome';
@@ -66,22 +67,8 @@ const KEY_Y = 10;
 // KeyL/Semicolon/Enter sharps for the same reason. Backspace fills the last
 // natural pair's sharp (G#) since there's no digit-row key past Equal to
 // align with Backslash.
-const KB_KEYMAP: Record<string, number> = {
-  // Grave: naturals
-  'IntlBackslash': 59,
-  'KeyZ': 60, 'KeyX': 62, 'KeyC': 64, 'KeyV': 65, 'KeyB': 67,
-  'KeyN': 69, 'KeyM': 71, 'Comma': 72, 'KeyL': 73, 'Period': 74, 'Semicolon': 75, 'Slash': 76,
-  'ShiftRight': 77,
-  // Grave: sharps/flats
-  'KeyS': 61, 'KeyD': 63, 'KeyG': 66, 'KeyH': 68, 'KeyJ': 70,
-  'Enter': 78,
-  // Agudo: naturals (C5..A6, first 4 overlap grave's Comma/Period/Slash/ShiftRight)
-  'KeyQ': 72, 'KeyW': 74, 'KeyE': 76, 'KeyR': 77, 'KeyT': 79, 'KeyY': 81, 'KeyU': 83,
-  'KeyI': 84, 'KeyO': 86, 'KeyP': 88, 'BracketLeft': 89, 'BracketRight': 91, 'Backslash': 93,
-  // Agudo: sharps/flats (Digit2/3/5 overlap grave's KeyL/Semicolon/Enter)
-  'Digit2': 73, 'Digit3': 75, 'Digit5': 78, 'Digit6': 80, 'Digit7': 82,
-  'Digit9': 85, 'Digit0': 87, 'Equal': 90, 'Backspace': 92,
-};
+// El mapa vive en app/lib/pianoKeymap.ts (lo comparte el teclado jugable de Riff-Hero, keys.ts).
+const KB_KEYMAP = PIANO_KEYMAP;
 
 interface Props {
   className?: string;
@@ -246,7 +233,17 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
 
   useEffect(() => {
     if (!kbMode) return;
+    // BloqMayús en Mac: cada pulsación llega como keydown O keyup (encender/apagar), nunca las dos. Ahí
+    // cuenta como una pulsación corta que se suelta sola (pianoKeymap.ts).
+    function latchPress(e: KeyboardEvent) {
+      press(e);
+      window.setTimeout(() => release(e.code), LATCH_RELEASE_MS);
+    }
     function down(e: KeyboardEvent) {
+      if (isLatchingQuirk(e.code)) { e.preventDefault(); latchPress(e); return; }
+      press(e);
+    }
+    function press(e: KeyboardEvent) {
       e.preventDefault();
       if (e.repeat || kbVoiceMapRef.current.has(e.code)) return;
       const midi = KB_KEYMAP[e.code];
@@ -261,8 +258,12 @@ export default function MiniKeyboard({ className, showEnharmonics, showScaleArro
     }
     function up(e: KeyboardEvent) {
       e.preventDefault();
-      const id = kbVoiceMapRef.current.get(e.code) ?? -1;
-      kbVoiceMapRef.current.delete(e.code);
+      if (isLatchingQuirk(e.code)) { latchPress(e); return; }
+      release(e.code);
+    }
+    function release(code: string) {
+      const id = kbVoiceMapRef.current.get(code) ?? -1;
+      kbVoiceMapRef.current.delete(code);
       if (id >= 0) releaseNote(id);
       syncPressedMidis();
       setKbGhostWarn(kbVoiceMapRef.current.size >= 2);

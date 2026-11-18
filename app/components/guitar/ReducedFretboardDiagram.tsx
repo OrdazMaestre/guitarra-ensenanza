@@ -2,6 +2,11 @@
 import { type MutableRefObject, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getAudioCurrentTime, type GuitarTone, playDrumPad, playNote, preloadSamples, releaseNote, switchNote, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import DrumKitNeck, { DrumHits, DrumHitStyles, type DrumNeckGeometry } from './riff/DrumKitNeck';
+import KeysNeck, { keyAt, KeysHits, KeysHitStyles, keyRect, type KeysNeckGeometry } from './riff/KeysNeck';
+
+const SPANISH_NOTE_NAMES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+import { isLatchingQuirk, LATCH_RELEASE_MS, PIANO_KEYMAP, PIANO_TREBLE_CODES } from '@/app/lib/pianoKeymap';
+import { isBlackKey } from '@/app/lib/riff/keys';
 
 // Batería (usuario, 2026-11-16): en pantallas anchas el mástil no pasa de este ancho, centrado; con 6 columnas
 // a todo lo ancho los tambores salían demasiado estirados. La autopista sigue sus bordes (getScreenCTM).
@@ -29,6 +34,7 @@ const NO_SONGS: SongEntry[] = [];
 import { NoteMarksOverlay, PaletteToggleButton } from './NoteMarksOverlay';
 import { HandednessToggleButton, KeyboardLeftyNote } from './HandednessToggleButton';
 import { laneAt, laneRows } from '@/app/lib/riff/lanes';
+import { RIFF_STRING_COLORS } from '@/app/lib/riff/colors';
 import { laneSpeedFactor, stretchesLane } from '@/app/lib/riff/levels';
 import { RIFF_TUTORIAL } from './riff/riffTutorial';
 import { COUNTDOWN_PHRASES, EXPERTO_PHRASES } from '@/app/lib/riff/phrases';
@@ -52,6 +58,11 @@ const OPEN_STRING_MIDI: Record<number, number> = {
 // chart.ts), una octava por debajo de la guitarra y afinado en Mi: E1 A1 D2 G2.
 const BASS_OPEN_MIDI: Record<number, number> = { 3: 43, 4: 38, 5: 33, 6: 28 };
 const BASS_STRINGS = [3, 4, 5, 6];
+// Sus filas: las mismas que las 4 cuerdas del nivel Difícil (lanes.ts: centradas en el mástil, usuario
+// 2026-11-18); en el tema oscuro de la Sala, con sus colores (RIFF_STRING_COLORS de 6 a 3).
+const BASS_LANES = laneRows(BASS_STRINGS);
+// Grosor de sus cuerdas (las de la guitarra, 3).
+const BASS_STRING_WIDTH = 5;
 const GUITAR_STRINGS = [1, 2, 3, 4, 5, 6];
 // Clave del instrumento recordado, la misma que la partida (useRiffController).
 const NECK_INSTRUMENT_STORAGE_KEY = 'riff-ultimo-instrumento';
@@ -197,6 +208,9 @@ interface ReducedFretboardDiagramProps {
   instrument?: 'guitar' | 'drums';
   // Selector Guitarra / Bajo en la barra (Sala de pruebas): el bajo de 4 cuerdas, con el sonido del bajo.
   instrumentChoice?: boolean;
+  // Solo en el TEMA OSCURO (usuario, 2026-11-18, Sala de pruebas): el mástil con el aspecto de la partida de
+  // Riff-Hero (madera oscura, trastes, cejuela y puntos amarillos con brillo, cuerdas en sus colores del juego).
+  darkGameLook?: boolean;
 }
 
 const romanFretLabels: Record<number, string> = {
@@ -262,7 +276,7 @@ const TALL_NECK_SCREEN = 0.4;
 // Por debajo de este ancho de ventana el escenario del juego llega a los bordes también con ratón.
 const BLEED_MAX_VIEWPORT = 1000;
 
-export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret, instrument = 'guitar', instrumentChoice = false }: ReducedFretboardDiagramProps) {
+export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allowTuning, ariaLabel, fretLabels, fretLabelsAbove, geometryRef, guideDots = [], notes, onNoteEvent, practiceExercises, riffGame, startFret, tutorial = true, endFret: fullEndFret, instrument = 'guitar', instrumentChoice = false, darkGameLook = false }: ReducedFretboardDiagramProps) {
   // Juego tipo Rocksmith (prop `riffGame`). `gameOpen` = JUGAR activado (autopista visible); la
   // partida en sí la arranca "Empezar". El mástil ocupa siempre lo mismo en pantalla; en los niveles
   // de 6 trastes (0-5) se ESTIRA en el eje X (decisión del usuario): solo se dibujan esos trastes y
@@ -291,7 +305,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   };
   const riffCore = useRiffController({
     source: song?.source, initialTrack: song?.initialTrack, trackRoles: song?.trackRoles, startFret, endFret: fullEndFret, measureRef: stageRef, heldRef: heldPositionsRef,
-    kind: instrument === 'drums' ? 'drums' : instrumentChoice ? neckChoice : undefined,
+    // El selector solo manda con Bajo o si se ha elegido Guitarra a mano; si no, el instrumento recordado de la
+    // partida (que también puede ser la batería o la otra guitarra).
+    kind: instrument === 'drums' ? 'drums' : instrumentChoice && (neckChoice === 'bass' || pickedNeck === 'guitar') ? neckChoice : undefined,
     remember: instrument !== 'drums',
   });
   // Elegir pista en Tocas pone el selector en su instrumento (la batería no está en el selector).
@@ -301,17 +317,23 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         setTrackIndex: (index: number) => {
           riffCore.setTrackIndex(index);
           const kind = riffCore.tracks.find((track) => track.index === index)?.kind ?? 'guitar';
-          if (kind !== 'drums') setPickedNeck(kind);
+          if (kind === 'guitar' || kind === 'bass') setPickedNeck(kind);
         },
       }
     : riffCore;
-  const chartKind = riffGame && gameOpen && riff.chart ? (riff.chart.kit === 'drums' ? 'drums' : riff.chart.bass ? 'bass' : 'guitar') : null;
-  const instrumentNow: 'guitar' | 'bass' | 'drums' = instrument === 'drums' ? 'drums' : chartKind ?? neckChoice;
+  const chartKind = riffGame && gameOpen && riff.chart ? (riff.chart.kit === 'drums' ? 'drums' : riff.chart.kit === 'keys' ? 'keys' : riff.chart.bass ? 'bass' : 'guitar') : null;
+  const instrumentNow: 'guitar' | 'bass' | 'drums' | 'keys' = instrument === 'drums' ? 'drums' : chartKind ?? neckChoice;
   const bassNeck = instrumentNow === 'bass';
+  // TECLADO (keys.ts, usuario 2026-11-18): con JUGAR y una pista de piano/órgano/sinte el mástil es un
+  // teclado (KeysNeck), una columna por semitono del nivel. Se toca como la batería: cada tecla o dedo es
+  // su propio golpe, sin hammer ni pull-off. El zurdo no lo refleja (un piano no se da la vuelta).
+  const keysRule = instrumentNow === 'keys' ? riff.profile?.keys ?? null : null;
+  const keysKit = keysRule !== null;
   const bassRef = useRef(bassNeck);
   useEffect(() => { bassRef.current = bassNeck; }, [bassNeck]);
   const fullFretCount = startFret === 0 ? fullEndFret : fullEndFret - startFret + 1;
-  const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && riff.profile.maxFret < fullEndFret ? riff.profile.maxFret : null;
+  // Teclado (keys.ts): una columna por tecla, también si son más que los trastes del mástil (Avanzado: 21).
+  const stretchTo = riffGame && gameOpen && startFret === 0 && riff.profile && (riff.profile.maxFret < fullEndFret || riff.profile.keys) ? riff.profile.maxFret : null;
   const endFret = stretchTo ?? fullEndFret;
   const fretCount = startFret === 0 ? endFret : endFret - startFret + 1;
   // Modo afinar (opt-in vía `allowTuning`): despliega una clavija por cuerda a la izquierda del
@@ -384,7 +406,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
   // ajeno a la mano -- ver el comentario en `getPos` para el lado simétrico (puntero -> lógico).
   const [lefty, setLefty] = useState(false);
   const centerX = (boardLeftEdge + boardX + fretCount * fretWidth) / 2;
-  const drawX = (x: number) => (lefty ? 2 * centerX - x : x);
+  const drawX = (x: number) => (lefty && !keysKit ? 2 * centerX - x : x);
   const fretX = (fret: number) => drawX(fretMarkerX(boardX, fretWidth, startFret, fret, openWidth));
   // La batería suelta no lleva números romanos (no hay trastes): solo los números 0-5 debajo.
   const allRomanFrets = instrument === 'drums' ? [] : Object.keys(romanFretLabels)
@@ -440,12 +462,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       setCents(centsForPreset({ id: 'song', label: '', shiftSemitones: songTuningShift }));
     }
   }
-  // Bajo: sus 4 cuerdas (6-3) repartidas por la misma altura de mástil.
-  const bassRowGap = boardHeight / 3;
+  // Bajo: sus 4 cuerdas (6-3) en las filas de las 4 cuerdas de Difícil (BASS_LANES).
+  const rowY = (row: number) => boardY + (row - 1) * stringGap;
   const neckStrings = bassNeck ? BASS_STRINGS : GUITAR_STRINGS;
-  const stringY = (string: number) => (bassNeck
-    ? boardY + (Math.min(6, Math.max(3, string)) - 3) * bassRowGap
-    : boardY + (string - 1) * stringGap);
+  const stringY = (string: number) => (bassNeck ? rowY(BASS_LANES.get(string) ?? 3.5) : rowY(string));
   // Altura a la que caen las notas del juego (lanes.ts, decisión del usuario): en Experto, su
   // cuerda real; en el resto de niveles, sus cuerdas repartidas por el centro del mástil (los dos Mi
   // quedan para Experto). Mientras se juega (o en pausa) el mástil se TOCA igual: cada cuerda del
@@ -515,6 +535,42 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     kbMarksRef.current?.([]);
     ptMarksRef.current?.([]);
   }, [drumKit]);
+  // Teclado: tecla física -> columna, puntero -> columna, y la voz que suena fuera de partida.
+  const keysKitRef = useRef<{ low: number; high: number } | null>(null);
+  useEffect(() => {
+    keysKitRef.current = keysRule ? { low: keysRule.low, high: keysRule.high } : null;
+  }, [keysRule]);
+  const keysKeysRef = useRef(new Map<string, number>());
+  const keysPtRef = useRef(new Map<number, number>());
+  const keysVoiceRef = useRef(new Map<string, number>());
+  const syncKeysMarks = useCallback(() => {
+    const all = [...new Set([...keysKeysRef.current.values(), ...keysPtRef.current.values()])].map((fret) => ({ string: 6, fret }));
+    kbMarksRef.current?.(all);
+    ptMarksRef.current?.(all);
+  }, []);
+  // Suena (fuera de partida, o en pausa) con la voz del MiniKeyboard; jugando, `gain` es 0.
+  const startKeyVoice = useCallback((id: string, midi: number, gain: number) => {
+    const level = volumeRef.current * gain;
+    if (level <= 0) return;
+    void playNote(midi, true, level).then((voice) => {
+      const old = keysVoiceRef.current.get(id);
+      if (old !== undefined && old >= 0) releaseNote(old);
+      if (voice >= 0) keysVoiceRef.current.set(id, voice);
+    });
+  }, []);
+  const stopKeyVoice = useCallback((id: string) => {
+    const voice = keysVoiceRef.current.get(id);
+    keysVoiceRef.current.delete(id);
+    if (voice !== undefined && voice >= 0) releaseNote(voice);
+  }, []);
+  useEffect(() => {
+    keysKeysRef.current.clear();
+    keysPtRef.current.clear();
+    for (const voice of keysVoiceRef.current.values()) if (voice >= 0) releaseNote(voice);
+    keysVoiceRef.current.clear();
+    kbMarksRef.current?.([]);
+    ptMarksRef.current?.([]);
+  }, [keysKit]);
   const syncDrumMarks = useCallback(() => {
     kbMarksRef.current?.([...new Set(drumKeysRef.current.values())].map((fret) => ({ string: 6, fret })));
     ptMarksRef.current?.([...new Set(drumPtRef.current.values())].map((fret) => ({ string: 6, fret })));
@@ -711,6 +767,9 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       }
       // Batería: los pads pulsados (cuerdas libres: basta el traste).
       for (const fret of new Set([...drumKeysRef.current.values(), ...drumPtRef.current.values()])) held.push({ string: 6, fret });
+      // Teclado: las teclas pulsadas (blancas en la 6, negras en la 5).
+      const keys = keysKitRef.current;
+      if (keys) for (const fret of new Set([...keysKeysRef.current.values(), ...keysPtRef.current.values()])) held.push({ string: isBlackKey(keys.low + fret) ? 5 : 6, fret });
       return held;
     };
   }, []);
@@ -775,6 +834,13 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
     async function down(e: KeyboardEvent) {
       e.preventDefault();
+      // Teclado (keys.ts): las teclas del MiniKeyboard (pianoKeymap.ts), llevadas a la octava del nivel.
+      // BloqMayús en Mac llega "enganchada" (solo keydown o solo keyup): cada evento, una pulsación corta.
+      if (keysKitRef.current) {
+        if (isLatchingQuirk(e.code)) latchKey(e);
+        else keyPress(e);
+        return;
+      }
       if (e.repeat || kbKeysHeldRef.current.has(e.code) || drumKeysRef.current.has(e.code)) return;
       // Batería: la tecla de la columna 0-5 de CUALQUIER fila es un golpe de ese pad, independiente. Zurdo: la
       // columna espejo (5 - columna). El mapa zurdo de la guitarra no vale aquí: lleva Z al traste 10.
@@ -818,8 +884,41 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         }
       }
     }
+    function keyPress(e: KeyboardEvent) {
+      const keys = keysKitRef.current;
+      if (!keys || e.repeat || keysKeysRef.current.has(e.code)) return;
+      let midi = PIANO_KEYMAP[e.code];
+      if (midi === undefined) return;
+      // Fila aguda (Q y números): vale por su NOTA EXACTA (la que suena), para gente pro; se ilumina la tecla
+      // del trozo donde cae. Filas A y Z: la tecla del trozo, como siempre.
+      const exactMidi = PIANO_TREBLE_CODES.has(e.code) ? midi : undefined;
+      while (midi > keys.high) midi -= 12;
+      while (midi < keys.low) midi += 12;
+      if (midi > keys.high) return;
+      const fret = midi - keys.low;
+      keysKeysRef.current.set(e.code, fret);
+      setKbGhostWarn(keysKeysRef.current.size >= 3);
+      syncKeysMarks();
+      const gain = emitNoteEvent({ string: isBlackKey(midi) ? 5 : 6, fret, kind: 'pluck', timeStamp: e.timeStamp, ...(exactMidi !== undefined ? { exactMidi } : {}) });
+      startKeyVoice(`k:${e.code}`, exactMidi ?? midi, gain);
+    }
+    function keyRelease(code: string) {
+      if (!keysKeysRef.current.delete(code)) return;
+      setKbGhostWarn(keysKeysRef.current.size >= 3);
+      syncKeysMarks();
+      stopKeyVoice(`k:${code}`);
+    }
+    function latchKey(e: KeyboardEvent) {
+      keyPress(e);
+      window.setTimeout(() => keyRelease(e.code), LATCH_RELEASE_MS);
+    }
     async function up(e: KeyboardEvent) {
       e.preventDefault();
+      if (keysKitRef.current) {
+        if (isLatchingQuirk(e.code)) latchKey(e);
+        else keyRelease(e.code);
+        return;
+      }
       if (drumKeysRef.current.delete(e.code)) {
         setKbGhostWarn(drumKeysRef.current.size >= 3);
         syncDrumMarks();
@@ -855,10 +954,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       kbStringVoiceRef.current.clear();
       kbKeysHeldRef.current.clear();
       drumKeysRef.current.clear();
+      for (const code of keysKeysRef.current.keys()) stopKeyVoice(`k:${code}`);
+      keysKeysRef.current.clear();
       kbMarksRef.current?.([]);
       setKbGhostWarn(false);
     };
-  }, [kbMode, kbRange, lefty, emitNoteEvent, playDrumHit, syncDrumMarks, bassNeck, drumKit]);
+  }, [kbMode, kbRange, lefty, emitNoteEvent, playDrumHit, syncDrumMarks, bassNeck, drumKit, keysKit, syncKeysMarks, startKeyVoice, stopKeyVoice]);
 
   function getPos(e: React.PointerEvent<SVGSVGElement>, held?: { string: number; fret: number } | null): { string: number; fret: number } | null {
     const svg = svgRef.current;
@@ -872,17 +973,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const x = drawX(coords.x);
     const { y } = coords;
 
-    // Bajo (fuera de la partida en curso): 4 filas, cuerdas 3-6.
-    const bassRows = bassNeck && !liveLanes;
-    const rowGap = bassRows ? bassRowGap : stringGap;
-    const halfGap = rowGap / 2;
+    // Bajo (fuera de la partida en curso): sus 4 filas, como los carriles de Difícil.
+    const touchLanes = liveLanes ?? (bassNeck ? BASS_LANES : null);
+    const halfGap = stringGap / 2;
     if (y < boardY - halfGap || y > boardY + boardHeight + halfGap) return null;
     const row = (y - boardY) / stringGap + 1;
-    const string = liveLanes
-      ? laneAt(liveLanes, row)
-      : bassRows
-        ? 3 + Math.max(0, Math.min(3, Math.round((y - boardY) / bassRowGap)))
-        : Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
+    const string = touchLanes
+      ? laneAt(touchLanes, row)
+      : Math.max(1, Math.min(6, Math.round((y - boardY) / stringGap) + 1));
 
     let fret: number;
     if (x < boardX) {
@@ -896,12 +994,12 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
 
     if (!held) return { string, fret };
     const EXP = 0.18;
-    const rawSF = (y - boardY) / rowGap;
+    const rawSF = (y - boardY) / stringGap;
     const rawFF = (x - boardX) / fretWidth;
-    const heldLane = liveLanes?.get(held.string);
-    const rStr = liveLanes
-      ? (heldLane !== undefined && Math.abs(row - heldLane) <= Math.abs(row - liveLanes.get(string)!) + EXP ? held.string : string)
-      : (Math.abs(rawSF - (held.string - (bassRows ? 3 : 1))) < 0.5 + EXP ? held.string : string);
+    const heldLane = touchLanes?.get(held.string);
+    const rStr = touchLanes
+      ? (heldLane !== undefined && Math.abs(row - heldLane) <= Math.abs(row - touchLanes.get(string)!) + EXP ? held.string : string)
+      : (Math.abs(rawSF - (held.string - 1)) < 0.5 + EXP ? held.string : string);
     const heldCol = startFret === 0 ? held.fret - 1 : held.fret - startFret;
     const rFret = held.fret === 0 ? (rawFF < EXP ? 0 : fret) : (Math.abs(rawFF - (heldCol + 0.5)) < 0.5 + EXP ? held.fret : fret);
     return { string: rStr, fret: rFret };
@@ -936,6 +1034,16 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const svg = svgRef.current;
     if (!svg) return;
     svg.setPointerCapture(e.pointerId);
+    // Teclado: la tecla bajo el dedo (las negras, arriba), cada dedo un golpe propio.
+    if (keysGeo && keysKitRef.current) {
+      const fret = keyUnder(e);
+      if (fret === null) return;
+      keysPtRef.current.set(e.pointerId, fret);
+      syncKeysMarks();
+      const midi = keysKitRef.current.low + fret;
+      startKeyVoice(`p:${e.pointerId}`, midi, emitNoteEvent({ string: isBlackKey(midi) ? 5 : 6, fret, kind: 'pluck', timeStamp: e.timeStamp }));
+      return;
+    }
     // Batería: cada dedo, un golpe propio en la columna que toca (vale cualquier fila).
     if (drumKitRef.current) {
       if (pos.fret > 5) return;
@@ -971,7 +1079,27 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       }
     }
   }
+  // Teclado: qué tecla hay bajo el puntero (KeysNeck.keyAt).
+  function keyUnder(e: React.PointerEvent<SVGSVGElement>): number | null {
+    const svg = svgRef.current;
+    if (!svg || !keysGeo) return null;
+    const coords = getSvgCoords(e, svg);
+    return coords ? keyAt(coords.x, coords.y, keysGeo) : null;
+  }
   async function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    // Teclado: arrastrar a otra tecla es un SLIDE desde la anterior (solo cuenta a la vecina).
+    const keyFrom = keysPtRef.current.get(e.pointerId);
+    if (keyFrom !== undefined && keysKitRef.current) {
+      const fret = keyUnder(e);
+      if (fret === null || fret === keyFrom) return;
+      keysPtRef.current.set(e.pointerId, fret);
+      syncKeysMarks();
+      const low = keysKitRef.current.low;
+      const midi = low + fret;
+      stopKeyVoice(`p:${e.pointerId}`);
+      startKeyVoice(`p:${e.pointerId}`, midi, emitNoteEvent({ string: isBlackKey(midi) ? 5 : 6, fret, kind: 'slide', from: { string: isBlackKey(low + keyFrom) ? 5 : 6, fret: keyFrom }, timeStamp: e.timeStamp }));
+      return;
+    }
     // Batería: arrastrar a otra columna es un SLIDE desde la anterior (solo cuenta a la vecina).
     const drumFrom = drumPtRef.current.get(e.pointerId);
     if (drumFrom !== undefined) {
@@ -1055,6 +1183,11 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
   }
   async function onPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (keysPtRef.current.delete(e.pointerId)) {
+      syncKeysMarks();
+      stopKeyVoice(`p:${e.pointerId}`);
+      return;
+    }
     if (drumPtRef.current.delete(e.pointerId)) {
       syncDrumMarks();
       return;
@@ -1183,6 +1316,8 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     return riffStats.subscribe(write);
   }, [riffStats, showStats]);
 
+  // Unidades del viewBox por píxel de pantalla de la batería (con el ancho real del mástil).
+  const drumUnitsPerPx = viewBoxWidth / Math.max(1, Math.min((riff.hostWidth ?? DRUM_NECK_MAX_PX) * svgWidthPercent / 100, DRUM_NECK_MAX_PX));
   // Batería: el mástil dibujado como una batería (DrumKitNeck), con la línea de golpe donde caen las notas.
   const drumGeo: DrumNeckGeometry | null = drumKit
     ? {
@@ -1198,7 +1333,21 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         // Bombos ENTEROS (usuario, 2026-11-16): se salen del mástil por abajo y quedan DETRÁS de la barra
         // MIDI, sin bajarla: como mucho hasta el fondo de la barra (DRUM_KICK_OVERHANG_PX bajo el <svg>,
         // pasado a unidades del viewBox con el ancho real del mástil).
-        maxBottom: viewBoxHeight + DRUM_KICK_OVERHANG_PX * viewBoxWidth / Math.max(1, Math.min((riff.hostWidth ?? DRUM_NECK_MAX_PX) * svgWidthPercent / 100, DRUM_NECK_MAX_PX)),
+        maxBottom: viewBoxHeight + DRUM_KICK_OVERHANG_PX * drumUnitsPerPx,
+        unitsPerPx: drumUnitsPerPx,
+      }
+    : null;
+
+  // Teclado: el mástil dibujado como un teclado (KeysNeck), una columna por semitono.
+  const keysGeo: KeysNeckGeometry | null = keysRule && gameLayout
+    ? {
+        colLeft: (fret: number) => boardLeftEdge + fret * fretWidth,
+        colWidth: fretWidth,
+        drawX,
+        top: boardY,
+        height: boardHeight,
+        low: keysRule.low,
+        count: keysRule.high - keysRule.low + 1,
       }
     : null;
 
@@ -1207,7 +1356,10 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     const geometry: FretboardGeometry = {
       svg: svgRef.current,
       fretX,
-      stringY,
+      // Las filas del mástil de 6 (la 1 y la 6 son sus bordes): la autopista saca de ahí la tabla. Con el bajo
+      // sus cuerdas van centradas (stringY), pero los bordes del mástil son los mismos (usuario, 2026-11-18: con
+      // stringY del bajo, la autopista empezaba a media altura del mástil).
+      stringY: rowY,
       laneY,
       fretLineXs: Array.from({ length: fretCount + 1 }, (_, index) => drawX(boardX + index * fretWidth)),
       openColumn: openWidth === null ? undefined : [drawX(boardLeftEdge), drawX(boardX)],
@@ -1232,9 +1384,22 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     }
   );
 
+  // Teclado: bajo cada tecla BLANCA, su nombre (Do, Re, Mi...) en vez del número de traste.
+  const keyNames = showFretNumbers && keysGeo && Array.from({ length: keysGeo.count }, (_, fret) => fret)
+    .filter((fret) => !isBlackKey(keysGeo.low + fret))
+    .map((fret) => {
+      const r = keyRect(fret, keysGeo);
+      return (
+        <text className="reduced-fret-number" key={`keyname-${fret}`} x={r.x + r.w / 2} y={bottomLabelY}>
+          {SPANISH_NOTE_NAMES[(keysGeo.low + fret) % 12]}
+        </text>
+      );
+    });
+
   function interactionOverlay(posList: MarkPos[]) {
     // Batería: siempre montada (los velos pálidos y la línea de golpe); golpear solo cambia `data-on`.
     if (drumGeo) return <DrumHits g={drumGeo} on={new Set(posList.map((p) => p.fret))} />;
+    if (keysGeo) return <KeysHits g={keysGeo} on={new Set(posList.map((p) => p.fret))} />;
     if (posList.length === 0) return null;
     return (
       <>
@@ -1322,7 +1487,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
     <div className={`reduced-fretboard-wrap${drumKit ? ' riff-drum-wrap' : ''}`} ref={scrollRef}>
     <svg
       ref={svgRef}
-      className={`reduced-fretboard${drumKit ? ' riff-drum-neck' : ''}`}
+      className={`reduced-fretboard${drumKit ? ' riff-drum-neck' : ''}${instrument === 'drums' && !gameOpen ? ' riff-drum-standalone' : ''}${darkGameLook && !drumKit ? ' dark-game-look' : ''}`}
       viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
       role="img"
       aria-label={ariaLabel}
@@ -1337,10 +1502,19 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       onTouchEnd={(e) => { if (e.cancelable) e.preventDefault(); }}
     >
       {drumGeo && <><DrumHitStyles /><DrumKitNeck g={drumGeo} /></>}
-      {!drumGeo && <>
+      {keysGeo && <><KeysHitStyles /><KeysNeck g={keysGeo} /></>}
+      {!drumGeo && !keysGeo && <>
       <rect className="reduced-board-bg" x={boardLeftEdge} y={boardY} width={boardX + boardWidth - boardLeftEdge} height={boardHeight} />
       {neckStrings.map((string) => (
-        <line className="reduced-string" key={`string-${string}`} x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(string)} y2={stringY(string)} />
+        <line
+          className="reduced-string"
+          data-string={string}
+          key={`string-${string}`}
+          // Bajo: cuerdas más gruesas (usuario, 2026-11-18). Su color de juego solo en el tema oscuro de la Sala
+          // (darkGameLook); en claro, grises como las de la guitarra.
+          style={bassNeck ? { strokeWidth: BASS_STRING_WIDTH } : undefined}
+          x1={boardLeftEdge} x2={boardX + boardWidth} y1={stringY(string)} y2={stringY(string)}
+        />
       ))}
       {Array.from({ length: fretCount + 1 }, (_, index) => {
         const isNut = startFret === 0 && index === 0;
@@ -1359,13 +1533,14 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
       })}
       {mergedGuideDots.flatMap((dot): Array<{ fret: number; string?: number }> =>
         dot.fret === 12
-          ? (bassNeck ? [{ fret: 12, string: 3.5 }, { fret: 12, string: 5.5 }] : [{ fret: 12, string: 2 }, { fret: 12, string: 5 }])
+          ? [{ fret: 12, string: 2 }, { fret: 12, string: 5 }]
           : [dot]
       ).map((dot) => (
         <circle
           className="reduced-guide-dot"
           cx={fretX(dot.fret)}
-          cy={stringY(dot.string ?? (bassNeck ? 4.5 : 3.5))}
+          // Las filas de los puntos son de la guitarra (el bajo comparte el centro, 3,5).
+          cy={rowY(bassNeck && dot.string ? (dot.string < 3.5 ? 2.3 : 4.7) : dot.string ?? 3.5)}
           key={`guide-${dot.fret}-${dot.string ?? 'center'}`}
           r="7"
         />
@@ -1409,7 +1584,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
         </text>
       ))}
       {/* También con la batería (usuario, 2026-11-16: números de traste debajo, sin teclas en el dibujo). */}
-      {!drumKit && fretNumbers}
+      {!drumKit && (keyNames || fretNumbers)}
       <NoteMarksOverlay
         endFret={endFret}
         getNoteName={(string, fret) => noteNameForFret(string, fret, cents[string])}
@@ -1555,7 +1730,7 @@ export function ReducedFretboardDiagram({ allowLeftHanded, allowOverdrive, allow
           )}
         </div>
       )}
-      {allowOverdrive && !gamePlayingBar && !bassNeck && (
+      {allowOverdrive && !gamePlayingBar && !bassNeck && !keysKit && (
         <button
           onClick={() => setTone(t => (t === 'clean' ? 'overdrive' : 'clean'))}
           aria-pressed={tone === 'overdrive'}
@@ -1731,6 +1906,50 @@ export function ReducedFretboardStyles() {
 
       html[data-theme='dark'] svg.reduced-fretboard.riff-drum-neck {
         filter: invert(1) hue-rotate(180deg);
+      }
+
+      /* Batería MIDI suelta, sin partida y en el tema CLARO (usuario, 2026-11-18): tabla blanca y cada columna del
+         tono pálido de su color. En el tema oscuro y en partida, la tabla oscura de siempre. */
+      html:not([data-theme='dark']) svg.riff-drum-standalone .riff-drum-board {
+        fill: #ffffff;
+      }
+      html:not([data-theme='dark']) svg.riff-drum-standalone .riff-drum-col {
+        opacity: 0.3;
+      }
+
+      /* Aspecto de partida en el tema oscuro (prop darkGameLook, Sala de pruebas): los mismos colores que el
+         mástil durante el juego (.riff-live en RiffStyles), con las cuerdas del <svg> en sus colores del juego
+         (RIFF_STRING_COLORS; en la partida las dibuja la autopista). El <svg> se contra-invierte para que el
+         tema oscuro no cambie esos colores, y sus números van en blanco sobre la página oscura. */
+      html[data-theme='dark'] svg.reduced-fretboard.dark-game-look {
+        filter: invert(1) hue-rotate(180deg);
+      }
+      html[data-theme='dark'] svg.dark-game-look .reduced-board-bg {
+        fill-opacity: 0.78;
+      }
+      html[data-theme='dark'] svg.dark-game-look .reduced-fret,
+      html[data-theme='dark'] svg.dark-game-look .reduced-nut {
+        filter: drop-shadow(0 0 3px rgba(250, 204, 21, 0.75));
+        stroke: #facc15;
+      }
+      html[data-theme='dark'] svg.dark-game-look .reduced-guide-dot {
+        fill: #facc15;
+        filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.8));
+        opacity: 1;
+      }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string {
+        stroke-width: 3;
+      }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='1'] { stroke: ${RIFF_STRING_COLORS[1]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='2'] { stroke: ${RIFF_STRING_COLORS[2]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='3'] { stroke: ${RIFF_STRING_COLORS[3]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='4'] { stroke: ${RIFF_STRING_COLORS[4]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='5'] { stroke: ${RIFF_STRING_COLORS[5]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-string[data-string='6'] { stroke: ${RIFF_STRING_COLORS[6]}; }
+      html[data-theme='dark'] svg.dark-game-look .reduced-fret-number,
+      html[data-theme='dark'] svg.dark-game-look .reduced-roman-fret,
+      html[data-theme='dark'] svg.dark-game-look .reduced-fret-number-above {
+        fill: #ffffff;
       }
 
       .reduced-fret-number-above {

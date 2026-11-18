@@ -23,7 +23,15 @@ export interface DrumNeckGeometry {
   // detrás de la barra MIDI (usuario, 2026-11-16: así la barra no baja más). Si no caben a su tamaño, se
   // achican lo justo. Sin él, recortados a la tabla como al principio.
   maxBottom?: number;
+  // Unidades del viewBox que mide un píxel de pantalla (para medidas en px, como la altura de los platos).
+  unitsPerPx?: number;
 }
+
+// Los platos, con el borde de arriba a esta distancia (px de pantalla) del borde superior del fondo
+// (usuario, 2026-11-18: tan altos como se pueda, como en una batería de verdad).
+const CYMBAL_TOP_GAP_PX = 15;
+// ...y el plato de la X (el que más se toca), 15 px más abajo.
+const HIHAT_EXTRA_DROP_PX = 15;
 
 // Hasta dónde puede pintarse la batería (los bombos incluidos).
 const drawBottom = (g: DrumNeckGeometry) => g.maxBottom ?? g.top + g.height;
@@ -31,6 +39,10 @@ const drawBottom = (g: DrumNeckGeometry) => g.maxBottom ?? g.top + g.height;
 export const drumPadColor = (pad: number) => fretColor(pad, 0, 5);
 
 const CLIP_ID = 'riff-drum-neck-clip';
+// Recorte de las capas de los BOMBOS: la tabla menos las otras piezas, para que queden detrás (drumOccluders).
+const KICK_CLIP_ID = 'riff-drum-kick-clip';
+// Logo de la web (dibujo blanco sobre negro): en los parches de los bombos, con `mix-blend-mode: screen`.
+const LOGO_SRC = '/android-chrome-192x192.png';
 
 // Medidas compartidas por el dibujo fijo y la capa iluminada. Todo se coloca alrededor de la LÍNEA DE
 // GOLPE (así el mástil alto del móvil en vertical no deja los instrumentos sueltos) con la unidad `s`
@@ -38,7 +50,6 @@ const CLIP_ID = 'riff-drum-neck-clip';
 function layout(g: DrumNeckGeometry) {
   const w = g.colWidth;
   const h = g.height;
-  const s = Math.min(w, h);
   // DOBLE BOMBO (usuario, 2026-11-17): de una columna de radio, entero (sin cortes por arriba ni por abajo: el
   // halo llega a r + 10) y su centro 0,35 r bajo la línea de golpe; por abajo puede bajar hasta `maxBottom`
   // (detrás de la barra MIDI). Una columna más a la derecha que el borde de la Z: el izquierdo, en X y C, y el
@@ -70,11 +81,17 @@ function layout(g: DrumNeckGeometry) {
       const scale = pad === SNARE ? 0.72 : pad === HIGH_TOM ? 0.76 : 0.8;
       const rx = (w * scale) / 2;
       const shell = rx * 0.75;
-      return { x: g.cx(pad), y: g.hitY - s * 0.06 - shell, rx, ry: rx * 0.32, shell };
+      // Medio casco por encima de la línea de golpe (usuario, 2026-11-18: así hay sitio para subir los platos).
+      return { x: g.cx(pad), y: g.hitY - shell * 0.5, rx, ry: rx * 0.32, shell };
     },
     cymbal: (pad: number) => {
       const rx = w * (pad === CRASH ? 0.46 : 0.4);
-      return { x: g.cx(pad), y: g.hitY - s * 0.5, rx, ry: rx * 0.24 };
+      const ry = rx * 0.24;
+      // MÁS ALTOS que los tambores, con el pie más largo, como en una batería de verdad (usuario, 2026-11-18):
+      // su borde de arriba, a CYMBAL_TOP_GAP_PX del borde superior del fondo.
+      // El plato de la X, 15 px más abajo que el plato fuerte (usuario, 2026-11-18).
+      const gapPx = CYMBAL_TOP_GAP_PX + (pad === HIHAT ? HIHAT_EXTRA_DROP_PX : 0);
+      return { x: g.cx(pad), y: g.top + gapPx * (g.unitsPerPx ?? 1) + ry, rx, ry };
     },
   };
 }
@@ -134,15 +151,19 @@ export default function DrumKitNeck({ g }: { g: DrumNeckGeometry }) {
         <clipPath id={CLIP_ID}>
           <rect x={g.left} y={g.top} width={g.right - g.left} height={drawBottom(g) - g.top} />
         </clipPath>
+        <clipPath id={KICK_CLIP_ID}>
+          <path clipRule="evenodd" d={kickClipPath(g)} />
+        </clipPath>
         <linearGradient id="riff-drum-gold" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor="#fde68a" />
           <stop offset="0.55" stopColor="#d4a017" />
           <stop offset="1" stopColor="#92400e" />
         </linearGradient>
       </defs>
-      <rect x={g.left} y={g.top} width={g.right - g.left} height={g.height} fill="#0b1220" />
+      {/* Clases para el tema claro de la batería suelta (riff-drum-standalone): tabla blanca y columnas pálidas. */}
+      <rect className="riff-drum-board" x={g.left} y={g.top} width={g.right - g.left} height={g.height} fill="#0b1220" />
       {columns.map((pad) => (
-        <rect key={`col-${pad}`} x={g.cx(pad) - l.w / 2} y={g.top} width={l.w} height={g.height} fill={drumPadColor(pad)} opacity={0.1} />
+        <rect className="riff-drum-col" key={`col-${pad}`} x={g.cx(pad) - l.w / 2} y={g.top} width={l.w} height={g.height} fill={drumPadColor(pad)} opacity={0.1} />
       ))}
       {columns.map((pad) => (
         <rect key={`edge-${pad}`} x={g.cx(pad) - l.w / 2 + 1.5} y={g.top + 1.5} width={l.w - 3} height={g.height - 3} fill="none" stroke={drumPadColor(pad)} strokeWidth={2} opacity={0.55} />
@@ -165,13 +186,19 @@ export default function DrumKitNeck({ g }: { g: DrumNeckGeometry }) {
             <ellipse cx={k.x} cy={k.y} rx={k.rx + 5} ry={k.ry + 5} fill="none" stroke={kickColor} strokeWidth={10} opacity={0.3} />
             <ellipse cx={k.x} cy={k.y} rx={k.rx} ry={k.ry} fill="#0f172a" stroke={kickColor} strokeWidth={4} />
             <ellipse cx={k.x} cy={k.y} rx={k.rx * 0.86} ry={k.ry * 0.86} fill="none" stroke="#475569" strokeWidth={2} />
-            {i === 0 && (
-              <path
-                d={`M ${k.x + k.r * 0.08} ${k.y - k.r * 0.62} L ${k.x - k.r * 0.18} ${k.y - k.r * 0.12} L ${k.x + k.r * 0.02} ${k.y - k.r * 0.12} L ${k.x - k.r * 0.1} ${k.y + k.r * 0.3} L ${k.x + k.r * 0.22} ${k.y - k.r * 0.22} L ${k.x + k.r * 0.02} ${k.y - k.r * 0.22} Z`}
-                fill="#64748b"
-                opacity={0.7}
-              />
-            )}
+            {/* El logo de la web en los DOS bombos (usuario, 2026-11-18), del tamaño del parche interior; en el
+                girado, estrecho como su parche. `screen` quita el negro del PNG y deja solo el dibujo blanco. */}
+            <image
+              className="riff-drum-logo"
+              height={k.ry * 1.5}
+              href={LOGO_SRC}
+              opacity={0.85}
+              preserveAspectRatio="none"
+              style={{ mixBlendMode: 'screen' }}
+              width={k.rx * 1.5}
+              x={k.x - k.rx * 0.75}
+              y={k.y - k.ry * 0.75}
+            />
           </g>
         ))}
       </g>
@@ -198,6 +225,42 @@ function pale(hex: string, k: number): string {
   return `#${c.map((v) => Math.round(v + (255 - v) * k).toString(16).padStart(2, '0')).join('')}`;
 }
 
+// SILUETAS de las piezas que no son los bombos (coordenadas del viewBox), para que las capas de color y la
+// marca gris de los BOMBOS queden detrás de ellas (usuario, 2026-11-18: al aparecer, por grandes, tapaban
+// tambores y platos). Tambores: cilindro (parche, casco y borde de abajo) en una sola silueta; platos: su elipse
+// con el halo. No se solapan entre sí (cada una en su columna), así que vale el relleno `evenodd`.
+export type DrumOccluder =
+  | { kind: 'cylinder'; x: number; y: number; rx: number; ry: number; shell: number }
+  | { kind: 'ellipse'; x: number; y: number; rx: number; ry: number };
+
+export function drumOccluders(g: DrumNeckGeometry): DrumOccluder[] {
+  const l = layout(g);
+  const drums = [SNARE, HIGH_TOM, LOW_TOM].map((pad) => {
+    const d = l.drum(pad);
+    return { kind: 'cylinder' as const, x: d.x, y: d.y, rx: d.rx + 1, ry: d.ry + 1, shell: d.shell };
+  });
+  const cymbals = [HIHAT, CRASH].map((pad) => {
+    const c = l.cymbal(pad);
+    return { kind: 'ellipse' as const, x: c.x, y: c.y, rx: c.rx + 5, ry: c.ry + 3 };
+  });
+  return [...drums, ...cymbals];
+}
+
+// La silueta en un `d` de SVG (los tramos curvos, con arcos).
+function occluderPath(o: DrumOccluder): string {
+  if (o.kind === 'ellipse') {
+    return `M ${o.x - o.rx} ${o.y} A ${o.rx} ${o.ry} 0 1 0 ${o.x + o.rx} ${o.y} A ${o.rx} ${o.ry} 0 1 0 ${o.x - o.rx} ${o.y} Z`;
+  }
+  const bottom = o.y + o.shell;
+  return `M ${o.x - o.rx} ${o.y} L ${o.x - o.rx} ${bottom} A ${o.rx} ${o.ry} 0 0 0 ${o.x + o.rx} ${bottom} L ${o.x + o.rx} ${o.y} A ${o.rx} ${o.ry} 0 0 0 ${o.x - o.rx} ${o.y} Z`;
+}
+
+// Tabla entera menos las siluetas (`evenodd`): el recorte de las capas de los bombos.
+function kickClipPath(g: DrumNeckGeometry): string {
+  const bottom = drawBottom(g);
+  return [`M ${g.left} ${g.top} H ${g.right} V ${bottom} H ${g.left} Z`, ...drumOccluders(g).map(occluderPath)].join(' ');
+}
+
 // La misma superficie en datos (coordenadas del viewBox), para que la autopista la pinte de gris cuando una
 // nota se falla o pasa sin tocarla: el "fantasma" de la batería (RiffHighway, como la gema gris de la guitarra).
 // `clip` = la tabla, porque los bombos se salen por abajo.
@@ -218,7 +281,7 @@ function surface(g: DrumNeckGeometry, pad: number, props: React.SVGProps<SVGElem
   const l = layout(g);
   if (pad === KICK) {
     return (
-      <g clipPath={`url(#${CLIP_ID})`}>
+      <g clipPath={`url(#${KICK_CLIP_ID})`}>
         {l.kicks.map((k, i) => <ellipse key={i} cx={k.x} cy={k.y} rx={k.rx * 0.86} ry={k.ry * 0.86} {...(props as React.SVGProps<SVGEllipseElement>)} />)}
       </g>
     );

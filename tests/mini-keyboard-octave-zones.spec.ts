@@ -108,4 +108,16 @@ test.describe('MiniKeyboard keyboard-input octave zones', () => {
     await expect(dKey).toHaveAttribute('fill', '#b8e8c4'); // full-key highlight, unchanged behavior
     await page.mouse.up();
   });
+  // ShiftIzq = La3 y BloqMayús = La#3 (usuario, 2026-11-18; las comparte el teclado jugable de Riff-Hero):
+  // una octava por debajo de la dibujada, así que el borde de abajo de La (x=450) y de La# (x=525).
+  test('ShiftLeft = A3 (bottom edge of A), CapsLock = A#3 (bottom edge of A#)', async ({ page }) => {
+    await pressByCode(page, 'ShiftLeft', 'keyDown');
+    await expect(zoneRect(page, 450, EDGE_FILL)).toHaveCount(1);
+    await pressByCode(page, 'ShiftLeft', 'keyUp');
+    await expect(zoneRect(page, 450, EDGE_FILL)).toHaveCount(0);
+    await pressByCode(page, 'CapsLock', 'keyDown');
+    await expect(zoneRect(page, 525, EDGE_FILL)).toHaveCount(1);
+    await pressByCode(page, 'CapsLock', 'keyUp');
+    await expect(zoneRect(page, 525, EDGE_FILL)).toHaveCount(0);
+  });
 });

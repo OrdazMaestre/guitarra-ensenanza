@@ -104,7 +104,7 @@ export interface ScheduledBandNote {
   at: number;
   duration: number;
   midi: number;
-  kind: 'guitar' | 'bass';
+  kind: 'guitar' | 'bass' | 'keys';
   palmMute: boolean;
   // Pista + cuerda (ChartBandNote.voice): una nota nueva en la misma corta la anterior.
   voice?: string;
@@ -565,6 +565,8 @@ export class RiffSession {
 
   // ¿La nota tocada es la del chart? Misma cuerda y traste; con cuerdas libres, solo el traste.
   private matches(note: ChartNote, event: PracticeNoteEvent): boolean {
+    // Teclado con la fila aguda: vale la nota que SUENA a esa altura exacta (keys.ts), no la tecla del trozo.
+    if (this.keys && event.exactMidi !== undefined) return note.midi + (note.soundShift ?? 0) === event.exactMidi;
     return note.fret === event.fret && (!!this.options.freeStrings || note.string === event.string);
   }
 
@@ -572,7 +574,7 @@ export class RiffSession {
   // rejilla que los slides: misma cuerda ±1 traste, o cuerda vecina en el mismo traste.
   private isNear(note: ChartNote, event: PracticeNoteEvent): boolean {
     // En la batería, el pad de al lado no es "casi": es otro instrumento.
-    if (this.drums) return false;
+    if (this.drums || this.keys) return false;
     if (this.options.freeStrings) return Math.abs(note.fret - event.fret) === 1;
     return isAdjacentSlide(note, event);
   }
@@ -674,6 +676,12 @@ export class RiffSession {
     return this.chart.kit === 'drums';
   }
 
+  // Se toca un TECLADO (keys.ts, usuario 2026-11-18): suena con la voz del MiniKeyboard, cada tecla es su
+  // propio carril (como la batería) y la tecla de al lado no es "casi" (es otra nota).
+  get keys(): boolean {
+    return this.chart.kit === 'keys';
+  }
+
   // Sin fondo ('paso'), un acierto hace sonar ya las notas reales de su golpe.
   // Batería: en los dos modos, los golpes reales de los que es dueña la nota acertada (suenan al tocarla).
   playNowFor(hit: ChartNote): { midi: number; palmMute: boolean; duration: number; bend?: ScheduledBend; pad?: number }[] {
@@ -719,7 +727,7 @@ export class RiffSession {
   // carriles no lo cortan, pero si la siguiente de ESE carril llega a más de LANE_HOLD_MAX_GAP_SECONDS
   // reales de la anterior, el carril deja de valer y hay que volver a pulsarlo.
   get independentLanes(): boolean {
-    return this.drums;
+    return this.drums || this.keys;
   }
 
   autoHold(held: { string: number; fret: number }[]): ChartNote[] {

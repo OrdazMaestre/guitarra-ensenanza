@@ -85,7 +85,7 @@ export interface ChartBandNote {
   t: number;
   dur: number;
   midi: number;
-  kind: 'guitar' | 'bass';
+  kind: 'guitar' | 'bass' | 'keys';
   palmMute: boolean;
   // Índice de su pista en el archivo (para silenciarla desde "Pistas").
   track?: number;
@@ -99,7 +99,7 @@ export interface ChartBandNote {
 export interface ChartBandTrack {
   index: number;
   name: string;
-  kind: 'guitar' | 'bass' | 'drums';
+  kind: 'guitar' | 'bass' | 'drums' | 'keys';
 }
 
 export interface Chart {
@@ -140,7 +140,9 @@ export interface Chart {
   filled?: Array<{ bar: number; track: number }>;
   // La pista es una BATERÍA (drums.ts): cada golpe es una nota en la cuerda 6 con traste = su pad (0-5)
   // y `midi` = su número de percusión General MIDI. Se toca como un teclado (sin hammer ni pull-off).
-  kit?: 'drums';
+  // 'keys' (keys.ts, usuario 2026-11-18): un TECLADO; sus notas llevan la altura REAL (`midi`) y el
+  // nivel las coloca en las teclas (blancas en la cuerda 6, negras en la 5; traste = semitono).
+  kit?: 'drums' | 'keys';
   // Notas que pasaban de `maxFret` y se recolocaron (ver `relocate`).
   movedAboveMaxFret: number;
   // Notas que pasaban de `maxFret` y no había forma de recolocar (se quitan).
@@ -150,7 +152,22 @@ export interface Chart {
 export interface GuitarTrackInfo {
   index: number;
   name: string;
-  kind?: 'guitar' | 'bass' | 'drums';
+  kind?: 'guitar' | 'bass' | 'drums' | 'keys';
+}
+
+// TECLADO (usuario, 2026-11-18): su instrumento General MIDI es un piano, cromático u órgano (0-23) o un
+// sinte lead/pad (80-103), aunque la tab lo escriba en un pentagrama de guitarra (Pink Floyd "Keyboard
+// 2", Pokémon). Esas pistas son teclado, nunca guitarra ni bajo.
+// OJO con el 0 (Acoustic Grand Piano): es también el valor por defecto, y alphaTab lo pone a TODAS las pistas
+// de un MusicXML (no lee su midi-program). Con 0, solo es teclado si la pista no tiene cuerdas o su nombre lo
+// dice (Strangeways "Keys High", Verdi "Right Hand Piano"); 1-23 y 80-103, siempre.
+const KEYS_NAME = /piano|keys|keyboard|organ|synth|teclad|[óo]rgano|clav|rhodes|sinte/i;
+export function isKeysTrack(track: { name: string; staves: Array<{ isPercussion: boolean; tuning: number[] } | undefined>; playbackInfo: { program: number } }): boolean {
+  const staff = track.staves[0];
+  if (!staff || staff.isPercussion) return false;
+  const program = track.playbackInfo.program;
+  if (program === 0) return staff.tuning.length === 0 || KEYS_NAME.test(track.name);
+  return (program >= 1 && program <= 23) || (program >= 80 && program <= 103);
 }
 
 // Bajo: su cuerda más aguda queda por debajo de un Sol3. (No vale mirar la más grave: una guitarra
@@ -161,8 +178,8 @@ export function isBassTuning(tuning: number[]): boolean {
 
 function pitchedTracks(score: Score) {
   return score.tracks
-    .map((track, index) => ({ index, name: track.name, staff: track.staves[0] }))
-    .filter(({ staff }) => staff && !staff.isPercussion);
+    .map((track, index) => ({ index, name: track.name, staff: track.staves[0], keys: isKeysTrack(track) }))
+    .filter(({ staff, keys }) => staff && !staff.isPercussion && !keys);
 }
 
 // Guitarras de 6 cuerdas o más.
@@ -184,7 +201,12 @@ export function listPlayableTracks(score: Score): GuitarTrackInfo[] {
   // percusión del archivo (la misma que suena de fondo, `chart.drums`).
   const drumIndex = score.tracks.findIndex((track) => track.staves[0]?.isPercussion);
   const drums = drumIndex >= 0 ? [{ index: drumIndex, name: score.tracks[drumIndex].name, kind: 'drums' as const }] : [];
-  return [...listGuitarTracks(score), ...basses].filter((track) => !absorbed.has(track.index)).concat(drums);
+  // Teclados (keys.ts), después de los bajos: con notas, tengan o no afinación.
+  const keys = score.tracks
+    .map((track, index) => ({ track, index }))
+    .filter(({ track }) => isKeysTrack(track) && track.staves[0].bars.some((bar) => bar.voices.some((voice) => voice.beats.some((beat) => !beat.isRest && beat.notes.length > 0))))
+    .map(({ track, index }) => ({ index, name: track.name, kind: 'keys' as const }));
+  return [...listGuitarTracks(score), ...basses].filter((track) => !absorbed.has(track.index)).concat(keys, drums);
 }
 
 // Cuerdas al aire de la afinación estándar, de la 1 (Mi agudo) a la 6.
@@ -239,6 +261,8 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const staff = track.staves[0];
   // Se toca la batería: sus golpes son las notas (drums.ts) y no suena de fondo (la tocas tú).
   const kit = !!staff.isPercussion;
+  // Se toca un teclado (keys.ts): alturas reales, sin cuerdas ni afinación.
+  const keysKit = !kit && isKeysTrack(track);
 
   const midiFile = new at.midi.MidiFile();
   const generator = new at.midi.MidiFileGenerator(score, new at.Settings(), new at.midi.AlphaSynthMidiFileHandler(midiFile));
@@ -283,23 +307,23 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   const bandTracks = score.tracks
     .filter((candidate, index) => index !== trackIndex && candidate.staves[0] && !candidate.staves[0].isPercussion)
     .map((candidate) => {
-      return { track: candidate, kind: (isBassTuning(candidate.staves[0].tuning) ? 'bass' : 'guitar') as ChartBandNote['kind'] };
+      return { track: candidate, kind: (isKeysTrack(candidate) ? 'keys' : isBassTuning(candidate.staves[0].tuning) ? 'bass' : 'guitar') as ChartBandNote['kind'] };
     });
   // Afinación uniformemente bajada/subida (Do#, Mi♭...): las notas se leen como en la estándar y la
   // diferencia se guarda en `soundOffset` (ver Chart). Afinaciones mixtas (Drop D...): alturas reales.
   // Se mide en las cuerdas que tiene la guitarra de 6 (en el bajo, las 6-3, una octava más abajo).
-  const bass = !kit && isBassTuning(staff.tuning);
+  const bass = !kit && !keysKit && isBassTuning(staff.tuning);
   const stringOf = gameStrings(staff.tuning);
   const openOf = new Map(stringOf.map((string, k) => [string, staff.tuning[k]]));
   const base = bass ? BASS_OCTAVE : 0;
   const offsets = (bass ? BASS_STRINGS : ALL_STRINGS).map((string) => (openOf.get(string) ?? NaN) - STANDARD_TUNING[string - 1] - base);
-  const soundOffset = kit ? 0 : base + (offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0);
+  const soundOffset = kit || keysKit ? 0 : base + (offsets.every((offset) => offset === offsets[0]) ? offsets[0] : 0);
   const openMidi = (string: number) => (openOf.get(string) ?? NaN) - soundOffset;
   // Cuerda del juego de una nota (la cuerda 1 de alphaTab es la más grave).
   const gameString = (note: Note) => stringOf[staff.tuning.length - note.string];
   let nextId = 0;
   // Compases enteros de otras pistas que rellenan los ratos largos sin tocar de esta (fillGaps.ts).
-  const fill = kit ? { bars: new Map<number, number>(), donors: new Set<number>() } : gapFillPlan(score, trackIndex);
+  const fill = kit || keysKit ? { bars: new Map<number, number>(), donors: new Set<number>() } : gapFillPlan(score, trackIndex);
   const filled: Array<{ bar: number; track: number }> = [];
 
   for (const lookup of lookups) {
@@ -363,6 +387,10 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     if (!bar) continue;
     if (kit) {
       readDrumBar(bar, lookup.start);
+      continue;
+    }
+    if (keysKit) {
+      readKeysBar(bar, lookup.start);
       continue;
     }
     readBar(bar, lookup.start, (note) => {
@@ -439,6 +467,28 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     }
   }
 
+  // Notas de un compás del teclado que se toca: su altura REAL (`realValue`), en la cuerda 6 y traste 0
+  // de momento (el nivel, keys.ts, las coloca en sus teclas). Las ligaduras alargan la nota.
+  function readKeysBar(bar: Bar, barStartTick: number) {
+    for (const voice of bar.voices) {
+      for (const beat of voice.beats) {
+        if (beat.isRest || beat.notes.length === 0) continue;
+        const startTick = barStartTick + beat.playbackStart;
+        const t = tickToSec(startTick);
+        const seen = new Set<number>();
+        for (const note of beat.notes) {
+          if (note.isDead || note.isTieDestination) continue;
+          const midi = note.realValue;
+          if (seen.has(midi)) continue;
+          seen.add(midi);
+          let durTicks = beat.playbackDuration;
+          for (let tied: Note | null = note.tieDestination; tied; tied = tied.tieDestination) durTicks += tied.beat.playbackDuration;
+          notes.push({ id: nextId++, t, dur: tickToSec(startTick + durTicks) - t, string: 6, fret: 0, midi, palmMute: false, tech: [] });
+        }
+      }
+    }
+  }
+
   // Nota de una pista DONANTE (otra afinación, quizá): su misma cuerda del juego y el traste que da su
   // altura real en la afinación de ESTA pista; si sale negativo, la cuerda más cercana más grave donde
   // quepa; si no hay, una octava arriba. Lo que pase de maxFret se recoloca después como el resto.
@@ -458,11 +508,11 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
   }
 
   notes.sort((a, b) => a.t - b.t || a.string - b.string);
-  if (fold && !kit) foldToStandard(notes, bass);
+  if (fold && !kit && !keysKit) foldToStandard(notes, bass);
   // Batería que se toca: el plato fuerte solo para los acentos (drums.ts).
   if (kit) spreadCymbals(notes);
-  const instrument = kit ? ALL_STRINGS : fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
-  const placed = kit ? { notes, moved: 0, skipped: 0 } : placeAboveMaxFret(notes, bars, beats, maxFret, openMidi, instrument);
+  const instrument = kit || keysKit ? ALL_STRINGS : fold ? (bass ? BASS_STRINGS : ALL_STRINGS) : [...stringOf].reverse();
+  const placed = kit || keysKit ? { notes, moved: 0, skipped: 0 } : placeAboveMaxFret(notes, bars, beats, maxFret, openMidi, instrument);
   notes.splice(0, notes.length, ...placed.notes);
   drums.sort((a, b) => a.t - b.t);
   band.sort((a, b) => a.t - b.t);
@@ -486,7 +536,7 @@ export function buildChart(at: AlphaTabModule, score: Score, trackIndex: number,
     ...(bass ? { bass } : {}),
     ...(!fold && instrument.join() !== ALL_STRINGS.join() ? { strings: instrument } : {}),
     ...(filled.length ? { filled } : {}),
-    ...(kit ? { kit: 'drums' as const } : {}),
+    ...(kit ? { kit: 'drums' as const } : keysKit ? { kit: 'keys' as const } : {}),
     movedAboveMaxFret: placed.moved,
     skippedAboveMaxFret: placed.skipped,
   };

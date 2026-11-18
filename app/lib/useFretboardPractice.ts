@@ -15,6 +15,9 @@ export type PracticeNoteEvent = PracticeNote & {
   // Cuándo ocurrió el toque o la tecla (`event.timeStamp`, mismo reloj que `performance.now()`): el juego
   // juzga la nota en ese instante y no cuando el código llega a atenderla (usuario, 2026-11-16, latencia).
   timeStamp?: number;
+  // Teclado jugable de Riff-Hero (keys.ts): con la fila AGUDA del teclado, la altura EXACTA tocada. Entonces
+  // vale la nota que suena así (no la tecla del trozo que se ve, ver RiffSession.matches).
+  exactMidi?: number;
 };
 export type PracticeFeedbackKind = 'success' | 'fail' | null;
 

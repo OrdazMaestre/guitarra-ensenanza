@@ -5,9 +5,11 @@
 
 // Ids internos: los del modo trastes sin sufijo; los del modo cuerdas que repiten nombre, con
 // '-cuerdas' (los dos modos tienen un "Medio" y un "Avanzado", decisión del usuario).
-export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto' | DrumLevel;
+export type RiffLevel = 'practica' | 'facil' | 'medio' | 'avanzado' | 'medio-cuerdas' | 'avanzado-cuerdas' | 'dificil' | 'hibrido' | 'experto' | DrumLevel | KeysLevel;
 // Niveles de BATERÍA (drums.ts, usuario 2026-11-16): solo cuando la pista que se toca es la batería.
 export type DrumLevel = 'bateria-facil' | 'bateria-medio' | 'bateria-avanzado' | 'bateria-dificil' | 'bateria-experto';
+// Niveles de TECLADO (keys.ts, usuario 2026-11-18): solo cuando la pista que se toca es un teclado.
+export type KeysLevel = 'teclado-principiante' | 'teclado-facil' | 'teclado-medio' | 'teclado-avanzado';
 
 export interface LevelProfile {
   label: string;
@@ -54,6 +56,8 @@ export interface LevelProfile {
   maxFretByString?: Record<number, number>;
   // Nivel de BATERÍA: la regla de drums.ts (DRUM_LEVEL_RULES) que lo traduce.
   drums?: 'facil' | 'medio' | 'avanzado' | 'dificil' | 'experto';
+  // Nivel de TECLADO (keys.ts): teclas de `low` a `high` (MIDI) y notas a la vez.
+  keys?: { low: number; high: number; maxChord: number };
 }
 
 const KEYBOARD_MAX_FRET: Record<number, number> = { 6: 10, 5: 11, 4: 12, 3: 12 };
@@ -117,12 +121,25 @@ export const RIFF_LEVELS: Record<Exclude<RiffLevel, 'experto'>, LevelProfile> = 
   'bateria-avanzado': { label: 'Avanzado', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'avanzado' },
   'bateria-dificil': { label: 'Difícil', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'dificil' },
   'bateria-experto': { label: 'Experto', available: true, strings: [6], minFret: 0, maxFret: 5, gridBeats: 0, minGapBeats: 0, minGapSeconds: 0, repeatGapSeconds: 0, maxChord: 2, colorBy: 'fret', freeStrings: true, drums: 'experto' },
+  // TECLADO (keys.ts, usuario 2026-11-18): la densidad de su nivel del modo trastes (filtra por tiempo),
+  // con las notas REALES recolocadas a la octava del nivel. Blancas en la cuerda 6 y negras en la 5
+  // (traste = semitono desde la tecla más grave), colores del modo dos cuerdas.
+  'teclado-principiante': { label: 'Principiante', available: true, strings: [5, 6], minFret: 0, maxFret: 12, gridBeats: 0.5, minSlotSeconds: 0.24, minGapBeats: 0.5, minGapSeconds: 0.25, repeatGapSeconds: 0.35, maxChord: 1, colorBy: 'string', freeStrings: false, keys: { low: 60, high: 72, maxChord: 1 } },
+  'teclado-facil': { label: 'Fácil', available: true, strings: [5, 6], minFret: 0, maxFret: 12, gridBeats: 0.25, minSlotSeconds: 0.13, minGapBeats: 0.25, minGapSeconds: 0.13, repeatGapSeconds: 0.22, maxChord: 1, colorBy: 'string', freeStrings: false, fastWindow: { quarters: 2, max: 3, belowSeconds: 0.2 }, keys: { low: 60, high: 72, maxChord: 1 } },
+  'teclado-medio': { label: 'Medio', available: true, strings: [5, 6], minFret: 0, maxFret: 12, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 2, colorBy: 'string', freeStrings: false, timingScale: 0.6, keys: { low: 60, high: 72, maxChord: 2 } },
+  'teclado-avanzado': { label: 'Avanzado', available: true, strings: [5, 6], minFret: 0, maxFret: 20, gridBeats: 0.125, minGapBeats: 0.125, minGapSeconds: 0.06, repeatGapSeconds: 0, maxChord: 3, colorBy: 'string', freeStrings: false, timingScale: 0.6, keys: { low: 57, high: 77, maxChord: 3 } },
 };
 
 // Los cuatro niveles de batería, de menos a más (el menú Nivel solo enseña estos con la batería).
 export const DRUM_LEVEL_ORDER: DrumLevel[] = ['bateria-facil', 'bateria-medio', 'bateria-avanzado', 'bateria-dificil', 'bateria-experto'];
 export function isDrumLevel(level: RiffLevel): level is DrumLevel {
   return level.startsWith('bateria-');
+}
+
+// Los cuatro niveles de teclado, de menos a más (el menú Nivel solo enseña estos con un teclado).
+export const KEYS_LEVEL_ORDER: KeysLevel[] = ['teclado-principiante', 'teclado-facil', 'teclado-medio', 'teclado-avanzado'];
+export function isKeysLevel(level: RiffLevel): level is KeysLevel {
+  return level.startsWith('teclado-');
 }
 
 // Dos modos de juego (decisión del usuario), cada uno con sus niveles de menos a más:
@@ -154,7 +171,7 @@ export function levelLabel(level: RiffLevel) {
 // rápidos, se ve mejor el orden). Principiante ya tiene pocas notas y se queda igual.
 export const STRETCH_LANE_SPEED = 0.75;
 export function stretchesLane(level: RiffLevel) {
-  return level !== 'practica';
+  return level !== 'practica' && level !== 'teclado-principiante';
 }
 
 // Segundos REALES que caben en la autopista. Un segundo de canción ocupa 1 / (speed × lookahead) del

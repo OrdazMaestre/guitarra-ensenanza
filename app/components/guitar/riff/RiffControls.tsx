@@ -1,11 +1,11 @@
 'use client';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { DRUM_LEVEL_ORDER, levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
+import { DRUM_LEVEL_ORDER, KEYS_LEVEL_ORDER, levelLabel, RIFF_HYBRID_LEVEL, RIFF_LEVEL_GROUPS, RIFF_LEVELS, type RiffLevel } from '@/app/lib/riff/levels';
 import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, RIFF_TRICKS_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BassIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BassIcon, KeysIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
 import { DeleteSongButton, LocalSongSearch } from '../LocalSongSearch';
@@ -49,8 +49,8 @@ interface Props {
 
 export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = [], trackRoles }: Props) {
   const roleOf = (name: string): TrackRole => trackRole(name, trackRoles);
-  const trackLabel = (track: { name: string; kind?: string }) => (track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)]);
-  const trackIcon = (track: { name: string; kind?: string } | undefined) => (track?.kind === 'drums' ? <DrumIcon /> : track?.kind === 'bass' ? <BassIcon /> : <TrackIcon role={track ? roleOf(track.name) : 'R'} />);
+  const trackLabel = (track: { name: string; kind?: string }) => (track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : track.kind === 'keys' ? 'Teclado' : ROLE_LABEL[roleOf(track.name)]);
+  const trackIcon = (track: { name: string; kind?: string } | undefined) => (track?.kind === 'drums' ? <DrumIcon /> : track?.kind === 'bass' ? <BassIcon /> : track?.kind === 'keys' ? <KeysIcon /> : <TrackIcon role={track ? roleOf(track.name) : 'R'} />);
   // Solo un desplegable abierto a la vez.
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
   // Tarjeta "Buscar mis canciones" abierta: el menú del disco pasa a dos columnas.
@@ -147,6 +147,12 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
               <span className="riff-level-heading">Batería</span>
               {DRUM_LEVEL_ORDER.map(levelChip)}
             </div>
+          ) : currentTrack?.kind === 'keys' ? (
+            // Teclado (keys.ts): sus 4 niveles.
+            <div aria-label="Teclado" className="riff-level-group" role="group">
+              <span className="riff-level-heading">Teclado</span>
+              {KEYS_LEVEL_ORDER.map(levelChip)}
+            </div>
           ) : (
             <>
               <div className="riff-level-groups">
@@ -225,7 +231,7 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
             <div className="riff-band-row">
                 {bandTracks.map((track) => {
                   const on = !riff.muted.includes(track.index);
-                  const name = track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : ROLE_LABEL[roleOf(track.name)];
+                  const name = track.kind === 'drums' ? 'Batería' : track.kind === 'bass' ? 'Bajo' : track.kind === 'keys' ? 'Teclado' : ROLE_LABEL[roleOf(track.name)];
                   return (
                     <button
                       aria-label={`${name}: ${on ? 'suena' : 'silenciada'}`}
@@ -236,7 +242,7 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
                       title={`${name} (${on ? 'suena' : 'silenciada'})`}
                       type="button"
                     >
-                      {track.kind === 'drums' ? <DrumIcon /> : track.kind === 'bass' ? <BassIcon /> : <TrackIcon role={roleOf(track.name)} />}
+                      {track.kind === 'drums' ? <DrumIcon /> : track.kind === 'bass' ? <BassIcon /> : track.kind === 'keys' ? <KeysIcon /> : <TrackIcon role={roleOf(track.name)} />}
                     </button>
                   );
                 })}

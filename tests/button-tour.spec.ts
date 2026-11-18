@@ -45,7 +45,7 @@ test('tutorial del panel de partida: pone la configuración de base y enseña su
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
   await page.locator('.test-room-fretboard').scrollIntoViewIfNeeded();
-  await page.getByRole('button', { name: 'JUGAR', exact: true }).click();
+  await page.locator('.test-room-fretboard').getByRole('button', { name: 'JUGAR', exact: true }).click();
   const toggles = page.locator('.riff-dd-toggle');
   // La sala arranca con Black Gilmur (una sola guitarra): la de prueba tiene las dos pistas.
   await page.locator('.riff-dd-toggle', { hasText: 'Canción' }).click();

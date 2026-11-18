@@ -100,7 +100,7 @@ function Face({ children, devil = false }: { children: ReactNode; devil?: boolea
 }
 
 // Niveles de batería (drums.ts): las caras del modo trastes, en el mismo orden (Fácil = 😛 ... Difícil = 😳).
-const DRUM_LEVEL_FACE: Record<string, RiffLevel> = { 'bateria-facil': 'practica', 'bateria-medio': 'facil', 'bateria-avanzado': 'medio', 'bateria-dificil': 'avanzado', 'bateria-experto': 'experto' };
+const DRUM_LEVEL_FACE: Record<string, RiffLevel> = { 'bateria-facil': 'practica', 'bateria-medio': 'facil', 'bateria-avanzado': 'medio', 'bateria-dificil': 'avanzado', 'bateria-experto': 'experto', 'teclado-principiante': 'practica', 'teclado-facil': 'facil', 'teclado-medio': 'medio', 'teclado-avanzado': 'avanzado' };
 
 export function LevelIcon({ level }: { level: RiffLevel }) {
   if (DRUM_LEVEL_FACE[level]) return <LevelIcon level={DRUM_LEVEL_FACE[level]} />;
@@ -328,6 +328,19 @@ export function DrumIcon() {
   return (
     <Icon>
       <path d={DRUM_PATH} />
+    </Icon>
+  );
+}
+
+// Teclado (keys.ts, 2026-11-18): un trozo de piano, 4 blancas y 3 negras.
+export function KeysIcon() {
+  return (
+    <Icon>
+      <rect x="2.5" y="5" width="19" height="14" rx="1.5" />
+      <path d="M7.25 5v14M12 5v14M16.75 5v14" strokeWidth="1.4" />
+      <rect x="5.6" y="5" width="3.3" height="8" rx="0.6" fill="currentColor" stroke="none" />
+      <rect x="10.35" y="5" width="3.3" height="8" rx="0.6" fill="currentColor" stroke="none" />
+      <rect x="15.1" y="5" width="3.3" height="8" rx="0.6" fill="currentColor" stroke="none" />
     </Icon>
   );
 }

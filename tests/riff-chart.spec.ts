@@ -459,7 +459,8 @@ test('puntos: con timingScale 0,6 cada margen (y el de acierto) se encoge al 60 
   expect(late.judge({ string: 1, fret: 2, kind: 'pluck' }, 4.27).hit).toBeNull();
   expect(late.scoreOf.size).toBe(0);
   // Solo Medio y Avanzado (trastes) lo llevan.
-  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.timingScale).map(([id, p]) => [id, p.timingScale])).toEqual([['medio', 0.6], ['avanzado', 0.6]]);
+  expect(Object.entries(RIFF_LEVELS).filter(([, p]) => p.timingScale).map(([id, p]) => [id, p.timingScale])).toEqual([['medio', 0.6], ['avanzado', 0.6], ['teclado-medio', 0.6], ['teclado-avanzado', 0.6]]);
+  // (Medio y Avanzado de TECLADO, keys.ts, copian la densidad y los márgenes de su nivel de trastes.)
 });
 
 test('puntos: cada margen, a los dos lados de la nota', () => {

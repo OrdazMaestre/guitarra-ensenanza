@@ -1,9 +1,10 @@
 'use client';
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playDrumPad, playMetronomeClick, preloadSamples, scheduleGuideNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playDrumPad, playMetronomeClick, preloadSamples, scheduleGuideNote, scheduleKeyNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import { perfEnd, perfInput, perfReset, perfTickStart } from './perfMeter';
 import type { Chart, ChartNote } from './chart';
+import { keysSoundMidi } from './keys';
 import { drumVolume, GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
 
 // Envuelve RiffSession con el reloj real (AudioContext), el metrónomo y el estado de React.
@@ -18,12 +19,23 @@ const TICK_MS = 25;
 // 2026-11-15, el usuario lo bajó un 15 % en las dos partes).
 const BAND_GUITAR_GAIN = 0.195;
 const BAND_BASS_GAIN = 0.425;
+// TECLADOS (usuario, 2026-11-18: suenan como el MiniKeyboard): la voz de oscilador sostiene y la guitarra
+// decae, así que a igual pico el teclado sonaba más fuerte (ver keyboard-audio-loudness). Medido en LUFS
+// con tests/riff-keys-loudness.spec.ts frente a la guitarra de fondo: con 0,5 el teclado quedaba +2,5 LU en
+// cascos, +4,6 en portátil y +6,6 en móvil; con 0,35, ≈ −0,6 / +1,5 / +3,5 (los altavoces pequeños no
+// reproducen los graves de la guitarra, así que ahí el teclado siempre destaca algo).
+export const KEYS_GAIN = 0.35;
+const BAND_KEYS_GAIN = BAND_GUITAR_GAIN * KEYS_GAIN;
 
 // La pista propia cuando se toca el bajo (mismo sintetizador que el bajo de la banda). `volume` en la
 // escala de GUIDE_GAIN/OPEN_GAIN, como la guitarra: abierta suena como el bajo de la banda.
 function playOwnBass(note: { midi: number; palmMute: boolean; bend?: ScheduledBend }, at: number, duration: number, volume: number): GuideNoteHandle | null {
   const handle = playBassNote(at, note.midi, duration, volume * BAND_BASS_GAIN, note.palmMute, note.bend);
   return handle && { setVolume: (next) => handle.setVolume(next * BAND_BASS_GAIN), stopAt: handle.stopAt };
+}
+// El volumen de una nota de teclado va en la escala de GUIDE_GAIN/OPEN_GAIN × KEYS_GAIN.
+function keyHandle(handle: GuideNoteHandle | null): GuideNoteHandle | null {
+  return handle && { setVolume: (next) => handle.setVolume(next * KEYS_GAIN), stopAt: handle.stopAt };
 }
 // Cuánto se programa por adelantado (segundos reales). 0,3 s (antes 0,15): con canciones muy densas
 // el temporizador llegaba a retrasarse 130 ms, y una nota programada tarde se oye a destiempo.
@@ -102,6 +114,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
     for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(open);
     for (const note of session.playNowFor(hit)) {
       if (session.bass) playOwnBass(note, now, note.duration, open);
+      else if (session.keys) scheduleKeyNote(note.midi, now, note.duration, open * KEYS_GAIN);
       else void scheduleGuideNote(note.midi, now, note.duration, open, note.bend);
     }
   }, []);
@@ -177,7 +190,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
           continue;
         }
         const volume = note.open ? OPEN_GAIN : GUIDE_GAIN;
-        const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
+        const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : session.keys ? Promise.resolve(keyHandle(scheduleKeyNote(note.midi, note.at, note.duration, volume * KEYS_GAIN))) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
         void scheduled.then((handle) => {
           if (!handle) return;
           // Llegó tarde (ya se paró o se salió de la página): se calla en vez de quedarse sonando.
@@ -191,6 +204,10 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
       for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
         if (note.kind === 'bass') {
           playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute, note.bend);
+        } else if (note.kind === 'keys') {
+          // Con el mismo suelo de graves que el teclado que se toca (keys.ts).
+          const handle = scheduleKeyNote(keysSoundMidi(note.midi), note.at, note.duration, BAND_KEYS_GAIN);
+          if (handle) bandHandlesRef.current.push({ handle, end: note.at + note.duration });
         } else {
           void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN, note.bend).then((handle) => {
             if (!handle) return;

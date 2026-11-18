@@ -661,6 +661,88 @@ export async function scheduleGuideNote(
   };
 }
 
+// TECLADO en el juego y en la banda (usuario, 2026-11-18: los teclados suenan como el MiniKeyboard en
+// todas partes): la misma voz de `startOscillatorVoice` (triángulo, paso alto 140 Hz, paso bajo 6,5 kHz,
+// pico 0,19 × volumen) pero programada a una hora EXACTA con su propio final, como `scheduleGuideNote`, y
+// fuera de `voices` (comparte el tope de notas de fondo `MAX_GUIDE_VOICES`).
+const KEY_RELEASE_SECONDS = 0.06;
+export function scheduleKeyNote(midi: number, at: number, duration: number, volume = 0.35): GuideNoteHandle | null {
+  const context = getCtx();
+  const start = Math.max(at, context.currentTime);
+  let end = start + Math.max(0.08, duration);
+  if (guideVoices.length >= MAX_GUIDE_VOICES) {
+    const started = guideVoices.filter((voice) => voice.start <= context.currentTime);
+    if (started.length > 0) started.reduce((a, b) => (b.start < a.start ? b : a)).stopAt(context.currentTime);
+  }
+  const osc = context.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.value = 440 * 2 ** ((midi - 69) / 12);
+  const hp = context.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 140;
+  hp.Q.value = 0.6;
+  const lp = context.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 6500;
+  lp.Q.value = 0.5;
+  const level = 0.19;
+  const gain = context.createGain();
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.linearRampToValueAtTime(level * volume, start + 0.005);
+  gain.gain.setTargetAtTime(0.0001, end, KEY_RELEASE_SECONDS / 3);
+  osc.connect(hp);
+  hp.connect(lp);
+  lp.connect(gain);
+  gain.connect(getMaster(context));
+  osc.start(start);
+  osc.stop(end + KEY_RELEASE_SECONDS * 3);
+  const voice = {
+    start,
+    stopAt(cut: number) {
+      const atTime = Math.max(cut, context.currentTime, start);
+      const index = guideVoices.indexOf(voice);
+      if (index !== -1) guideVoices.splice(index, 1);
+      if (atTime >= end) return;
+      end = atTime;
+      if (atTime <= start) {
+        gain.gain.cancelScheduledValues(0);
+        gain.gain.setValueAtTime(0.0001, context.currentTime);
+        try { osc.stop(start); } catch { /* ya parada */ }
+        return;
+      }
+      gain.gain.cancelScheduledValues(atTime);
+      gain.gain.setTargetAtTime(0.0001, atTime, GUIDE_CUT_SECONDS);
+      try { osc.stop(atTime + GUIDE_CUT_SECONDS * 6); } catch { /* ya parada */ }
+    },
+  };
+  guideVoices.push(voice);
+  osc.addEventListener('ended', () => {
+    const index = guideVoices.indexOf(voice);
+    if (index !== -1) guideVoices.splice(index, 1);
+    osc.disconnect();
+    hp.disconnect();
+    lp.disconnect();
+    gain.disconnect();
+  });
+  return {
+    stopAt: voice.stopAt,
+    setVolume(next: number) {
+      const now = context.currentTime;
+      if (now >= end) return;
+      const g = gain.gain;
+      g.cancelScheduledValues(now);
+      if (now < start) {
+        g.setValueAtTime(0.0001, start);
+        g.linearRampToValueAtTime(level * next, start + 0.005);
+      } else {
+        g.setValueAtTime(Math.max(0.0001, g.value), now);
+        g.linearRampToValueAtTime(level * next, now + 0.03);
+      }
+      g.setTargetAtTime(0.0001, end, KEY_RELEASE_SECONDS / 3);
+    },
+  };
+}
+
 // "Clac" apagado y SIN afinación (ruido filtrado muy corto) para cuando, en un nivel traducido del
 // juego, el alumno toca un botón equivocado: como el sonido de fallo de Guitar Hero. Al no tener
 // nota, nunca desafina contra la canción de fondo.

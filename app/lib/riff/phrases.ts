@@ -19,6 +19,10 @@ export const COUNTDOWN_PHRASES: Record<RiffLevel, string> = {
   'bateria-avanzado': 'Todo a la vez',
   'bateria-dificil': 'Dos platos y a correr',
   'bateria-experto': 'Eres la batería',
+  'teclado-principiante': 'Toca tus primeras teclas',
+  'teclado-facil': 'Sigue la melodía',
+  'teclado-medio': 'Dos manos, una canción',
+  'teclado-avanzado': 'Eres el pianista',
 };
 
 // Experto: además, frases que van apareciendo ENCIMA de las notas mientras se toca, en orden
