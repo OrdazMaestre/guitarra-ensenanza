@@ -18,7 +18,7 @@ export const PLAYABLE_EXTENSIONS = ['.gp', '.gp3', '.gp4', '.gp5', '.gpx', '.mus
 export const LOCAL_SONG_ACCEPT = PLAYABLE_EXTENSIONS.join(',');
 export const MAX_LOCAL_SONG_BYTES = 5 * 1024 * 1024;
 // Carita y batería o guitarra tachadas ya medidas (songDifficulty.ts).
-export const SONG_TRAITS_STORAGE_KEY = 'riff-rasgos-canciones-v1';
+export const SONG_TRAITS_STORAGE_KEY = 'riff-rasgos-canciones-v2';
 // Nombres de archivo de las canciones que el usuario BORRÓ de la lista (usuario, 2026-11-13): si una
 // búsqueda las vuelve a encontrar, se pregunta antes de añadirlas otra vez.
 export const DELETED_SONGS_STORAGE_KEY = 'riff-canciones-borradas-v1';

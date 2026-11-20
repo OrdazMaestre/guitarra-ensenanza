@@ -297,3 +297,33 @@ test('bombos detrás: siluetas de las otras 5 piezas para recortar su marca', as
   const shapes = drumOccluders(g);
   expect(shapes.map((s) => s.kind)).toEqual(['cylinder', 'cylinder', 'cylinder', 'ellipse', 'ellipse']);
 });
+
+// NOTAS POR DETRÁS (usuario, 2026-11-19): al bajar, una nota pasa por detrás de las OTRAS piezas; la suya no la tapa.
+test('notas por detrás: una nota del bombo queda tapada por el plato X; una del plato X, no', async () => {
+  const { drumGemOccluders, drumOccluders, insideOccluder } = await import('../app/components/guitar/riff/DrumKitNeck');
+  const { HIHAT, KICK } = await import('../app/lib/riff/drums');
+  const g = { cx: (pad: number) => 64 + pad * 128, colWidth: 128, left: 0, right: 768, top: 28, height: 158, hitY: 107, touch: false };
+  const hihat = drumOccluders(g).find((o) => o.pad === HIHAT)!;
+  const covered = (pad: number) => drumGemOccluders(g, pad).some((o) => insideOccluder(o, hihat.x, hihat.y));
+  expect(covered(KICK)).toBe(true);
+  expect(covered(HIHAT)).toBe(false);
+  // El bombo no tapa a nadie (no tiene silueta).
+  expect(drumOccluders(g).some((o) => o.pad === KICK)).toBe(false);
+});
+
+// PROPORCIÓN (usuario, 2026-11-19, captura de la batería MIDI): los platos, medidos en unidades `u` desde la línea
+// de golpe, igual en una tabla alta y en una baja; en la baja la batería entera se achica (u < columna).
+test('proporción: platos a 1,15 u / 1,0 u sobre la línea de golpe, también en una tabla baja', async () => {
+  const { drumOccluders } = await import('../app/components/guitar/riff/DrumKitNeck');
+  const { CRASH, HIHAT } = await import('../app/lib/riff/drums');
+  for (const [colWidth, height] of [[61, 158], [128, 158], [61, 340]] as const) {
+    const top = 28;
+    const hitY = top + height / 2;
+    const g = { cx: (pad: number) => colWidth / 2 + pad * colWidth, colWidth, left: 0, right: colWidth * 6, top, height, hitY, touch: false };
+    const u = Math.min(colWidth, (hitY - top) / 1.27);
+    const plate = (pad: number) => { const o = drumOccluders(g).find((x) => x.pad === pad)!; return o.y - (o.ry - 3); };
+    expect((hitY - plate(CRASH)) / u).toBeCloseTo(1.15, 1);
+    expect((hitY - plate(HIHAT)) / u).toBeCloseTo(1.0, 1);
+    expect(plate(CRASH)).toBeGreaterThanOrEqual(top);
+  }
+});

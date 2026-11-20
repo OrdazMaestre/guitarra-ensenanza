@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import * as at from '@coderline/alphatab';
-import { buildChart, listGuitarTracks, type Chart } from '../app/lib/riff/chart';
-import { chartDifficultyScore, songDifficulty } from '../app/lib/riff/difficulty';
+import { buildChart, listGuitarTracks, listPlayableTracks, type Chart } from '../app/lib/riff/chart';
+import { chartDensity, chartDifficultyScore, songDifficulty, VERY_HARD_DENSITY } from '../app/lib/riff/difficulty';
 
 // Dificultad de las canciones del disco (app/lib/riff/difficulty.ts), calibrada con la clasificación
 // del usuario (2026-10-31): velocidad de las notas normales × rebaja si va todo en una cuerda.
@@ -36,6 +36,43 @@ test('dificultad: la clasificación del usuario, y en orden fácil < normal < di
   });
   const rank = { facil: 0, normal: 1, dificil: 2 };
   for (const a of scores) for (const b of scores) if (rank[a.expected] < rank[b.expected]) expect(a.score).toBeLessThan(b.score);
+});
+
+// «MUY DIFÍCIL» (usuario, 2026-11-19): entre las difíciles, las de mucha DENSIDAD (golpes por segundo en la mitad
+// de compases más cargados). Master of Puppets e Iron Rain siguen en «difícil»; la canción de estrés (2 guitarras,
+// semicorcheas a 220) y las de Vektor/Nile de la carpeta del usuario pasan a «muy difícil».
+test('muy difícil: la densidad separa a las más cargadas; las demás no cambian', () => {
+  for (const [path, track] of [['public/tabs/iron-rain.gp', 'MAIkael'], ['public/tabs/prueba-master-of-puppets.gp', 'Rhythm Guitar (Kirk)']] as const) {
+    const chart = chartOf(path, track);
+    expect(songDifficulty(chartDifficultyScore(chart), chartDensity(chart)), path).toBe('dificil');
+  }
+  const stress = chartOf('tests/fixtures/stress-4-instrumentos.musicxml');
+  expect(chartDensity(stress)).toBeGreaterThanOrEqual(VERY_HARD_DENSITY);
+  expect(songDifficulty(chartDifficultyScore(stress), chartDensity(stress))).toBe('muyDificil');
+  // La densidad sola no basta: una canción "normal" muy cargada sigue siendo normal.
+  expect(songDifficulty(5.5, 20)).toBe('normal');
+});
+
+const TABS = 'C:/Users/Enrique/Desktop/Mis cosas/Música/Tabs/Covers/';
+for (const [file, expected] of [['Vektor - Pteropticon.gp', 'muyDificil'], ['Vektor - Black Future.gp', 'muyDificil'], ['Vektor - Venus Project.gp', 'dificil'], ['Megadeth - Lucretia.gp4', 'dificil']] as const) {
+  test(`muy difícil (tabs del usuario): ${file}`, () => {
+    test.skip(!fs.existsSync(TABS + file), 'archivo del usuario no disponible');
+    const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync(TABS + file)), new at.Settings());
+    const chart = buildChart(at, score, listGuitarTracks(score)[0].index, 24);
+    expect(songDifficulty(chartDifficultyScore(chart), chartDensity(chart))).toBe(expected);
+  });
+}
+
+// POR INSTRUMENTO: en la batería el "cambio de cuerda" es cambio de PAD; en la estrés, la batería es otra medida.
+test('por instrumento: la batería se mide por cambios de pad', () => {
+  const score = at.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(fs.readFileSync('tests/fixtures/stress-4-instrumentos.musicxml')), new at.Settings());
+  const drums = listPlayableTracks(score).find((t) => t.kind === 'drums')!;
+  const chart = buildChart(at, score, drums.index, 24);
+  // Por cuerdas, todo va en la "cuerda" 6 (rebaja máxima); por pads, cambia.
+  expect(chartDifficultyScore(chart, 'drums')).toBeGreaterThan(chartDifficultyScore(chart, 'guitar'));
+  const note = (t: number, fret: number) => ({ id: t, t, dur: 0.1, string: 6, fret, midi: 36 + fret, palmMute: false, tech: [] });
+  expect(chartDifficultyScore({ notes: [0, 1, 2, 3].map((i) => note(i * 0.2, i % 2)) }, 'drums')).toBeCloseTo(5);
+  expect(chartDifficultyScore({ notes: [0, 1, 2, 3].map((i) => note(i * 0.2, i % 2)) }, 'keys')).toBeCloseTo(5);
 });
 
 test('dificultad: los silencios largos no la cambian', () => {

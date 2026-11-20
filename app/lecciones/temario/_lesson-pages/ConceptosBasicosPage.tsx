@@ -94,7 +94,7 @@ export default function ConceptosBasicosPage({ previous, next, quizHref }: Lesso
             </div>
 
             <div className="mastil-copy">
-              <p>Aquí están los <strong>trastes</strong>: </p>
+              <p>Aquí están los <strong>TRASTES</strong>: los números bajo el dibujo.</p>
               <p>Serán nuestro mapa y también los números que escribiremos en las tablaturas </p><p>Indicarán qué celda/traste hay que pisar con los dedos y en qué cuerda.
               </p>
               <p>

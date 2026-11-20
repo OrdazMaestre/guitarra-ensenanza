@@ -8,14 +8,23 @@
 
 import { getGameInProgress, subscribeGameInProgress } from './gameInProgress';
 import { getLocalSongs, SONG_TRAITS_STORAGE_KEY } from './localSongs';
-import { buildChart, forgetScore, listGuitarTracks, loadScore } from './riff/chart';
-import { chartDifficultyScore, songDifficulty, type SongDifficulty } from './riff/difficulty';
+import { buildChart, forgetScore, listPlayableTracks, loadScore } from './riff/chart';
+import { chartDensity, chartDifficultyScore, songDifficulty, type DifficultyKind, type SongDifficulty } from './riff/difficulty';
 import type { SongEntry } from './songs';
 
+export interface KindDifficulty {
+  score: number;
+  density: number;
+  difficulty: SongDifficulty;
+}
+
 export interface MeasuredDifficulty {
-  // Sin guitarra de 6 cuerdas no hay dificultad (no se puede jugar).
+  // La de la GUITARRA (sin guitarra de 6 cuerdas, nada).
   score?: number;
   difficulty?: SongDifficulty;
+  // Una por instrumento (usuario, 2026-11-19: la lista se ordena por el instrumento elegido): la primera
+  // pista de cada tipo (la guitarra, la inicial de la canción si es una guitarra).
+  byKind?: Partial<Record<DifficultyKind, KindDifficulty>>;
   // Lo que trae el archivo (petición del usuario, 2026-11-01: batería / guitarra tachadas en las
   // canciones del dispositivo que no las tienen).
   hasGuitar: boolean;
@@ -66,6 +75,23 @@ export function forgetDifficulty(id: string) {
   } catch {
     // Sin almacenamiento: ya está fuera de la memoria.
   }
+}
+
+// Instrumento recordado del juego (`riff-ultimo-instrumento`, useRiffController): manda en la carita y el orden
+// del disco del reproductor de tabs. Para useSyncExternalStore (en el servidor, la guitarra).
+export const INSTRUMENT_STORAGE_KEY = 'riff-ultimo-instrumento';
+export function rememberedDifficultyKind(): DifficultyKind {
+  try {
+    const value = window.localStorage.getItem(INSTRUMENT_STORAGE_KEY);
+    return value === 'bass' || value === 'drums' || value === 'keys' ? value : 'guitar';
+  } catch {
+    return 'guitar';
+  }
+}
+
+// La dificultad de una canción para un instrumento (sin medir o sin ese instrumento: undefined).
+export function difficultyFor(info: MeasuredDifficulty | null | undefined, kind: DifficultyKind): SongDifficulty | undefined {
+  return info?.byKind?.[kind]?.difficulty;
 }
 
 export function subscribeDifficulties(listener: () => void) {
@@ -121,13 +147,22 @@ async function measure(song: SongEntry): Promise<MeasuredDifficulty | null> {
   const url = file ? URL.createObjectURL(file) : song.source;
   try {
     const { at, score } = await loadScore(url);
-    const guitars = listGuitarTracks(score);
-    const track = guitars.find((g) => g.name === song.initialTrack) ?? guitars[0];
+    const tracks = listPlayableTracks(score);
     // La misma regla que buildChart para la batería: una pista de percusión.
     const hasDrums = score.tracks.some((candidate) => candidate.staves[0]?.isPercussion);
-    if (!track) return { hasGuitar: false, hasDrums };
-    const value = chartDifficultyScore(buildChart(at, score, track.index, 24));
-    return { score: value, difficulty: songDifficulty(value), hasGuitar: true, hasDrums };
+    const byKind: Partial<Record<DifficultyKind, KindDifficulty>> = {};
+    for (const kind of ['guitar', 'bass', 'drums', 'keys'] as const) {
+      const ofKind = tracks.filter((track) => (track.kind ?? 'guitar') === kind);
+      const track = (kind === 'guitar' ? ofKind.find((g) => g.name === song.initialTrack) : undefined) ?? ofKind[0];
+      if (!track) continue;
+      const chart = buildChart(at, score, track.index, 24);
+      const value = chartDifficultyScore(chart, kind);
+      const density = chartDensity(chart);
+      byKind[kind] = { score: value, density, difficulty: songDifficulty(value, density) };
+    }
+    const guitar = byKind.guitar;
+    if (!guitar) return { hasGuitar: false, hasDrums, byKind };
+    return { score: guitar.score, difficulty: guitar.difficulty, hasGuitar: true, hasDrums, byKind };
   } catch {
     return null;
   } finally {

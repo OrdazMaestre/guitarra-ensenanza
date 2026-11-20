@@ -263,7 +263,7 @@ test('JUGAR vive en la barra del mástil: ajustes delante del juego, PAUSA, Cont
   await expect(neckTutorial).not.toHaveClass(/tour-launch-still/);
 });
 
-test('móvil en vertical: con 6 trastes el mástil mide el 40 % del alto de la pantalla y se puede tocar', async ({ page }) => {
+test('móvil en vertical: con 6 trastes el mástil mide el 40 % del alto de la pantalla (−10 px) y se puede tocar', async ({ page }) => {
   const board = page.locator('.test-room-fretboard .reduced-board-bg');
   const height = async () => (await board.boundingBox())!.height;
   await page.setViewportSize({ width: 360, height: 740 });
@@ -272,8 +272,9 @@ test('móvil en vertical: con 6 trastes el mástil mide el 40 % del alto de la p
   const plain = await height();
   await openGame(page);
   expect(await height()).toBeGreaterThan(plain * 2);
-  // Responsive (usuario, 2026-11-09): la madera, el 40 % del alto de la ventana.
-  expect(Math.abs((await height()) - 0.4 * 740)).toBeLessThan(3);
+  // Responsive (usuario, 2026-11-09): la madera, el 40 % del alto de la ventana, menos 10 px en vertical
+  // (usuario, 2026-11-19).
+  expect(Math.abs((await height()) - (0.4 * 740 - 10))).toBeLessThan(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
 
   // Una nota en su traste cuenta en el mástil alto.
@@ -502,7 +503,7 @@ test('nivel Híbrido en móvil vertical: mástil al 40 % del alto de la pantalla
   await openGame(page);
   await page.locator('.riff-dd-toggle', { hasText: 'Nivel' }).click();
   await page.locator('.riff-level-hybrid').getByRole('button', { name: 'Híbrido', exact: true }).click();
-  await expect.poll(async () => Math.abs((await board.boundingBox())!.height - 0.4 * 740)).toBeLessThan(3);
+  await expect.poll(async () => Math.abs((await board.boundingBox())!.height - (0.4 * 740 - 10))).toBeLessThan(3);
   expect((await board.boundingBox())!.height).toBeGreaterThan(plain * 2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   // Se puede jugar en vertical, sin pedir girar el móvil.
@@ -1448,9 +1449,13 @@ test.describe('canciones del dispositivo', () => {
 
     // Se cambia lo recordado: si al volver sale ese valor, es que no se ha medido otra vez.
     await page.evaluate(() => {
-      const key = 'riff-rasgos-canciones-v1';
+      const key = 'riff-rasgos-canciones-v2';
       const traits = JSON.parse(window.localStorage.getItem(key)!);
-      for (const id of Object.keys(traits)) traits[id].difficulty = 'dificil';
+      // (Desde 2026-11-19 la carita sale de la dificultad por instrumento, `byKind`.)
+      for (const id of Object.keys(traits)) {
+        traits[id].difficulty = 'dificil';
+        if (traits[id].byKind?.guitar) traits[id].byKind.guitar.difficulty = 'dificil';
+      }
       window.localStorage.setItem(key, JSON.stringify(traits));
     });
     await page.reload();
@@ -1464,7 +1469,7 @@ test.describe('canciones del dispositivo', () => {
     await page.getByRole('button', { name: 'Borrar canciones guardadas', exact: true }).click();
     await page.getByRole('button', { name: 'Sí, borrarlas', exact: true }).click();
     await expect(row).toHaveCount(0);
-    expect(await page.evaluate(() => window.localStorage.getItem('riff-rasgos-canciones-v1'))).toBeNull();
+    expect(await page.evaluate(() => window.localStorage.getItem('riff-rasgos-canciones-v2'))).toBeNull();
   });
 
   test('sin espacio para guardar: avisa, y la canción sirve en esta visita', async ({ page }) => {

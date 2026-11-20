@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import AlphaTabPlayer from './AlphaTabPlayer';
 import { DiscIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons } from './riff/RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import { DeleteSongButton, LocalSongSearch, useSongChoice } from './LocalSongSearch';
 import type { SongEntry } from '@/app/lib/songs';
+import { rememberedDifficultyKind } from '@/app/lib/songDifficulty';
 
 // Reproductor de tablatura con selector de canción: un botón con un disco a la izquierda del
 // todo de la barra del reproductor (prop `toolbarStart` de AlphaTabPlayer). Al elegir otra canción
@@ -17,8 +18,12 @@ interface Props {
   minHeight?: number;
 }
 
+const noKindChanges = () => () => {};
+
 export default function SongTabPlayer({ songs, initialSong, minHeight }: Props) {
-  const choice = useSongChoice(songs, initialSong);
+  // Carita y orden del disco por el instrumento que se tocó por última vez en el juego (usuario, 2026-11-19).
+  const kind = useSyncExternalStore(noKindChanges, rememberedDifficultyKind, () => 'guitar' as const);
+  const choice = useSongChoice(songs, initialSong, kind);
   const song = choice.song;
   return (
     <AlphaTabPlayer

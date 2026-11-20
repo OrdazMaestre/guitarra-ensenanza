@@ -18,7 +18,8 @@ import {
   removeLocalSong,
 } from '@/app/lib/localSongs';
 import { findSong, type SongEntry } from '@/app/lib/songs';
-import { forgetDifficulty, getDifficulties, getServerDifficulties, requestDifficulties, subscribeDifficulties } from '@/app/lib/songDifficulty';
+import { difficultyFor, forgetDifficulty, getDifficulties, getServerDifficulties, requestDifficulties, subscribeDifficulties } from '@/app/lib/songDifficulty';
+import { DIFFICULTY_ORDER, type DifficultyKind } from '@/app/lib/riff/difficulty';
 
 // Canciones del propio dispositivo (app/lib/localSongs.ts) en los discos del juego y de la
 // tablatura: la lista compartida, la elección de canción de cada disco y la tarjeta "Buscar mis
@@ -36,7 +37,9 @@ export function useSongDifficulties() {
   return useSyncExternalStore(subscribeDifficulties, getDifficulties, getServerDifficulties);
 }
 
-export function useSongChoice(webSongs: SongEntry[], initialSong?: string) {
+// `kind`: el instrumento que manda en la carita y el orden (usuario, 2026-11-19): el de la pista elegida en el
+// juego, o el recordado en el reproductor de tabs.
+export function useSongChoice(webSongs: SongEntry[], initialSong?: string, kind: DifficultyKind = 'guitar') {
   const { songs: localSongs } = useLocalSongs();
   const difficulties = useSongDifficulties();
   const [songId, setSongId] = useState(initialSong);
@@ -60,17 +63,27 @@ export function useSongChoice(webSongs: SongEntry[], initialSong?: string) {
       const info = difficulties[song.id];
       return {
         ...song,
-        difficulty: info?.difficulty,
+        // La del instrumento elegido; las canciones medidas antes (sin `byKind`) siguen con la de la guitarra.
+        difficulty: info?.byKind ? difficultyFor(info, kind) : kind === 'guitar' ? info?.difficulty : undefined,
         // Solo en las del dispositivo (las de la web las tienen todas).
         ...(song.local && info && !info.hasDrums ? { noDrums: true } : {}),
         ...(song.local && info && !info.hasGuitar ? { noGuitar: true } : {}),
       };
     });
-    const scoreOf = (song: SongEntry) => difficulties[song.id]?.score ?? Number.POSITIVE_INFINITY;
+    // Orden: por la dificultad de ese instrumento (fácil → muy difícil), dentro de cada una por su puntuación
+    // (o su densidad en «muy difícil»), y al final las que no tienen ese instrumento o aún no se midieron.
+    const rank = (song: SongEntry) => {
+      const info = difficulties[song.id];
+      const measured = info?.byKind?.[kind];
+      if (!measured) return [DIFFICULTY_ORDER.length, Number.POSITIVE_INFINITY];
+      return [DIFFICULTY_ORDER.indexOf(measured.difficulty), measured.difficulty === 'muyDificil' ? measured.density : measured.score];
+    };
     const local = withDifficulty.filter((song) => song.local)
-      .sort((a, b) => scoreOf(a) - scoreOf(b) || a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }));
+      .map((song) => ({ song, key: rank(song) }))
+      .sort((a, b) => a.key[0] - b.key[0] || a.key[1] - b.key[1] || a.song.title.localeCompare(b.song.title, 'es', { sensitivity: 'base' }))
+      .map(({ song }) => song);
     return [...withDifficulty.filter((song) => !song.local), ...local];
-  }, [unsorted, difficulties]);
+  }, [unsorted, difficulties, kind]);
   const current = songs.find((song) => song.id === songId);
   // Una local solo es la actual cuando ya está leída en memoria (`local`).
   const song: SongEntry = current?.local

@@ -97,6 +97,9 @@ export interface ScheduledClick {
   at: number;
   sound: DrumSound;
   volume: number;
+  // Golpe de la batería de fondo (la real o la automática); sin él, metrónomo o cuenta atrás. La mesa de
+  // sonido (soundCheck.ts) manda cada golpe de batería al bus de su pieza.
+  drum?: boolean;
 }
 
 // Nota de la banda ya programada (ver `takeBandNotes`).
@@ -143,7 +146,7 @@ export interface JudgeResult {
   playNow: { midi: number; duration: number; pad?: number }[];
 }
 
-type Click = { t: number; sound: DrumSound; volume: number };
+type Click = { t: number; sound: DrumSound; volume: number; drum?: boolean };
 // Bombo de la batería del juego (real y automática): +40 % (usuario, 2026-11-13). 0,8 × 1,4 = 1,12, dentro de
 // lo que el metrónomo ya admite sin saturar (hasta 2, tests/metronome-volume-safety.spec.ts).
 export const KICK_BOOST = 1.4;
@@ -306,7 +309,7 @@ export class RiffSession {
     // Metrónomo (si está encendido) y batería (si no está silenciada) pueden sonar a la vez.
     const drumTrack = chart.bandTracks?.find((track) => track.kind === 'drums');
     // Bombo un 40 % más fuerte en las dos baterías, la real y la automática (usuario, 2026-11-13).
-    const boost = <T extends { sound: DrumSound; volume: number }>(hit: T): T => ({ ...hit, volume: hit.volume * DRUM_LEVEL * (hit.sound === 'kick' ? KICK_BOOST : 1) });
+    const boost = <T extends { sound: DrumSound; volume: number }>(hit: T): T & { drum: true } => ({ ...hit, volume: hit.volume * DRUM_LEVEL * (hit.sound === 'kick' ? KICK_BOOST : 1), drum: true });
     const songClicks: Click[] = [
       ...(backing.click === 'auto' ? autoDrumsOf(chart).filter((hit) => inRange(hit.t)).map(boost) : []),
       ...(backing.click === 'metronomo' ? chart.beats.filter((beat) => inRange(beat.t)).map((beat) => ({ t: beat.t, sound: 'snare' as DrumSound, volume: beat.isBarStart ? 1 : 0.65 })) : []),
@@ -490,7 +493,7 @@ export class RiffSession {
       if (click.t > horizon) break;
       if (pending !== null && click.t > pending + 1e-6) break;
       if (click.t >= this.songPos - 0.05) {
-        out.push({ at: now + Math.max(0, click.t - this.songPos) / this.options.speed, sound: click.sound, volume: click.volume });
+        out.push({ at: now + Math.max(0, click.t - this.songPos) / this.options.speed, sound: click.sound, volume: click.volume, drum: click.drum });
       }
       this.nextClick++;
     }

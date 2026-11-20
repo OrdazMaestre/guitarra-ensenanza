@@ -1,3 +1,4 @@
+import { getMixSettings, subscribeMix, type MixContext, type MixTarget } from './soundCheck';
 import { applyBend, type BendAutomationPoint } from './bendCurve';
 import { buildGameMixChain, GAME_MIX } from './gameMix';
 
@@ -577,7 +578,9 @@ export async function scheduleGuideNote(
   at: number,
   duration: number,
   volume = 0.35,
-  bend?: ScheduledBend | null
+  bend?: ScheduledBend | null,
+  // Salida (mesa de sonido: el bus de su instrumento y volumen, getMixBus); sin ella, como siempre.
+  out?: AudioNode
 ): Promise<GuideNoteHandle | null> {
   const context = getCtx();
   await ensureSamples();
@@ -611,7 +614,7 @@ export async function scheduleGuideNote(
   gain.gain.linearRampToValueAtTime(level * volume, start + 0.005);
   gain.gain.setTargetAtTime(0.0001, end, 0.05);
   source.connect(gain);
-  gain.connect(getCleanBus(context));
+  gain.connect(out ?? getCleanBus(context));
   source.start(start);
   source.stop(end + GUIDE_TAIL_SECONDS);
   const voice = {
@@ -666,7 +669,7 @@ export async function scheduleGuideNote(
 // pico 0,19 × volumen) pero programada a una hora EXACTA con su propio final, como `scheduleGuideNote`, y
 // fuera de `voices` (comparte el tope de notas de fondo `MAX_GUIDE_VOICES`).
 const KEY_RELEASE_SECONDS = 0.06;
-export function scheduleKeyNote(midi: number, at: number, duration: number, volume = 0.35): GuideNoteHandle | null {
+export function scheduleKeyNote(midi: number, at: number, duration: number, volume = 0.35, out?: AudioNode): GuideNoteHandle | null {
   const context = getCtx();
   const start = Math.max(at, context.currentTime);
   let end = start + Math.max(0.08, duration);
@@ -693,7 +696,7 @@ export function scheduleKeyNote(midi: number, at: number, duration: number, volu
   osc.connect(hp);
   hp.connect(lp);
   lp.connect(gain);
-  gain.connect(getMaster(context));
+  gain.connect(out ?? getMaster(context));
   osc.start(start);
   osc.stop(end + KEY_RELEASE_SECONDS * 3);
   const voice = {
@@ -941,10 +944,12 @@ export function playBassNote(
   palmMuted = false,
   // Optional bend (app/lib/bendCurve.ts), applied to both oscillators'
   // `detune` so the sub follows the main voice. Omitted = unchanged.
-  bend?: ScheduledBend | null
+  bend?: ScheduledBend | null,
+  // Salida (mesa de sonido, getMixBus: su bus va al bus del bajo); sin ella, como siempre.
+  out?: AudioNode
 ): GuideNoteHandle | null {
   if (volume <= 0) return null;
-  return createBassVoice(getCtx(), scheduledAt, midiNote, durationSeconds, volume, palmMuted, bend, true).handle;
+  return createBassVoice(getCtx(), scheduledAt, midiNote, durationSeconds, volume, palmMuted, bend, true, out).handle;
 }
 
 // El patch del bajo, compartido por el bajo de la banda/tablatura (`band`: monofónico, con sus cortes y su
@@ -957,7 +962,8 @@ function createBassVoice(
   volume: number,
   palmMuted: boolean,
   bend: ScheduledBend | null | undefined,
-  band: boolean
+  band: boolean,
+  out?: AudioNode
 ): { handle: GuideNoteHandle; osc: OscillatorNode; sub: OscillatorNode; ampGain: GainNode } {
   if (band) {
     cutBassVoicesBefore(scheduledAt, context);
@@ -1063,7 +1069,7 @@ function createBassVoice(
   // A 1 no cambia nada. Solo la mueve `setVolume`: el juego abre con ella el bajo que toca el alumno.
   const trim = context.createGain();
   ampGain.connect(trim);
-  trim.connect(getBassBus(context));
+  trim.connect(out ?? getBassBus(context));
 
   osc.start(scheduledAt);
   sub.start(scheduledAt);
@@ -1144,9 +1150,9 @@ function noiseBurst(context: BaseAudioContext, seconds: number, curve: number): 
 
 // Cualquiera de los 6 sonidos de batería (usuario, 2026-11-17: las tabs y la batería de fondo del juego suenan
 // como la batería jugable, con sus toms y su plato fuerte); el metrónomo sigue usando caja/bombo/plato.
-export function playMetronomeClick(scheduledAt: number, volume: number, type: DrumLayer = 'snare'): void {
+export function playMetronomeClick(scheduledAt: number, volume: number, type: DrumLayer = 'snare', out?: AudioNode): void {
   const context = getCtx();
-  drumLayers(context, scheduledAt, volume, type, getMetronomeLimiter(context));
+  drumLayers(context, scheduledAt, volume, type, out ?? getMetronomeLimiter(context));
 }
 
 // BATERÍA JUGABLE (app/lib/riff/drums.ts, usuario 2026-11-16): un golpe de uno de los 6 pads, con un
@@ -1154,14 +1160,14 @@ export function playMetronomeClick(scheduledAt: number, volume: number, type: Dr
 // son las mismas capas que la batería del juego y el metrónomo; los toms y el plato fuerte, nuevos. Por
 // el mismo limitador de batería. Pads: 0 bombo, 1 plato, 2 caja, 3 tom agudo, 4 tom grave, 5 plato fuerte.
 const PAD_SOUND: Array<DrumLayer> = ['kick', 'cymbal', 'snare', 'tomHigh', 'tomLow', 'crash'];
-export function playDrumPad(pad: number, scheduledAt: number, volume: number): GuideNoteHandle | null {
+export function playDrumPad(pad: number, scheduledAt: number, volume: number, out?: AudioNode): GuideNoteHandle | null {
   if (volume <= 0) return null;
   const sound = PAD_SOUND[pad];
   if (!sound) return null;
   const context = getCtx();
   const trim = context.createGain();
   trim.gain.value = volume;
-  trim.connect(getMetronomeLimiter(context));
+  trim.connect(out ?? getMetronomeLimiter(context));
   drumLayers(context, scheduledAt, 1, sound, trim);
   // El nodo se suelta solo cuando acaba el sonido más largo (el plato fuerte, ~1,3 s).
   window.setTimeout(() => trim.disconnect(), Math.max(0, scheduledAt - context.currentTime) * 1000 + 2000);
@@ -1337,4 +1343,126 @@ export async function switchNote(oldId: number, newMidi: number, forKeyboard = f
     if (old) killVoice(old, ctx, DRAG_RELEASE_TIME);
   }
   return playNote(newMidi, forKeyboard, volume, tone);
+}
+
+
+// ============================ MESA DE PRUEBA DE SONIDO ============================
+// (usuario, 2026-11-19; valores en app/lib/soundCheck.ts) Un BUS por instrumento y volumen (normal, fondo,
+// fallo): EQ de 3 bandas como la mesa de mezclas (lowshelf 200 Hz, peaking 1 kHz Q 0,8, highshelf 5 kHz) y
+// una ganancia (volumen × "Solo" de la mesa). Va justo DESPUÉS de cada voz y ANTES de lo que había (cadena
+// clean de la guitarra, bus del bajo, limitador de batería, master del teclado), así lo no lineal sigue igual.
+// Con los valores por defecto (volumen 1, EQ 0) el bus es transparente. Solo lo usa Riff-Hero por ahora.
+type MixBus = { input: BiquadFilterNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; gain: GainNode; target: MixTarget; context: MixContext };
+const mixBuses = new Map<string, MixBus>();
+// Solo de la mesa abierta: de ese instrumento, solo suena ese volumen (null = todos).
+let mixMonitor: { target: MixTarget; solo: MixContext | null } | null = null;
+let mixSubscribed = false;
+
+function mixDestination(context: AudioContext, target: MixTarget): AudioNode {
+  if (target === 'guitar') return getCleanBus(context);
+  if (target === 'bass') return getBassBus(context);
+  if (target === 'keys') return getMaster(context);
+  return getMetronomeLimiter(context);
+}
+
+function mixBusGain(bus: MixBus): number {
+  const volume = getMixSettings()[bus.target][bus.context].volume;
+  const muted = mixMonitor !== null && mixMonitor.target === bus.target && mixMonitor.solo !== null && mixMonitor.solo !== bus.context;
+  return muted ? 0 : volume;
+}
+
+function applyMixBus(bus: MixBus, ramp: boolean) {
+  const eq = getMixSettings()[bus.target][bus.context].eq;
+  const now = getCtx().currentTime;
+  const set = (param: AudioParam, value: number) => {
+    if (ramp) param.setTargetAtTime(value, now, 0.015);
+    else param.value = value;
+  };
+  set(bus.low.gain, eq.low);
+  set(bus.mid.gain, eq.mid);
+  set(bus.high.gain, eq.high);
+  set(bus.gain.gain, mixBusGain(bus));
+}
+
+function applyAllMixBuses() {
+  for (const bus of mixBuses.values()) applyMixBus(bus, true);
+}
+
+export function getMixBus(target: MixTarget, mixContext: MixContext): AudioNode {
+  const context = getCtx();
+  const key = `${target}/${mixContext}`;
+  const existing = mixBuses.get(key);
+  if (existing) return existing.input;
+  if (!mixSubscribed) {
+    mixSubscribed = true;
+    subscribeMix(applyAllMixBuses);
+  }
+  const low = context.createBiquadFilter();
+  low.type = 'lowshelf';
+  low.frequency.value = 200;
+  const mid = context.createBiquadFilter();
+  mid.type = 'peaking';
+  mid.frequency.value = 1000;
+  mid.Q.value = 0.8;
+  const high = context.createBiquadFilter();
+  high.type = 'highshelf';
+  high.frequency.value = 5000;
+  const gain = context.createGain();
+  low.connect(mid);
+  mid.connect(high);
+  high.connect(gain);
+  gain.connect(mixDestination(context, target));
+  const bus: MixBus = { input: low, low, mid, high, gain, target, context: mixContext };
+  mixBuses.set(key, bus);
+  applyMixBus(bus, false);
+  return low;
+}
+
+// El Solo de la mesa abierta (`target` null al cerrarla: todo vuelve a sonar).
+export function setMixMonitor(target: MixTarget | null, solo: MixContext | null) {
+  mixMonitor = target ? { target, solo } : null;
+  applyAllMixBuses();
+}
+
+// Para tests: la ganancia actual de un bus (null si aún no existe).
+export function mixBusLevel(target: MixTarget, mixContext: MixContext): number | null {
+  const bus = mixBuses.get(`${target}/${mixContext}`);
+  return bus ? mixBusGain(bus) : null;
+}
+// Para los tests de la mesa (solo lectura): el nivel de cada bus y cuáles existen.
+if (typeof window !== 'undefined') {
+  (window as unknown as { __riffMix?: unknown }).__riffMix = { level: mixBusLevel, buses: () => [...mixBuses.keys()] };
+}
+
+// Una nota TUYA en el juego empieza en "fallo" y, al acertarla, pasa a "normal" sin cortarse: su salida va a
+// los dos buses con dos ganancias que se cruzan en 15 ms. `dispose` suelta los nodos (al acabar la nota).
+export interface MixRouter {
+  input: GainNode;
+  setContext(next: 'normal' | 'fallo'): void;
+  dispose(): void;
+}
+export function createMixRouter(target: MixTarget, initial: 'normal' | 'fallo'): MixRouter {
+  const context = getCtx();
+  const input = context.createGain();
+  const toFallo = context.createGain();
+  const toNormal = context.createGain();
+  toFallo.gain.value = initial === 'fallo' ? 1 : 0;
+  toNormal.gain.value = initial === 'normal' ? 1 : 0;
+  input.connect(toFallo);
+  input.connect(toNormal);
+  toFallo.connect(getMixBus(target, 'fallo'));
+  toNormal.connect(getMixBus(target, 'normal'));
+  return {
+    input,
+    setContext(next) {
+      const now = context.currentTime;
+      toFallo.gain.setTargetAtTime(next === 'fallo' ? 1 : 0, now, 0.005);
+      toNormal.gain.setTargetAtTime(next === 'normal' ? 1 : 0, now, 0.005);
+    },
+    dispose() {
+      input.disconnect();
+      toFallo.disconnect();
+      toNormal.disconnect();
+    },
+  };
 }

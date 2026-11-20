@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useId } from 'react';
 import type { RiffLevel } from '@/app/lib/riff/levels';
-import { DIFFICULTY_LABEL, DIFFICULTY_LEVEL, type SongDifficulty } from '@/app/lib/riff/difficulty';
+import { DIFFICULTY_LABEL, DIFFICULTY_LEVEL, DIFFICULTY_ORDER, type SongDifficulty } from '@/app/lib/riff/difficulty';
 import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 
 // Iconos del panel de partida (petición del usuario: en el panel solo se ven iconos; en los menús,
@@ -323,6 +323,16 @@ export function ClickIcon({ click }: { click: RiffClick }) {
   return <MetronomeIcon on={click === 'metronomo'} />;
 }
 
+// Mesa de sonido (soundCheck.ts): tres faders verticales con su botón.
+export function MixerIcon() {
+  return (
+    <Icon size={16}>
+      <path d="M6 4v16M12 4v16M18 4v16" />
+      <path d="M4 14h4M10 8h4M16 16h4" strokeWidth="3" />
+    </Icon>
+  );
+}
+
 // Pistas de fondo en "Pistas": batería (tambor) y bajo (mástil largo con 4 clavijas).
 export function DrumIcon() {
   return (
@@ -375,7 +385,7 @@ export function SongDifficultyIcon({ difficulty, pending }: { difficulty?: SongD
 export function SongDifficultyLegend({ className, style }: { className?: string; style?: CSSProperties }) {
   return (
     <p className={className} data-testid="song-difficulty-legend" style={style}>
-      {(['facil', 'normal', 'dificil'] as const).map((difficulty) => (
+      {DIFFICULTY_ORDER.map((difficulty) => (
         <span key={difficulty} style={{ alignItems: 'center', display: 'inline-flex', gap: 4 }}>
           <LevelIcon level={DIFFICULTY_LEVEL[difficulty]} />
           {DIFFICULTY_LABEL[difficulty]}

@@ -1,12 +1,16 @@
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { ReducedFretboardDiagram, ReducedFretboardStyles } from '../../../components/guitar/ReducedFretboardDiagram';
-import MiniKeyboard from '../../../components/guitar/MiniKeyboard';
 import SongTabPlayer from '../../../components/guitar/SongTabPlayer';
 import TuningBoard, { TuningBoardStyles } from '../../../components/tuningGame/TuningBoard';
 import SpotlightCorners from './SpotlightCorners';
-import GamepadDetector from '../../../components/guitar/GamepadDetector';
-import KeyRolloverTester from '../../../components/guitar/KeyRolloverTester';
 import { TEST_ROOM_SONGS } from './songs';
+
+// Perezosos (2026-11-20, rendimiento de compilación): ambos son componentes de prueba colapsados en
+// <details>, ya 'use client' por su cuenta -- sin `ssr: false` porque esta página es un Server Component
+// y esa opción solo es válida desde un Client Component.
+const GamepadDetector = dynamic(() => import('../../../components/guitar/GamepadDetector'));
+const KeyRolloverTester = dynamic(() => import('../../../components/guitar/KeyRolloverTester'));
 
 export default function SalaDePruebasPage() {
   return (
@@ -16,8 +20,8 @@ export default function SalaDePruebasPage() {
         <p className="test-room-kicker">Zona aparte</p>
         <h1>Sala de pruebas</h1>
         <p>Aquí podrás ver un adelanto de lo que está por venir en la web.</p>
-        <p>Es un espacio libre para probar cosas.</p>
-        <p>Tienes un mástil, un teclado y un trozo de tablatura donde pruebo las ultimas novedades antes de sacarlas de esta sala.</p>
+        <p>Es un espacio libre donde pruebo las ultimas novedades antes de sacarlas de aquí.</p>
+        <p>Tienes varios instrumentos y un trozo de tablatura.</p>
       </header>
 
       <section className="test-room-instruments">
@@ -37,24 +41,6 @@ export default function SalaDePruebasPage() {
             notes={[]}
             riffGame={{ songs: TEST_ROOM_SONGS, initialSong: 'black-gilmur' }}
             tutorial
-          />
-        </div>
-
-        <MiniKeyboard className="test-room-keyboard" tutorial />
-
-        {/* Batería MIDI suelta (usuario, 2026-11-17): la del modo batería de Riff-Hero; su JUGAR abre la partida
-            con la batería de la canción. */}
-        <div className="test-room-drums">
-          <ReducedFretboardDiagram
-            allowLeftHanded
-            ariaLabel="Batería interactiva"
-            startFret={0}
-            endFret={5}
-            fretLabels
-            instrument="drums"
-            notes={[]}
-            riffGame={{ songs: TEST_ROOM_SONGS, initialSong: 'black-gilmur' }}
-            tutorial={false}
           />
         </div>
       </section>
@@ -171,8 +157,7 @@ export default function SalaDePruebasPage() {
           width: 100%;
         }
 
-        .test-room-fretboard,
-        .test-room-drums {
+        .test-room-fretboard {
           min-width: 0;
         }
 

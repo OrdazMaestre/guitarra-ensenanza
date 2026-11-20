@@ -1,5 +1,5 @@
 'use client';
-import { type RefObject, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { buildChart, listGuitarTracks, listPlayableTracks, loadScore, type Chart, type GuitarTrackInfo } from '@/app/lib/riff/chart';
 import { DRUM_LEVEL_ORDER, isDrumLevel, isKeysLevel, KEYS_LEVEL_ORDER, RIFF_LEVELS, type DrumLevel, type KeysLevel, type RiffLevel } from '@/app/lib/riff/levels';
 import { reduceKeys } from '@/app/lib/riff/keys';
@@ -8,9 +8,12 @@ import { pitchRange, reduceChart } from '@/app/lib/riff/reduce';
 import { leaderTrack, trackRole, type TrackRole } from '@/app/lib/riff/roles';
 import type { RiffBacking, RiffClick, RiffMode } from '@/app/lib/riff/session';
 import { type HeldPositionsRef, useRiffGame } from '@/app/lib/riff/useRiffGame';
+import { setMixMonitor } from '@/app/lib/guitarAudioEngine';
+import type { MixContext, MixTarget } from '@/app/lib/soundCheck';
 import { buildRemix } from '@/app/lib/riff/remix';
 import { lockGameScreen, releaseGameScreen, unlockGameOrientation } from '@/app/lib/orientationLock';
 import { keepScreenOn } from '@/app/lib/screenWakeLock';
+import { INSTRUMENT_STORAGE_KEY } from '@/app/lib/songDifficulty';
 import { RIFF_TUTORIAL, RIFF_TUTORIAL_SONG } from './riffTutorial';
 
 // Estado del juego tipo Rocksmith que vive DENTRO de un mástil MIDI (ReducedFretboardDiagram,
@@ -39,7 +42,7 @@ const DRUM_LEVEL_STORAGE_KEY = 'riff-ultimo-nivel-bateria';
 const KEYS_LEVEL_STORAGE_KEY = 'riff-ultimo-nivel-teclado';
 // Y el INSTRUMENTO que se tocó (usuario, 2026-11-17), como la dificultad: guitarra solista o rítmica, bajo o
 // batería. Al abrir una canción se elige su pista de ese tipo, si la tiene; si no, la de siempre.
-const INSTRUMENT_STORAGE_KEY = 'riff-ultimo-instrumento';
+// (La clave vive en songDifficulty.ts: también ordena el disco del reproductor de tabs.)
 type Instrument = 'S' | 'R' | 'bass' | 'drums' | 'keys';
 function savedInstrument(): Instrument | null {
   try {
@@ -112,7 +115,7 @@ interface Options {
   remember?: boolean;
 }
 
-export type NeckKind = 'guitar' | 'bass' | 'drums';
+export type NeckKind = 'guitar' | 'bass' | 'drums' | 'keys';
 
 export function useRiffController({ source, initialTrack, trackRoles, startFret, endFret, measureRef, heldRef, kind, remember = true }: Options) {
   const [tracks, setTracks] = useState<GuitarTrackInfo[]>([]);
@@ -211,6 +214,21 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
   }
 
   const game = useRiffGame(activeChart, heldRef, gameVolume);
+
+  // MESA DE PRUEBA DE SONIDO (usuario, 2026-11-19; soundCheck.ts): desde Pistas, el botón de mesa de una pista
+  // abre una mesa que REPRODUCE la canción sin partida (otra instancia de useRiffGame que solo escucha, con el
+  // volumen de partida de siempre) y deja ajustar ese instrumento en sus 3 volúmenes. Al abrirla, el Solo está en
+  // Normal. La batería, por piezas (empieza en el bombo).
+  const [soundCheck, setSoundCheck] = useState<{ trackIndex: number; target: MixTarget; piece: MixTarget | null; solo: MixContext | null } | null>(null);
+  const [listenChart, setListenChart] = useState<Chart | null>(null);
+  const listenFocusRef = useRef<{ piece: MixTarget | null } | null>(null);
+  const listenGame = useRiffGame(listenChart, undefined, 1, listenFocusRef);
+  const listenWantedRef = useRef(false);
+  useLayoutEffect(() => {
+    listenFocusRef.current = soundCheck ? { piece: soundCheck.piece } : null;
+    setMixMonitor(soundCheck ? soundCheck.piece ?? soundCheck.target : null, soundCheck?.solo ?? null);
+  }, [soundCheck]);
+  useEffect(() => () => setMixMonitor(null, null), []);
   // Partida EN CURSO (cuenta de entrada o tocando). En pausa o terminada no lo está.
   const playing = game.status === 'countin' || game.status === 'playing';
   const paused = game.status === 'paused';
@@ -271,12 +289,12 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     const remembered = savedInstrument();
     const roles = JSON.parse(rolesKey) as Record<string, TrackRole>;
     const guitarRole = remembered === 'S' || remembered === 'R' ? remembered : null;
-    const wanted: Instrument | null = neck === 'drums' || neck === 'bass' ? neck : neck === 'guitar' ? guitarRole : remembered;
+    const wanted: Instrument | null = neck === 'drums' || neck === 'bass' || neck === 'keys' ? neck : neck === 'guitar' ? guitarRole : remembered;
     const matches = (track: GuitarTrackInfo) => (wanted === 'drums' || wanted === 'bass' || wanted === 'keys'
       ? track.kind === wanted
       : (track.kind ?? 'guitar') === 'guitar' && trackRole(track.name, roles) === wanted);
     const initial = list.find((track) => track.name === initialTrack);
-    if (neck === 'drums') return list.find(matches);
+    if (neck === 'drums' || neck === 'keys') return list.find(matches);
     // El instrumento pedido (la pista inicial si ya lo es), si no, la de siempre.
     return (wanted && (initial && matches(initial) ? initial : list.find(matches))) || initial || list[0];
   }
@@ -291,8 +309,8 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
       if (next && next.index !== trackIndex) setTrackIndex(next.index);
     }
   }
-  // La batería suelta con una canción sin batería: no hay nada que tocar.
-  const missingKind = kind === 'drums' && tracks.length > 0 && !tracks.some((track) => track.kind === 'drums');
+  // La batería/teclado sueltos con una canción sin esa pista: no hay nada que tocar.
+  const missingKind: 'drums' | 'keys' | null = (kind === 'drums' || kind === 'keys') && tracks.length > 0 && !tracks.some((track) => track.kind === kind) ? kind : null;
   // Elegir pista desde "Pistas": se recuerda el instrumento (ver INSTRUMENT_STORAGE_KEY).
   function chooseTrack(index: number) {
     setTrackIndex(index);
@@ -481,6 +499,52 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
 
   const gameOptions = () => ({ speed: playSpeed, mode: playMode, loop, fromBar: Math.min(playFrom, playTo), toBar: Math.max(playFrom, playTo), freeStrings: !!profile?.freeStrings, timingScale: profile?.timingScale });
 
+  // Mesa de sonido: la canción entera de esa pista (la real, sin traducir), en bucle por el tramo de Compases.
+  const listenOptions = () => ({ speed: 1, mode: 'ritmo' as const, loop: true, fromBar: Math.min(playFrom, playTo), toBar: Math.max(playFrom, playTo), freeStrings: false });
+  const { start: listenStart, stop: listenStop } = listenGame;
+  function openSoundCheck(index: number) {
+    if (playing || !source) return;
+    const track = tracks.find((candidate) => candidate.index === index);
+    if (!track) return;
+    const kindOf = track.kind ?? 'guitar';
+    const target: MixTarget = kindOf === 'bass' ? 'bass' : kindOf === 'keys' ? 'keys' : kindOf === 'drums' ? 'kick' : 'guitar';
+    setSoundCheck({ trackIndex: index, target, piece: kindOf === 'drums' ? 'kick' : null, solo: 'normal' });
+    listenStop();
+    setListenChart(null);
+    listenWantedRef.current = true;
+    void loadScore(source).then(({ at, score }) => setListenChart(buildChart(at, score, index, endFret)));
+  }
+  function closeSoundCheck() {
+    listenWantedRef.current = false;
+    listenStop();
+    setListenChart(null);
+    setSoundCheck(null);
+  }
+  // En cuanto está la pista de la mesa, suena (y vuelve a sonar si se pulsa ▶).
+  useEffect(() => {
+    if (listenChart && listenWantedRef.current) void listenStart(listenOptions(), backing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listenChart]);
+  function playSoundCheck() {
+    listenWantedRef.current = true;
+    if (listenChart) void listenStart(listenOptions(), backing);
+  }
+  function stopSoundCheck() {
+    listenWantedRef.current = false;
+    listenStop();
+  }
+  // Otra canción: la mesa se cierra (el estado, durante el render; el sonido, en el efecto).
+  const [soundCheckSource, setSoundCheckSource] = useState(source);
+  if (soundCheckSource !== source) {
+    setSoundCheckSource(source);
+    setListenChart(null);
+    setSoundCheck(null);
+  }
+  useEffect(() => {
+    listenWantedRef.current = false;
+    listenStop();
+  }, [source, listenStop]);
+
   // Un Concierto no se mezcla con otro modo: entrar o salir de él anula la partida en pausa.
   function toggleConcert() {
     stopGame();
@@ -509,8 +573,11 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
 
   return {
     level, chooseLevel, profile,
-    // La batería suelta solo ofrece la batería en "Tocas".
-    tracks: kind === 'drums' ? tracks.filter((track) => track.kind === 'drums') : tracks, trackIndex, setTrackIndex: chooseTrack,
+    // "Tocas" siempre enseña TODOS los instrumentos de la canción (guitarras, bajo, batería, teclado): el
+    // selector del mástil solo decide con cuál se ABRE la partida, nunca restringe a qué se puede cambiar
+    // después -- es la MISMA partida, con las mismas funciones, solo cambia el instrumento inicial (usuario,
+    // 2026-11-20: con batería elegida de inicio, Tocas debe seguir ofreciendo guitarra/bajo/teclado también).
+    tracks, trackIndex, setTrackIndex: chooseTrack,
     missingKind,
     chart: activeChart, loadError,
     speed: playSpeed, setSpeed,
@@ -533,7 +600,9 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     paused,
     canContinue,
     hasStarted,
-    canStart: !!chart && !narrow && !playing && !missingKind,
+    // `missingKind` ya no bloquea Empezar: solo avisa de que la canción no tiene el instrumento con el que
+    // se abrió -- en cuanto se elige CUALQUIER pista válida en Tocas, `chart` ya es válido y se puede jugar.
+    canStart: !!chart && !narrow && !playing,
     pause: game.pause,
     resume,
     resetDefaults,
@@ -545,6 +614,15 @@ export function useRiffController({ source, initialTrack, trackRoles, startFret,
     startTutorial,
     playTutorial,
     exitTutorial,
+    // Mesa de prueba de sonido (ver openSoundCheck).
+    soundCheck,
+    soundCheckStatus: listenGame.status,
+    openSoundCheck,
+    closeSoundCheck,
+    playSoundCheck,
+    stopSoundCheck,
+    setSoundCheckPiece: (piece: MixTarget) => setSoundCheck((current) => (current ? { ...current, piece, solo: 'normal' } : current)),
+    setSoundCheckSolo: (solo: MixContext | null) => setSoundCheck((current) => (current ? { ...current, solo } : current)),
   };
 }
 

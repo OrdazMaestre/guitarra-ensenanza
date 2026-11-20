@@ -27,11 +27,15 @@ export interface DrumNeckGeometry {
   unitsPerPx?: number;
 }
 
-// Los platos, con el borde de arriba a esta distancia (px de pantalla) del borde superior del fondo
-// (usuario, 2026-11-18: tan altos como se pueda, como en una batería de verdad).
-const CYMBAL_TOP_GAP_PX = 15;
-// ...y el plato de la X (el que más se toca), 15 px más abajo.
-const HIHAT_EXTRA_DROP_PX = 15;
+// PROPORCIÓN DE LA BATERÍA (usuario, 2026-11-19, con una captura de la batería MIDI suelta): el dibujo es siempre
+// el mismo, medido en la unidad `u` (una columna si cabe) desde la LÍNEA DE GOLPE, sea cual sea el alto del
+// mástil de detrás: el borde de arriba del plato fuerte a 1,15 u por encima, el del plato X a 1,0 u, y un margen
+// de 0,12 u hasta el borde de la tabla. Si la tabla es baja (la partida en pantalla ancha: 12 columnas
+// estiradas), la batería ENTERA se achica (`u` < columna) en vez de aplastarse; el alto del mástil no cambia
+// (usuario: es independiente del rediseño de la batería).
+const CRASH_TOP_ABOVE_HIT = 1.15;
+const HIHAT_TOP_ABOVE_HIT = 1.0;
+const TOP_MARGIN = 0.12;
 
 // Hasta dónde puede pintarse la batería (los bombos incluidos).
 const drawBottom = (g: DrumNeckGeometry) => g.maxBottom ?? g.top + g.height;
@@ -50,6 +54,8 @@ const LOGO_SRC = '/android-chrome-192x192.png';
 function layout(g: DrumNeckGeometry) {
   const w = g.colWidth;
   const h = g.height;
+  // La unidad del dibujo: una columna, o menos si los platos no caben sobre la línea de golpe.
+  const u = Math.max(0.3 * w, Math.min(w, (g.hitY - g.top) / (CRASH_TOP_ABOVE_HIT + TOP_MARGIN)));
   // DOBLE BOMBO (usuario, 2026-11-17): de una columna de radio, entero (sin cortes por arriba ni por abajo: el
   // halo llega a r + 10) y su centro 0,35 r bajo la línea de golpe; por abajo puede bajar hasta `maxBottom`
   // (detrás de la barra MIDI). Una columna más a la derecha que el borde de la Z: el izquierdo, en X y C, y el
@@ -57,11 +63,13 @@ function layout(g: DrumNeckGeometry) {
   // estrecho (`rx` < `ry`) y su casco (`back`) se alarga hacia la izquierda hasta ocupar la columna Z.
   const bottomRoom = (g.maxBottom ?? g.top + h) - g.hitY - 10;
   const topRoom = g.hitY - g.top - 10;
-  const kickR = Math.max(0.3 * w, Math.min(w, bottomRoom / 1.35, topRoom / 0.65));
+  const kickR = Math.max(0.3 * u, Math.min(u, bottomRoom / 1.35, topRoom / 0.65));
   const kickY = g.hitY + kickR * 0.35;
   // Hacia dónde crecen las columnas (zurdo: al revés).
   const dir = Math.sign(g.cx(1) - g.cx(0)) || 1;
-  const firstKick = g.cx(KICK) + dir * (w / 2) + dir * kickR;
+  // Anclados a sus columnas, como en la batería MIDI (el izquierdo en el borde X|C, el derecho en el V|B), aunque
+  // la batería se achique (`u` < columna): así nunca se juntan encima de la caja.
+  const firstKick = g.cx(KICK) + dir * 1.5 * w;
   const keyH = Math.min(h * 0.17, w * 0.32, 40);
   const keyY = g.top + h - keyH - Math.min(6, h * 0.04);
   return {
@@ -70,7 +78,7 @@ function layout(g: DrumNeckGeometry) {
     kicks: [
       // Girado: parche al 70 % de ancho y casco hacia fuera (hacia la Z), su fondo más pequeño (más lejos).
       { x: firstKick, y: kickY, r: kickR, rx: kickR * 0.7, ry: kickR, back: { x: firstKick - dir * 1.2 * w, rx: kickR * 0.5, ry: kickR * 0.9 } },
-      { x: firstKick + dir * 2 * kickR, y: kickY, r: kickR, rx: kickR, ry: kickR, back: null },
+      { x: firstKick + dir * 2 * w, y: kickY, r: kickR, rx: kickR, ry: kickR, back: null },
     ],
     keyH,
     keyY,
@@ -79,19 +87,18 @@ function layout(g: DrumNeckGeometry) {
     drum: (pad: number) => {
       // Tom agudo (V) entre la caja (C) y el tom grave (B) (usuario, 2026-11-17).
       const scale = pad === SNARE ? 0.72 : pad === HIGH_TOM ? 0.76 : 0.8;
-      const rx = (w * scale) / 2;
+      const rx = (u * scale) / 2;
       const shell = rx * 0.75;
       // Medio casco por encima de la línea de golpe (usuario, 2026-11-18: así hay sitio para subir los platos).
       return { x: g.cx(pad), y: g.hitY - shell * 0.5, rx, ry: rx * 0.32, shell };
     },
     cymbal: (pad: number) => {
-      const rx = w * (pad === CRASH ? 0.46 : 0.4);
+      const rx = u * (pad === CRASH ? 0.46 : 0.4);
       const ry = rx * 0.24;
-      // MÁS ALTOS que los tambores, con el pie más largo, como en una batería de verdad (usuario, 2026-11-18):
-      // su borde de arriba, a CYMBAL_TOP_GAP_PX del borde superior del fondo.
-      // El plato de la X, 15 px más abajo que el plato fuerte (usuario, 2026-11-18).
-      const gapPx = CYMBAL_TOP_GAP_PX + (pad === HIHAT ? HIHAT_EXTRA_DROP_PX : 0);
-      return { x: g.cx(pad), y: g.top + gapPx * (g.unitsPerPx ?? 1) + ry, rx, ry };
+      // MÁS ALTOS que los tambores, con el pie más largo, como en una batería de verdad; el plato X algo más
+      // bajo que el plato fuerte (ver PROPORCIÓN arriba).
+      const top = g.hitY - u * (pad === CRASH ? CRASH_TOP_ABOVE_HIT : HIHAT_TOP_ABOVE_HIT);
+      return { x: g.cx(pad), y: top + ry, rx, ry };
     },
   };
 }
@@ -230,20 +237,34 @@ function pale(hex: string, k: number): string {
 // tambores y platos). Tambores: cilindro (parche, casco y borde de abajo) en una sola silueta; platos: su elipse
 // con el halo. No se solapan entre sí (cada una en su columna), así que vale el relleno `evenodd`.
 export type DrumOccluder =
-  | { kind: 'cylinder'; x: number; y: number; rx: number; ry: number; shell: number }
-  | { kind: 'ellipse'; x: number; y: number; rx: number; ry: number };
+  | { kind: 'cylinder'; pad: number; x: number; y: number; rx: number; ry: number; shell: number }
+  | { kind: 'ellipse'; pad: number; x: number; y: number; rx: number; ry: number };
 
 export function drumOccluders(g: DrumNeckGeometry): DrumOccluder[] {
   const l = layout(g);
   const drums = [SNARE, HIGH_TOM, LOW_TOM].map((pad) => {
     const d = l.drum(pad);
-    return { kind: 'cylinder' as const, x: d.x, y: d.y, rx: d.rx + 1, ry: d.ry + 1, shell: d.shell };
+    return { kind: 'cylinder' as const, pad, x: d.x, y: d.y, rx: d.rx + 1, ry: d.ry + 1, shell: d.shell };
   });
   const cymbals = [HIHAT, CRASH].map((pad) => {
     const c = l.cymbal(pad);
-    return { kind: 'ellipse' as const, x: c.x, y: c.y, rx: c.rx + 5, ry: c.ry + 3 };
+    return { kind: 'ellipse' as const, pad, x: c.x, y: c.y, rx: c.rx + 5, ry: c.ry + 3 };
   });
   return [...drums, ...cymbals];
+}
+
+// NOTAS POR DETRÁS (usuario, 2026-11-19: en un compás de doble bombo, las notas del bombo tapaban el plato X):
+// al bajar, una nota de batería pasa POR DETRÁS de las demás piezas; solo la de su propia pieza no la tapa (tiene
+// que verse caer sobre ella), y el bombo no tapa nada (está detrás de todo). Estas son las siluetas que la tapan.
+export function drumGemOccluders(g: DrumNeckGeometry, pad: number): DrumOccluder[] {
+  return drumOccluders(g).filter((o) => o.pad !== pad);
+}
+
+// ¿Un punto (viewBox) queda dentro de una silueta? (Para las pruebas de las notas por detrás.)
+export function insideOccluder(o: DrumOccluder, x: number, y: number): boolean {
+  const inEllipse = (cy: number) => ((x - o.x) / o.rx) ** 2 + ((y - cy) / o.ry) ** 2 <= 1;
+  if (o.kind === 'ellipse') return inEllipse(o.y);
+  return inEllipse(o.y) || inEllipse(o.y + o.shell) || (Math.abs(x - o.x) <= o.rx && y >= o.y && y <= o.y + o.shell);
 }
 
 // La silueta en un `d` de SVG (los tramos curvos, con arcos).

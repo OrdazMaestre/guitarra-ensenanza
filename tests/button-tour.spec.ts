@@ -30,12 +30,18 @@ test('tutorial del mástil: recorre los botones de su barra', async ({ page }) =
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
+// El MiniKeyboard suelto salió de Sala de pruebas (usuario, 2026-11-20: el selector de instrumento del
+// mástil ya incluye un Teclado); su tutorial se comprueba en el menú Instrumentos de la portada, donde
+// sigue habiendo un MiniKeyboard con `tutorial` (ver "portada: la guitarra y el teclado..." más abajo).
 test('tutorial del teclado: KEYBOARD y metrónomo (sin volumen); Escape lo cierra', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.goto(URL);
-  await page.locator('.test-room-keyboard').getByRole('button', { name: 'Tutorial' }).click();
+  await page.goto('/lecciones/temario');
+  await page.getByRole('button', { name: 'Instrumentos' }).click();
+  await page.locator('#portada2-instrumentos').getByRole('button', { name: 'Teclado' }).click();
+  const keyboard = page.locator('.portada2-instrument');
+  await keyboard.getByRole('button', { name: 'Tutorial' }).click();
   await walk(page, ['KEYBOARD', 'Metrónomo']);
-  await page.locator('.test-room-keyboard').getByRole('button', { name: 'Tutorial' }).click();
+  await keyboard.getByRole('button', { name: 'Tutorial' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(1);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);

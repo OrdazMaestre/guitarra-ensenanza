@@ -5,7 +5,7 @@ import type { RiffClick, RiffMode } from '@/app/lib/riff/session';
 import type { RiffController } from './useRiffController';
 import { RIFF_PANEL_TOUR, RIFF_TRICKS_TOUR, TutorialButton } from '../ButtonTour';
 import { trackRole } from '@/app/lib/riff/roles';
-import { BassIcon, KeysIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole } from './RiffIcons';
+import { BassIcon, KeysIcon, ConcertIcon, DiscIcon, RotatePhoneIcon, WidenScreenIcon, DrumIcon, ClickIcon, LevelIcon, LoopIcon, ModeIcon, SongDifficultyIcon, SongDifficultyLegend, SongLacksIcons, SpeedIcon, TrackIcon, type TrackRole, MixerIcon } from './RiffIcons';
 import { DIFFICULTY_LABEL } from '@/app/lib/riff/difficulty';
 import type { SongEntry } from '@/app/lib/songs';
 import { DeleteSongButton, LocalSongSearch } from '../LocalSongSearch';
@@ -222,10 +222,23 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
         <RiffDropdown {...menuProps('pista')} icon={trackIcon(currentTrack)} label="Pistas" value={`${currentTrack ? trackLabel(currentTrack) : '—'}, ${CLICK_VALUE[riff.click]}`}>
             <span className="riff-level-heading">Tocas</span>
             {riff.tracks.map((track) => (
-              <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" key={track.index} onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
-                {trackIcon(track)}
-                {trackLabel(track)}
-              </button>
+              <div className="riff-track-row" key={track.index}>
+                <button aria-pressed={riff.trackIndex === track.index} className="riff-chip" onClick={() => pick(() => riff.setTrackIndex(track.index))} type="button">
+                  {trackIcon(track)}
+                  {trackLabel(track)}
+                </button>
+                {/* Mesa de prueba de sonido (soundCheck.ts, usuario 2026-11-19): sin partida, suena la canción y se
+                    ajusta este instrumento en sus 3 volúmenes. */}
+                <button
+                  aria-label={`Mesa de sonido: ${trackLabel(track)}`}
+                  className="riff-chip riff-mixer-open"
+                  onClick={() => pick(() => riff.openSoundCheck(track.index))}
+                  title={`Mesa de sonido: ${trackLabel(track)}`}
+                  type="button"
+                >
+                  <MixerIcon />
+                </button>
+              </div>
             ))}
             <span className="riff-level-heading">Suenan de fondo</span>
             <div className="riff-band-row">
@@ -332,7 +345,7 @@ export function RiffControls({ onSong, onStart, riff, song, songNotice, songs = 
         <p className="riff-note" role="status">Concierto en pausa. Esta partida no cuenta. ¿Lo intentamos otra vez?</p>
       )}
       {riff.loadError && <p className="riff-note">No se pudo cargar la tablatura.</p>}
-      {riff.missingKind && <p className="riff-note">Esta canción no tiene batería.</p>}
+      {riff.missingKind && <p className="riff-note">Esta canción no tiene {riff.missingKind === 'keys' ? 'teclado' : 'batería'}.</p>}
       {songNotice && <p className="riff-note" role="status">{songNotice}</p>}
       {riff.narrow && (
         <p className="riff-narrow-warning" role="status">
@@ -796,6 +809,18 @@ export function RiffStyles() {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+        justify-content: center;
+      }
+
+      .riff-track-row {
+        display: flex;
+        gap: 6px;
+      }
+      .riff-track-row > .riff-chip:first-child {
+        flex: 1 1 auto;
+      }
+      .riff-mixer-open {
+        flex: 0 0 auto;
         justify-content: center;
       }
 

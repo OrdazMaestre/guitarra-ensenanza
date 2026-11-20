@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 
-// Sala de pruebas (usuario, 2026-11-17): selector Guitarra / Bajo en el mástil (bajo de 4 cuerdas con el
-// sonido del bajo, afinado en Mi), el bajo que suena en el mástil fuera de la partida en curso, y la batería
-// MIDI suelta debajo del teclado (la del modo batería, con su JUGAR). El bajo es un OSCILADOR (sierra +
-// seno grave) y la guitarra, una muestra: se cuentan los osciladores y se apuntan sus frecuencias.
+// Sala de pruebas (usuario, 2026-11-17; selector ampliado a 4 instrumentos el 2026-11-20): selector
+// Guitarra / Bajo / Batería / Teclado en el mismo mástil (bajo de 4 cuerdas con el sonido del bajo,
+// afinado en Mi; batería y teclado sueltos, independientes de cualquier canción cargada). El bajo es un
+// OSCILADOR (sierra + seno grave) y la guitarra, una muestra: se cuentan los osciladores y se apuntan sus
+// frecuencias.
 test.use({ hasTouch: false });
 
 const URL = '/lecciones/temario/sala-de-pruebas';
@@ -31,7 +32,7 @@ async function spyAudio(page: Page) {
 const sawFreqs = (page: Page) => page.evaluate(() => (window as unknown as { __saw: number[] }).__saw);
 const resetSaw = (page: Page) => page.evaluate(() => { (window as unknown as { __saw: number[] }).__saw = []; });
 
-async function chooseNeck(page: Page, label: 'Guitarra' | 'Bajo') {
+async function chooseNeck(page: Page, label: 'Guitarra' | 'Bajo' | 'Batería' | 'Teclado') {
   const neck = page.locator('.test-room-fretboard');
   const option = neck.locator('[role="menuitemradio"]', { hasText: label });
   // Hasta que React haya montado la página, el clic no abre el menú: se repite.
@@ -142,44 +143,45 @@ test('bajo + JUGAR con una canción sin bajo: se toca la guitarra y el selector 
   await expect(neck.locator('svg.reduced-fretboard .reduced-string')).toHaveCount(4);
 });
 
-test('batería suelta: suena fuera de la partida, zurdo, su JUGAR en modo batería y una sola partida abierta', async ({ page }) => {
+test('batería suelta: suena fuera de la partida, zurdo y su JUGAR en modo batería', async ({ page }) => {
   await spyAudio(page);
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
-  const drums = page.locator('.test-room-drums');
-  await expect(drums.locator('svg.riff-drum-neck')).toBeVisible({ timeout: 30000 });
-  await expect(drums.locator('.riff-drum-piece')).toHaveCount(6);
-  // Controles: JUGAR, diestro/zurdo, KEYBOARD, volumen y metrónomo; sin paleta ni afinación.
-  await expect(drums.locator('.riff-open-toggle')).toHaveText('JUGAR');
-  await expect(drums.getByRole('slider', { name: 'Volumen de la batería' })).toBeVisible();
-  await expect(drums.locator('.neck-instrument-toggle')).toHaveCount(0);
-  await expect(drums.getByRole('button', { name: 'Afinar el mástil' })).toHaveCount(0);
+  const neck = page.locator('.test-room-fretboard');
+  await expect(neck.locator('.neck-instrument-toggle')).toBeVisible({ timeout: 30000 });
+  await chooseNeck(page, 'Batería');
+  await expect(neck.locator('svg.riff-drum-neck')).toBeVisible({ timeout: 30000 });
+  await expect(neck.locator('.riff-drum-piece')).toHaveCount(6);
+  // Controles: JUGAR, selector de instrumento, diestro/zurdo, KEYBOARD, volumen y metrónomo; sin afinación.
+  await expect(neck.locator('.riff-open-toggle')).toHaveText('JUGAR');
+  await expect(neck.getByRole('slider', { name: 'Volumen de la batería' })).toBeVisible();
+  await expect(neck.getByRole('button', { name: 'Afinar el mástil' })).toHaveCount(0);
 
   // Teclado: Z = bombo (y suena: el bombo lleva oscilador); zurdo: Z = la columna del otro lado.
-  await drums.locator('.midi-kb-toggle').click();
+  await neck.locator('.midi-kb-toggle').click();
   const before = await page.evaluate(() => (window as unknown as { __oscs: number }).__oscs);
   await page.keyboard.down('KeyZ');
-  await expect(drums.locator('.riff-drum-hit')).toHaveAttribute('data-pad', 'Bombo');
+  await expect(neck.locator('.riff-drum-hit')).toHaveAttribute('data-pad', 'Bombo');
   await page.keyboard.up('KeyZ');
   expect(await page.evaluate(() => (window as unknown as { __oscs: number }).__oscs)).toBeGreaterThan(before);
-  await drums.getByRole('button', { name: /zurdo|diestro/i }).first().click();
+  await neck.getByRole('button', { name: /zurdo|diestro/i }).first().click();
   await page.keyboard.down('KeyZ');
-  await expect(drums.locator('.riff-drum-hit')).toHaveAttribute('data-pad', 'Plato fuerte');
+  await expect(neck.locator('.riff-drum-hit')).toHaveAttribute('data-pad', 'Plato fuerte');
   await page.keyboard.up('KeyZ');
 
-  // Su JUGAR abre la partida con la batería; abrir JUGAR en el mástil la cierra.
-  await drums.locator('.riff-open-toggle').click();
-  await expect(drums.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Batería/, { timeout: 30000 });
-  await page.locator('.test-room-fretboard .riff-open-toggle').click();
-  await expect(drums.locator('.riff-open-toggle')).toHaveText('JUGAR');
-  await expect(page.locator('.test-room-fretboard .riff-open-toggle')).toHaveText('SALIR');
+  // Su JUGAR abre la partida con la batería.
+  await neck.locator('.riff-open-toggle').click();
+  await expect(neck.locator('.riff-dd-toggle', { hasText: 'Pistas' })).toHaveAttribute('aria-label', /Batería/, { timeout: 30000 });
 });
 
 test('sala con bajo y batería: sin desbordamiento horizontal', async ({ page }) => {
   for (const width of [360, 600, 1366]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(URL);
-    await expect(page.locator('.test-room-drums svg.riff-drum-neck')).toBeVisible({ timeout: 30000 });
+    const neck = page.locator('.test-room-fretboard');
+    await expect(neck.locator('.neck-instrument-toggle')).toBeVisible({ timeout: 30000 });
+    await chooseNeck(page, 'Batería');
+    await expect(neck.locator('svg.riff-drum-neck')).toBeVisible({ timeout: 30000 });
     await chooseNeck(page, 'Bajo');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow, `${width}px`).toBeLessThanOrEqual(0);
@@ -203,8 +205,11 @@ test('tema oscuro: el mástil de la sala con el aspecto de la partida', async ({
   expect(light.low).not.toBe('rgb(239, 68, 68)');
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
   expect(await look()).toEqual({ fret: 'rgb(250, 204, 21)', low: 'rgb(239, 68, 68)', high: 'rgb(249, 115, 22)' });
-  // La batería suelta y el resto de mástiles de la web no lo llevan.
-  await expect(page.locator('.test-room-drums svg.dark-game-look')).toHaveCount(0);
+  // La batería y el teclado sueltos (mismo mástil, otro instrumento) no lo llevan.
+  await chooseNeck(page, 'Batería');
+  await expect(page.locator('.test-room-fretboard svg.dark-game-look')).toHaveCount(0);
+  await chooseNeck(page, 'Teclado');
+  await expect(page.locator('.test-room-fretboard svg.dark-game-look')).toHaveCount(0);
 });
 
 // Batería suelta (usuario, 2026-11-18): logo en los dos bombos, platos por encima de los tambores, la capa de
@@ -212,7 +217,10 @@ test('tema oscuro: el mástil de la sala con el aspecto de la partida', async ({
 test('batería suelta: logo en los bombos, platos altos y fondo pálido en claro', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(URL);
-  const neck = page.locator('.test-room-drums svg.riff-drum-neck');
+  const host = page.locator('.test-room-fretboard');
+  await expect(host.locator('.neck-instrument-toggle')).toBeVisible({ timeout: 30000 });
+  await chooseNeck(page, 'Batería');
+  const neck = host.locator('svg.riff-drum-neck');
   await expect(neck).toHaveClass(/riff-drum-standalone/, { timeout: 30000 });
   await expect(neck.locator('image.riff-drum-logo')).toHaveCount(2);
   const top = (pad: string) => neck.locator(`.riff-drum-piece[data-pad="${pad}"]`).evaluate((el) => (el as SVGGraphicsElement).getBBox().y);

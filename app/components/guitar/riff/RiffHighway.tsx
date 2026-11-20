@@ -6,9 +6,10 @@ import type { Chart, ChartNote } from '@/app/lib/riff/chart';
 import { fretColor, RIFF_STRING_COLORS, stringFretColor } from '@/app/lib/riff/colors';
 import { COUNT_IN_BEATS, type RiffSession } from '@/app/lib/riff/session';
 import { ambientPhrase } from '@/app/lib/riff/phrases';
-import { drumOccluders, drumSurfaceShapes } from './DrumKitNeck';
+import { drumGemOccluders, drumOccluders, drumSurfaceShapes, type DrumOccluder } from './DrumKitNeck';
 import { drumGemPath } from '@/app/lib/riff/drumGems';
 import { KICK } from '@/app/lib/riff/drums';
+import { formatScore } from '@/app/lib/riff/formatScore';
 
 // Frases de Experto: 40 % de transparencia (usuario, 2026-11-09).
 const EXPERTO_PHRASE_OPACITY = 0.6;
@@ -124,10 +125,6 @@ function scoreText(points: number) {
 // +4 rojo vivo. Dentro del juego el rojo ya es un color "de juego" (cuerda 6), no el rojo de nota especial.
 const SCORE_COLORS: Record<string, string> = { '0.5': '#ffffff', '1': '#ffffff', '2': '#fde047', '3': '#fb923c', '4': '#ef2b2b' };
 
-export function formatScore(points: number) {
-  return Number.isInteger(points) ? String(points) : points.toFixed(1).replace('.', ',');
-}
-
 // Nota por id, cacheado por sesión (para colocar las etiquetas de puntos).
 const notesById = new WeakMap<RiffSession, Map<number, ChartNote>>();
 function noteById(session: RiffSession, id: number) {
@@ -155,6 +152,27 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 let gemKit: Chart['kit'];
 // Teclado (keys.ts): el NOMBRE de la nota (como debajo de las teclas), no el número de columna.
 const KEY_NAMES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+// Siluetas de las piezas de la batería (DrumKitNeck) añadidas al camino actual del lienzo, para recortes
+// `evenodd` (los bombos y las notas por detrás de las otras piezas).
+function addOccluderPaths(ctx: CanvasRenderingContext2D, occluders: DrumOccluder[], toX: (x: number, y: number) => number, toY: (x: number, y: number) => number, sx: number, sy: number) {
+  for (const o of occluders) {
+    const cx = toX(o.x, o.y);
+    const cy = toY(o.x, o.y);
+    if (o.kind === 'ellipse') {
+      ctx.moveTo(cx + o.rx * sx, cy);
+      ctx.ellipse(cx, cy, o.rx * sx, o.ry * sy, 0, 0, Math.PI * 2);
+    } else {
+      const bottom = cy + o.shell * sy;
+      ctx.moveTo(cx - o.rx * sx, cy);
+      ctx.lineTo(cx - o.rx * sx, bottom);
+      ctx.ellipse(cx, bottom, o.rx * sx, o.ry * sy, 0, Math.PI, 0, true);
+      ctx.lineTo(cx + o.rx * sx, cy);
+      ctx.ellipse(cx, cy, o.rx * sx, o.ry * sy, 0, 0, Math.PI, true);
+      ctx.closePath();
+    }
+  }
+}
+
 const gemLabel = (note: { fret: number; midi: number }) => (gemKit === 'keys' ? KEY_NAMES[((note.midi % 12) + 12) % 12] : String(note.fret));
 
 export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeStrings, ambientPhrases, chart, countdownPhrase, colorBy = 'string', fretCaps, fretRange, freeStrings = false, geometryRef, practice = false, previewTime, sessionRef, stageRef, stretch = false }: Props) {
@@ -546,22 +564,7 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
           if (note.fret === KICK) {
             const sx = Math.abs(ctm.a);
             const sy = Math.abs(ctm.d);
-            for (const o of drumOccluders(geo.drumGeo)) {
-              const cx = toX(o.x, o.y);
-              const cy = toY(o.x, o.y);
-              if (o.kind === 'ellipse') {
-                ctx.moveTo(cx + o.rx * sx, cy);
-                ctx.ellipse(cx, cy, o.rx * sx, o.ry * sy, 0, 0, Math.PI * 2);
-              } else {
-                const bottom = cy + o.shell * sy;
-                ctx.moveTo(cx - o.rx * sx, cy);
-                ctx.lineTo(cx - o.rx * sx, bottom);
-                ctx.ellipse(cx, bottom, o.rx * sx, o.ry * sy, 0, Math.PI, 0, true);
-                ctx.lineTo(cx + o.rx * sx, cy);
-                ctx.ellipse(cx, cy, o.rx * sx, o.ry * sy, 0, 0, Math.PI, true);
-                ctx.closePath();
-              }
-            }
+            addOccluderPaths(ctx, drumOccluders(geo.drumGeo), toX, toY, sx, sy);
             ctx.clip('evenodd');
           } else {
             ctx.clip();
@@ -636,6 +639,16 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
           ctx.globalAlpha = 1;
         }
 
+        // Batería: la nota pasa POR DETRÁS de las otras piezas (drumGemOccluders): recorte `evenodd` = todo el
+        // lienzo menos sus siluetas. Sin `shadowBlur` ni capas extra (fluidez).
+        const behind = gemKit === 'drums' && geo.drumGeo ? drumGemOccluders(geo.drumGeo, note.fret) : null;
+        if (behind && behind.length > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, canvas.width, canvas.height);
+          addOccluderPaths(ctx, behind, toX, toY, Math.abs(ctm.a), Math.abs(ctm.d));
+          ctx.clip('evenodd');
+        }
         ctx.globalAlpha = missed ? Math.max(0, 1 + z / MISS_FADE_SECONDS) * GHOST_ALPHA : 1;
         ctx.fillStyle = missed ? GHOST_COLOR : color;
         // Cuerda al aire (traste 0): un CÍRCULO grande en vez de la barra del resto (petición del
@@ -704,6 +717,7 @@ export default function RiffHighway({ laneSpeed = 1, sectionLaneSpeeds, activeSt
         }
 
         ctx.globalAlpha = 1;
+        if (behind && behind.length > 0) ctx.restore();
       }
 
       // Puntos de cada nota ENCIMA DEL MÁSTIL, centrados sobre su traste (petición del usuario: en

@@ -1,11 +1,13 @@
 'use client';
 import { type MutableRefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getAudioCurrentTime, type GuideNoteHandle, playBassNote, playDrumPad, playMetronomeClick, preloadSamples, scheduleGuideNote, scheduleKeyNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { createMixRouter, getAudioCurrentTime, getMixBus, type GuideNoteHandle, type MixRouter, playBassNote, playDrumPad, playMetronomeClick, preloadSamples, scheduleGuideNote, scheduleKeyNote, type ScheduledBend, setGameMix, touchAudioContext } from '@/app/lib/guitarAudioEngine';
+import { drumPadTarget, drumSoundTarget, type MixContext, type MixTarget } from '@/app/lib/soundCheck';
+import { CRASH, HIGH_TOM, KICK, LOW_TOM, SNARE } from './drums';
 import type { PracticeNoteEvent } from '@/app/lib/useFretboardPractice';
 import { perfEnd, perfInput, perfReset, perfTickStart } from './perfMeter';
 import type { Chart, ChartNote } from './chart';
 import { keysSoundMidi } from './keys';
-import { drumVolume, GUIDE_GAIN, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus } from './session';
+import { DRUM_LEVEL, drumVolume, GUIDE_GAIN, KICK_BOOST, OPEN_GAIN, RiffSession, sameBacking, type RiffBacking, type RiffOptions, type RiffStatus, type ScheduledGuideNote } from './session';
 
 // Envuelve RiffSession con el reloj real (AudioContext), el metrónomo y el estado de React.
 // El dibujo (RiffHighway) lee `sessionRef` en cada frame; aquí solo cambia el estado cuando
@@ -29,8 +31,8 @@ const BAND_KEYS_GAIN = BAND_GUITAR_GAIN * KEYS_GAIN;
 
 // La pista propia cuando se toca el bajo (mismo sintetizador que el bajo de la banda). `volume` en la
 // escala de GUIDE_GAIN/OPEN_GAIN, como la guitarra: abierta suena como el bajo de la banda.
-function playOwnBass(note: { midi: number; palmMute: boolean; bend?: ScheduledBend }, at: number, duration: number, volume: number): GuideNoteHandle | null {
-  const handle = playBassNote(at, note.midi, duration, volume * BAND_BASS_GAIN, note.palmMute, note.bend);
+function playOwnBass(note: { midi: number; palmMute: boolean; bend?: ScheduledBend }, at: number, duration: number, volume: number, out?: AudioNode): GuideNoteHandle | null {
+  const handle = playBassNote(at, note.midi, duration, volume * BAND_BASS_GAIN, note.palmMute, note.bend, out);
   return handle && { setVolume: (next) => handle.setVolume(next * BAND_BASS_GAIN), stopAt: handle.stopAt };
 }
 // El volumen de una nota de teclado va en la escala de GUIDE_GAIN/OPEN_GAIN × KEYS_GAIN.
@@ -43,6 +45,21 @@ const CLICK_LOOKAHEAD_SECONDS = 0.3;
 
 export type RiffGameStatus = 'idle' | RiffStatus;
 
+// MESA DE SONIDO (soundCheck.ts, usuario 2026-11-19): con `listen`, esta partida solo ESCUCHA la canción (sin
+// entrada ni puntos) y programa cada nota de la pista TRES veces, una por volumen (normal a OPEN_GAIN, fallo a
+// GUIDE_GAIN, fondo al nivel de la banda), cada una a su bus; el Solo de la mesa decide cuál se oye. En la
+// batería, solo la pieza abierta (`piece`) va por triplicado; las demás suenan en normal.
+export type ListenFocusRef = MutableRefObject<{ piece: MixTarget | null } | null>;
+
+// Instrumento de mesa de lo que toca esta partida (la batería va por piezas, ver drumTarget).
+function ownTarget(session: RiffSession): MixTarget {
+  return session.bass ? 'bass' : session.keys ? 'keys' : 'guitar';
+}
+const DRUM_PADS_FOR_MIX = { KICK, SNARE, HIGH_TOM, LOW_TOM, CRASH };
+const drumTarget = (pad: number | undefined) => drumPadTarget(pad ?? SNARE, DRUM_PADS_FOR_MIX);
+// La batería de fondo (session.ts: la real y la automática): 0,8 × DRUM_LEVEL, el bombo × KICK_BOOST.
+const drumBandVolume = (pad: number | undefined) => 0.8 * DRUM_LEVEL * (pad === KICK ? KICK_BOOST : 1);
+
 // Posiciones que suenan AHORA en el mástil (las publica ReducedFretboardDiagram), para las notas
 // repetidas con la pulsación mantenida (RiffSession.autoHold).
 export type HeldPositionsRef = MutableRefObject<() => { string: number; fret: number }[]>;
@@ -51,7 +68,7 @@ export type HeldPositionsRef = MutableRefObject<() => { string: number; fret: nu
 // Ya NO multiplica cada nota (subía la saturación del bajo y aplastaba la batería): se aplica a la
 // salida, en el bus de mezcla de la partida (setGameMix en guitarAudioEngine.ts: compresor + limitador),
 // abierto mientras se TOCA (cuenta de entrada o tocando).
-export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, volume = 1) {
+export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, volume = 1, listen?: ListenFocusRef) {
   const sessionRef = useRef<RiffSession | null>(null);
   const [status, setStatus] = useState<RiffGameStatus>('idle');
   // Bus de mezcla de la partida: abierto (con la barra) mientras se toca; en pausa, al terminar o
@@ -88,7 +105,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
   const timerRef = useRef<number | null>(null);
   // Notas de fondo ya programadas (id de nota real -> control de volumen + cuándo acaba), para
   // poder "abrirlas" cuando se acierta su nota traducida (todos los niveles menos Experto).
-  const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number }>());
+  const guideHandlesRef = useRef(new Map<number, { handle: GuideNoteHandle; end: number; router?: MixRouter }>());
   // Notas de la otra guitarra ya programadas (para callarlas en PAUSA).
   const bandHandlesRef = useRef<{ handle: GuideNoteHandle; end: number }[]>([]);
   // Última nota de fondo de cada cuerda (de la propia pista o de la banda): la siguiente en la misma
@@ -108,14 +125,20 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
     // ha sonado, se calla (no suena dos veces).
     if (session.drums) {
       for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.stopAt(now);
-      for (const note of session.playNowFor(hit)) playDrumPad(note.pad ?? 3, now, drumVolume(note.pad, true));
+      for (const note of session.playNowFor(hit)) playDrumPad(note.pad ?? 3, now, drumVolume(note.pad, true), getMixBus(drumTarget(note.pad), 'normal'));
       return;
     }
-    for (const id of session.openedBy(hit.id)) guideHandlesRef.current.get(id)?.handle.setVolume(open);
+    for (const id of session.openedBy(hit.id)) {
+      const entry = guideHandlesRef.current.get(id);
+      entry?.handle.setVolume(open);
+      // Acertada: de "fallo" a "normal" en la mesa de sonido.
+      entry?.router?.setContext('normal');
+    }
+    const normalBus = getMixBus(ownTarget(session), 'normal');
     for (const note of session.playNowFor(hit)) {
-      if (session.bass) playOwnBass(note, now, note.duration, open);
-      else if (session.keys) scheduleKeyNote(note.midi, now, note.duration, open * KEYS_GAIN);
-      else void scheduleGuideNote(note.midi, now, note.duration, open, note.bend);
+      if (session.bass) playOwnBass(note, now, note.duration, open, normalBus);
+      else if (session.keys) scheduleKeyNote(note.midi, now, note.duration, open * KEYS_GAIN, normalBus);
+      else void scheduleGuideNote(note.midi, now, note.duration, open, note.bend, normalBus);
     }
   }, []);
 
@@ -176,40 +199,82 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
         perfEnd('tick', perfStart);
       }
     }, TICK_MS);
+    // Mesa de sonido: la nota de la pista por cada volumen, a su nivel de siempre y a su bus.
+    function scheduleListenCopies(current: RiffSession, note: ScheduledGuideNote, piece: MixTarget | null) {
+      const keep = (handle: GuideNoteHandle | null, context: MixContext) => {
+        if (!handle) return;
+        if (sessionRef.current !== current) handle.setVolume(0);
+        else {
+          bandHandlesRef.current.push({ handle, end: note.at + note.duration + 1.5 });
+          onVoice(`${note.voice}/${context}`, handle, note.at);
+        }
+      };
+      if (current.drums) {
+        const target = drumTarget(note.pad);
+        const pad = note.pad ?? 3;
+        // Las piezas que no son la pestaña abierta, solo en normal (si no, sonarían triplicadas).
+        keep(playDrumPad(pad, note.at, drumVolume(note.pad, true), getMixBus(target, 'normal')), 'normal');
+        if (target !== piece) return;
+        keep(playDrumPad(pad, note.at, drumVolume(note.pad, false), getMixBus(target, 'fallo')), 'fallo');
+        keep(playDrumPad(pad, note.at, drumBandVolume(note.pad), getMixBus(target, 'fondo')), 'fondo');
+        return;
+      }
+      const target = ownTarget(current);
+      const levels: Array<[MixContext, number]> = [['normal', OPEN_GAIN], ['fallo', GUIDE_GAIN], ['fondo', 0]];
+      for (const [context, level] of levels) {
+        const out = getMixBus(target, context);
+        if (current.bass) keep(playOwnBass(note, note.at, note.duration, context === 'fondo' ? 1 : level, out), context);
+        else if (current.keys) {
+          keep(scheduleKeyNote(context === 'fondo' ? keysSoundMidi(note.midi) : note.midi, note.at, note.duration, context === 'fondo' ? BAND_KEYS_GAIN : level * KEYS_GAIN, out), context);
+        } else {
+          void scheduleGuideNote(note.midi, note.at, note.duration, context === 'fondo' ? BAND_GUITAR_GAIN : level, note.bend, out).then((handle) => keep(handle, context));
+        }
+      }
+    }
     function tick() {
       const now = getAudioCurrentTime();
       session.advance(now);
       for (const note of session.autoHold(heldRef?.current() ?? [])) applyHit(session, note, now);
       for (const click of session.takeClicks(now, CLICK_LOOKAHEAD_SECONDS)) {
-        playMetronomeClick(click.at, click.volume, click.sound);
+        // Los golpes de la batería de fondo, al bus "fondo" de su pieza; el metrónomo, como siempre.
+        playMetronomeClick(click.at, click.volume, click.sound, click.drum ? getMixBus(drumSoundTarget(click.sound), 'fondo') : undefined);
       }
+      const focus = listen ? listen.current : null;
       for (const note of session.takeGuideNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
+        if (focus) {
+          scheduleListenCopies(session, note, focus.piece);
+          continue;
+        }
         if (session.drums) {
-          const handle = playDrumPad(note.pad ?? 3, note.at, drumVolume(note.pad, note.open, note.unplayed));
+          const handle = playDrumPad(note.pad ?? 3, note.at, drumVolume(note.pad, note.open, note.unplayed), getMixBus(drumTarget(note.pad), note.open ? 'normal' : 'fallo'));
           if (handle) handles.set(note.id, { handle, end: note.at + 1.5 });
           continue;
         }
         const volume = note.open ? OPEN_GAIN : GUIDE_GAIN;
-        const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume)) : session.keys ? Promise.resolve(keyHandle(scheduleKeyNote(note.midi, note.at, note.duration, volume * KEYS_GAIN))) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend);
+        // Mesa de sonido: sale por "fallo" y pasa a "normal" al acertarla (o ya "normal" si sale abierta).
+        const router = createMixRouter(ownTarget(session), note.open ? 'normal' : 'fallo');
+        const out = router.input;
+        window.setTimeout(() => router.dispose(), Math.max(0, note.at - now + note.duration) * 1000 + 3000);
+        const scheduled = session.bass ? Promise.resolve(playOwnBass(note, note.at, note.duration, volume, out)) : session.keys ? Promise.resolve(keyHandle(scheduleKeyNote(note.midi, note.at, note.duration, volume * KEYS_GAIN, out))) : scheduleGuideNote(note.midi, note.at, note.duration, volume, note.bend, out);
         void scheduled.then((handle) => {
           if (!handle) return;
           // Llegó tarde (ya se paró o se salió de la página): se calla en vez de quedarse sonando.
           if (sessionRef.current !== session) handle.setVolume(0);
           else {
-            handles.set(note.id, { handle, end: note.at + note.duration });
+            handles.set(note.id, { handle, end: note.at + note.duration, router });
             onVoice(note.voice, handle, note.at);
           }
         });
       }
       for (const note of session.takeBandNotes(now, CLICK_LOOKAHEAD_SECONDS)) {
         if (note.kind === 'bass') {
-          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute, note.bend);
+          playBassNote(note.at, note.midi, note.duration, BAND_BASS_GAIN, note.palmMute, note.bend, getMixBus('bass', 'fondo'));
         } else if (note.kind === 'keys') {
           // Con el mismo suelo de graves que el teclado que se toca (keys.ts).
-          const handle = scheduleKeyNote(keysSoundMidi(note.midi), note.at, note.duration, BAND_KEYS_GAIN);
+          const handle = scheduleKeyNote(keysSoundMidi(note.midi), note.at, note.duration, BAND_KEYS_GAIN, getMixBus('keys', 'fondo'));
           if (handle) bandHandlesRef.current.push({ handle, end: note.at + note.duration });
         } else {
-          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN, note.bend).then((handle) => {
+          void scheduleGuideNote(note.midi, note.at, note.duration, BAND_GUITAR_GAIN, note.bend, getMixBus('guitar', 'fondo')).then((handle) => {
             if (!handle) return;
             if (sessionRef.current !== session) handle.setVolume(0);
             else {
@@ -229,7 +294,7 @@ export function useRiffGame(chart: Chart | null, heldRef?: HeldPositionsRef, vol
       setAtBreak(session.stoppedAtBreak);
       if (session.status === 'finished') clearTimer();
     }
-  }, [applyHit, clearTimer, heldRef, onVoice, setStats]);
+  }, [applyHit, clearTimer, heldRef, listen, onVoice, setStats]);
 
   // Todos los sonidos cargados ANTES de la cuenta de entrada: nada se carga a mitad de partida.
   const start = useCallback(async (options: RiffOptions, backing: RiffBacking) => {
